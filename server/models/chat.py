@@ -2,9 +2,11 @@
 Chat-related Pydantic models: request and response.
 """
 
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from pydantic import BaseModel
+
+from models.agent_data import FinanceAgentData
 
 
 class ChatRequest(BaseModel):
@@ -15,4 +17,4 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply: str
     agent_used: Optional[str] = None
-    data: Optional[Dict[str, Any]] = None
+    data: Optional[FinanceAgentData] = None
