@@ -27,18 +27,17 @@ class FinanceTeamRuntime:
         monthly_totals: list[dict[str, Any]],
         chat_history: list[dict[str, Any]],
     ) -> dict[str, Any]:
-        context = build_finance_context_payload(
-            user_id=user_id,
-            profile=profile,
-            transactions=transactions,
-            monthly_totals=monthly_totals,
-            chat_history=chat_history,
-        )
-        context["message"] = message
-
         runtime = os.getenv("FINANCE_AGENT_RUNTIME", "langgraph").lower()
         if runtime == "deepagents":
             try:
+                context = build_finance_context_payload(
+                    user_id=user_id,
+                    profile=profile,
+                    transactions=transactions,
+                    monthly_totals=monthly_totals,
+                    chat_history=chat_history,
+                )
+                context["message"] = message
                 return await self._invoke_deepagents(context)
             except Exception:
                 logger.exception("DeepAgents runtime failed; falling back to LangGraph")

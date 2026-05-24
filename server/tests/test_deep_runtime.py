@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from agents.deep_runtime import FinanceTeamRuntime
+from models.agent_data import normalize_finance_agent_data
 
 
 class FakeLangGraphRunner:
@@ -62,6 +63,42 @@ async def test_runtime_falls_back_when_deepagents_fails(monkeypatch):
     assert result["reply"] == "fallback reply"
     assert result["agent_used"] == "general"
     assert result["data"].audit.warnings == ["fallback used"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_uses_successful_deepagents_route(monkeypatch):
+    monkeypatch.setenv("FINANCE_AGENT_RUNTIME", "deepagents")
+
+    class SuccessfulRuntime(FinanceTeamRuntime):
+        async def _invoke_deepagents(self, context):
+            return {
+                "reply": f"deep reply for {context['message']}",
+                "agent_used": "cfo",
+                "data": normalize_finance_agent_data(
+                    {
+                        "audit": {
+                            "confidence": 0.8,
+                            "status": "verified",
+                            "warnings": [],
+                        }
+                    }
+                ),
+            }
+
+    runtime = SuccessfulRuntime(langgraph_runner=FakeLangGraphRunner())
+
+    result = await runtime.handle(
+        user_id="demo",
+        message="health check",
+        profile={"name": "Demo"},
+        transactions=[],
+        monthly_totals=[],
+        chat_history=[],
+    )
+
+    assert result["reply"] == "deep reply for health check"
+    assert result["agent_used"] == "cfo"
+    assert result["data"].audit.status == "verified"
 
 
 @pytest.mark.asyncio
