@@ -74,22 +74,22 @@ def _normalize_list(model: type[BaseModel], value: object) -> list[BaseModel] | 
 
 def normalize_finance_agent_data(value: object) -> FinanceAgentData | None:
     if isinstance(value, FinanceAgentData):
-        return value
-    if not isinstance(value, dict):
-        return None
-
-    audit = None
-    try:
-        audit = AgentAudit.model_validate(value.get("audit"))
-    except ValidationError:
+        normalized = value
+    elif isinstance(value, dict):
         audit = None
+        try:
+            audit = AgentAudit.model_validate(value.get("audit"))
+        except ValidationError:
+            audit = None
 
-    normalized = FinanceAgentData(
-        summary_cards=_normalize_list(SummaryCard, value.get("summary_cards")),
-        findings=_normalize_list(AgentFinding, value.get("findings")),
-        actions=_normalize_list(AgentAction, value.get("actions")),
-        audit=audit,
-    )
+        normalized = FinanceAgentData(
+            summary_cards=_normalize_list(SummaryCard, value.get("summary_cards")),
+            findings=_normalize_list(AgentFinding, value.get("findings")),
+            actions=_normalize_list(AgentAction, value.get("actions")),
+            audit=audit,
+        )
+    else:
+        return None
 
     if not any(
         [

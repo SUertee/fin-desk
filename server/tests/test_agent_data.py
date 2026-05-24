@@ -66,6 +66,19 @@ def test_normalize_finance_agent_data_discards_invalid_sections():
     assert normalized.audit is None
 
 
+def test_normalize_finance_agent_data_returns_none_without_valid_sections():
+    assert normalize_finance_agent_data({}) is None
+    assert normalize_finance_agent_data(
+        {
+            "summary_cards": [{"label": "Missing value"}],
+            "findings": [{"agent": "auditor"}],
+            "actions": [{"title": "Broken action"}],
+            "audit": {"confidence": 2.5, "status": "verified"},
+        }
+    ) is None
+    assert normalize_finance_agent_data(FinanceAgentData()) is None
+
+
 def test_chat_response_accepts_finance_agent_data():
     data = FinanceAgentData(
         audit=AgentAudit(
