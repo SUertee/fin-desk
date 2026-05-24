@@ -95,3 +95,39 @@ def test_chat_response_accepts_finance_agent_data():
     )
 
     assert response.data.audit.status == "data_limited"
+
+
+def test_chat_response_discards_legacy_agent_data_sections():
+    response = ChatResponse(
+        reply="Legacy payload ignored.",
+        data={"category_summary": {}, "anomalies": []},
+    )
+
+    assert response.data is None
+
+
+def test_chat_response_discards_malformed_known_sections():
+    response = ChatResponse(
+        reply="Malformed payload ignored.",
+        data={"actions": [{"title": "Broken", "rationale": "x"}]},
+    )
+
+    assert response.data is None
+
+
+def test_chat_response_normalizes_valid_raw_agent_data():
+    response = ChatResponse(
+        reply="Valid payload accepted.",
+        data={
+            "summary_cards": [
+                {
+                    "label": "Cash flow",
+                    "value": "+1200",
+                    "status": "good",
+                }
+            ]
+        },
+    )
+
+    assert isinstance(response.data, FinanceAgentData)
+    assert response.data.summary_cards[0].label == "Cash flow"
