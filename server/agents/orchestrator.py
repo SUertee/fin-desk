@@ -34,7 +34,7 @@ async def handle_message(
         )
     except Exception:
         logger.exception("Finance runtime failed for user=%s", user_id)
-        return {
+        result = {
             "reply": "Sorry, something went wrong. Please try again.",
             "agent_used": "error",
             "data": None,
