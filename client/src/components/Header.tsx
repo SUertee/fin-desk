@@ -29,44 +29,43 @@ export function Header({
   };
 
   return (
-    <header className="bg-white border-b border-gray-200">
-      <div className="px-8 py-4 flex items-center justify-between">
-        {/* Logo */}
-        <div className="flex items-center gap-6">
-          <div className="text-xl text-slate-900">
-            FinReport
+    <header className="border-b border-[#dfe5e3] bg-white">
+      <div className="flex items-center justify-between px-8 py-4">
+        <div>
+          <div className="text-lg font-semibold text-[#172026]">Finance OS</div>
+          <div className="mt-0.5 text-xs text-[#697571]">
+            Personal finance operations and agent review
           </div>
         </div>
 
-        {/* Actions & User Profile */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <button
             onClick={handleUpload}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60"
+            className="flex items-center gap-2 rounded-xl border border-[#ccd6d3] bg-white px-4 py-2 text-sm text-[#24302c] transition-colors hover:bg-[#f7f8f8] disabled:opacity-60"
             disabled={isUploading}
           >
-            <Upload className="w-4 h-4" />
-            {isUploading ? "Uploading..." : "Upload Statement"}
+            <Upload className="h-4 w-4" />
+            {isUploading ? "Uploading" : "Upload Statement"}
           </button>
-          
-          <div className="flex items-center gap-3 pl-4 border-l border-gray-200">
-            <div className="w-9 h-9 bg-slate-100 rounded-full flex items-center justify-center">
-              <User className="w-5 h-5 text-slate-600" />
+
+          <div className="hidden items-center gap-3 border-l border-[#dfe5e3] pl-4 md:flex">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#eef2f1]">
+              <User className="h-4 w-4 text-[#53615d]" />
             </div>
-            <span className="text-sm text-gray-700">User #12345</span>
+            <span className="text-sm text-[#53615d]">Demo profile</span>
           </div>
 
           <button
             onClick={onToggleSidebar}
-            className="flex items-center gap-2 px-3 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors ml-4"
-            title={isSidebarOpen ? 'Close AI Center' : 'Open AI Center'}
+            className="flex items-center gap-2 rounded-xl bg-[#172026] px-3 py-2 text-sm text-white transition-colors hover:bg-[#24302c]"
+            title={isSidebarOpen ? "Close Agent Team" : "Open Agent Team"}
           >
             {isSidebarOpen ? (
-              <PanelRightClose className="w-4 h-4" />
+              <PanelRightClose className="h-4 w-4" />
             ) : (
-              <PanelRightOpen className="w-4 h-4" />
+              <PanelRightOpen className="h-4 w-4" />
             )}
-            <span className="text-sm">AI Center</span>
+            <span>Agent Team</span>
           </button>
         </div>
       </div>

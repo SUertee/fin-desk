@@ -12,6 +12,7 @@ import { MonthlyTrends } from "./components/MonthlyTrends";
 import { TransactionsTable } from "./components/TransactionsTable";
 import { SourceBreakdown } from "./components/SourceBreakdown";
 import { CategoryPieChart } from "./components/CategoryPieChart";
+import { OperatingSummary } from "./components/OperatingSummary";
 
 // 小工具：把 number 控制到 2 位，避免 43.760000000000005 这种
 function round2(n: number) {
@@ -275,8 +276,49 @@ export default function App() {
     }
   }, [reportInput]);
 
+  const primaryCurrency = summaryByCurrency[0]?.currency ?? "CNY";
+  const primarySummary = summaryByCurrency[0];
+  const primaryExpenseRatio =
+    primarySummary && primarySummary.income > 0
+      ? primarySummary.expense / primarySummary.income
+      : null;
+  const budgetStatus =
+    primaryExpenseRatio !== null && primaryExpenseRatio > 0.8
+      ? "risk"
+      : primaryExpenseRatio !== null && primaryExpenseRatio > 0.5
+        ? "watch"
+        : "good";
+  const duplicateCount = txs.filter((t) => t.is_duplicate).length;
+
+  const operatingSummaryItems = [
+    {
+      label: "Cash flow",
+      value: primarySummary ? `${primarySummary.net.toLocaleString()} ${primaryCurrency}` : "—",
+      note: "Income minus expenses in loaded data",
+      status: primarySummary && primarySummary.net >= 0 ? "good" : "watch",
+    },
+    {
+      label: "Expenses",
+      value: primarySummary ? `${primarySummary.expense.toLocaleString()} ${primaryCurrency}` : "—",
+      note: "Duplicate transactions excluded",
+      status: "neutral",
+    },
+    {
+      label: "Budget risk",
+      value: primaryExpenseRatio !== null ? `${Math.round(primaryExpenseRatio * 100)}%` : "—",
+      note: "Loaded expenses vs income",
+      status: budgetStatus,
+    },
+    {
+      label: "Data quality",
+      value: `${duplicateCount}`,
+      note: "Potential duplicates flagged",
+      status: duplicateCount > 0 ? "watch" : "good",
+    },
+  ] as const;
+
   return (
-    <div className="min-h-screen bg-gray-50 flex">
+    <div className="flex min-h-screen bg-[#f7f8f8]">
       <div
         className={`flex-1 flex flex-col transition-all duration-300 ${
           isSidebarOpen ? "mr-[420px]" : "mr-0"
@@ -317,6 +359,7 @@ export default function App() {
 
           {!loading && !errMsg && (
             <>
+              <OperatingSummary items={operatingSummaryItems} />
               <MetricsCards items={summaryByCurrency} />
               <SourceBreakdown items={sourceData} />
               <div className="grid grid-cols-2 gap-4 mb-6">
