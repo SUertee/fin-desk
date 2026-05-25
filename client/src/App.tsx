@@ -6,7 +6,7 @@ import {
 import type { AnalysisRunRow, TransactionRow } from "./types/db";
 
 import { Header } from "./components/Header";
-import { AiSidebar } from "./components/AiSidebar";
+import { AgentTeamPanel } from "./components/AgentTeamPanel";
 import { MetricsCards } from "./components/MetricsCards";
 import { MonthlyTrends } from "./components/MonthlyTrends";
 import { TransactionsTable } from "./components/TransactionsTable";
@@ -349,9 +349,10 @@ export default function App() {
         </main>
       </div>
 
-      <AiSidebar
+      <AgentTeamPanel
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
+        userId={userId}
       />
     </div>
   );
