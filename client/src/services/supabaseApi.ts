@@ -1,4 +1,5 @@
-import type { TransactionRow, AnalysisRunRow } from "../types/db";
+import type { AnalysisRunRow, TransactionRow } from "../types/db";
+import type { ChatResponse } from "../types/financeAgent";
 
 const apiBaseUrl =
   (import.meta.env.VITE_API_BASE_URL as string | undefined) ??
@@ -24,4 +25,24 @@ export async function fetchLatestAnalysisRun(userId: string) {
   }
   const payload = await response.json();
   return payload as AnalysisRunRow | null;
+}
+
+export async function sendChatMessage(
+  userId: string,
+  message: string
+): Promise<ChatResponse> {
+  const response = await fetch(`${apiBaseUrl}/chat`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_id: userId,
+      message,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await response.text());
+  }
+
+  return (await response.json()) as ChatResponse;
 }
