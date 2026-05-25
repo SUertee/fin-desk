@@ -25,6 +25,22 @@ def test_extract_text_reply_handles_deepagents_messages():
     assert deep_agent_factory.extract_text_reply(result) == "final answer"
 
 
+def test_parse_embedded_data_handles_nested_json_object():
+    reply = """
+    Here is the finance review.
+
+    {
+      "summary_cards": [{"label": "Budget risk", "value": "Low"}],
+      "audit": {"confidence": 0.8, "status": "verified", "warnings": []}
+    }
+    """
+
+    parsed = deep_agent_factory._parse_embedded_data(reply)
+
+    assert parsed["summary_cards"][0]["label"] == "Budget risk"
+    assert parsed["audit"]["status"] == "verified"
+
+
 @pytest.mark.asyncio
 async def test_invoke_finance_deep_agent_raises_clear_error_without_package(monkeypatch):
     monkeypatch.setattr(deep_agent_factory, "create_deep_agent", None)

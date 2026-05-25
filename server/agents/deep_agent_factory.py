@@ -90,15 +90,17 @@ def _build_prompt(context: dict[str, Any]) -> str:
 
 
 def _parse_embedded_data(reply: str) -> dict[str, Any] | None:
-    start = reply.rfind("{")
-    end = reply.rfind("}")
-    if start == -1 or end == -1 or end <= start:
-        return None
-    try:
-        parsed = json.loads(reply[start : end + 1])
-    except json.JSONDecodeError:
-        return None
-    return parsed if isinstance(parsed, dict) else None
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(reply):
+        if character != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(reply[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    return None
 
 
 async def invoke_finance_deep_agent(context: dict[str, Any]) -> dict[str, Any]:
