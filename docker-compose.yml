@@ -39,37 +39,36 @@ services:
       start_period: 10s
     restart: always
 
-  server:
+  backend:
     build:
-      context: ./server
-    container_name: finance-ai-server
+      context: ./backend
+    container_name: finance-ai-backend
     depends_on:
       db:
         condition: service_healthy
     ports:
       - "18000:8000"
     env_file:
-      - ./server/.env
+      - ./backend/.env
     environment:
       # Override DSN for Docker internal networking (env_file provides all other vars)
       - POSTGRES_DSN=postgresql://personal_finance_user:personal_finance_password@db:5432/personal_finance
       - ALLOWED_ORIGINS=http://localhost:5173
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - TZ=Australia/Sydney
     restart: unless-stopped
 
-  # client:
+  # web:
   #   build:
-  #     context: ./client
-  #   container_name: finance-ai-client
+  #     context: ./web
+  #   container_name: finance-ai-web
   #   depends_on:
-  #     - server
+  #     - backend
   #   ports:
   #     - "5173:5173"
   #   environment:
   #     - VITE_N8N_WEBHOOK_URL=http://localhost:5678/webhook-test/finance-analyze-pdf
-  #     - VITE_LLM_ENDPOINT=http://server:8000/chat
+  #     - VITE_LLM_ENDPOINT=http://backend:8000/chat
   #   volumes:
-  #     - ./client:/app
+  #     - ./web:/app
   #     - /app/node_modules
   #   restart: always

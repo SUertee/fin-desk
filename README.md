@@ -2,19 +2,19 @@
 
 This repository contains a full-stack personal finance assistant built around two main pieces:
 
-- `client/`: a React + Vite dashboard for transaction review, reports, and multi-agent chat
-- `server/`: a FastAPI + LangGraph backend for finance analysis, user profiles, and agent orchestration
+- `web/`: a React + Vite dashboard for transaction review, reports, and multi-agent chat
+- `backend/`: a FastAPI backend for finance analysis, user profiles, and agent orchestration
 
-The primary application is the React client talking to the FastAPI server. n8n can still be integrated externally if needed, but it is no longer represented as a first-class directory in this repository.
+The primary application is the React web app talking to the FastAPI backend. n8n can still be integrated externally if needed, but it is no longer represented as a first-class directory in this repository.
 
 ## Architecture
 
 ```text
-client (React/Vite)
-  -> /analyze, /chat, /profile on server
+web (React/Vite)
+  -> /analyze, /chat, /profile on backend
   -> optional n8n webhook integration
 
-server (FastAPI/LangGraph)
+backend (FastAPI + OpenAI Agents SDK)
   -> multi-agent orchestration
   -> transaction enrichment, anomaly detection, summaries
   -> pgvector/PostgreSQL-backed profile/chat persistence
@@ -23,18 +23,20 @@ server (FastAPI/LangGraph)
 ## Repository Layout
 
 ```text
-client/                  React frontend (Vite + TypeScript)
-server/
-  app.py                 FastAPI entrypoint (mounts routers)
-  api/                   Route handlers (analyze, chat, profile, health)
-  agents/                LangGraph multi-agent system (5 specialist agents)
-  db/                    PostgreSQL persistence (connection, repos, schema.sql)
-  models/                Pydantic models (user, chat, analysis)
-  services/              Business logic (LLM, categorizer, anomalies, memory)
-docker-compose.yml       n8n + pgvector/PostgreSQL + server
+web/                     React frontend (Vite + TypeScript)
+backend/
+  app/main.py            FastAPI entrypoint (mounts routers)
+  app/routes/            Route handlers (analyze, chat, profile, health)
+  app/runtime/           Agent runtime and harness components
+  app/agents/            CFO and specialist agent modules
+  app/tools/             Bounded finance tools for agent use
+  app/repositories/      PostgreSQL persistence (connection, repos, schema.sql)
+  app/models/            Pydantic models (user, chat, analysis)
+  app/services/          Business logic (LLM, categorizer, anomalies, memory)
+docker-compose.yml       n8n + pgvector/PostgreSQL + backend
 ```
 
-Each `server/` subfolder has its own `README.md` with detailed documentation.
+Several `backend/app/` subfolders have their own `README.md` with detailed documentation.
 
 ## Prerequisites
 
@@ -42,17 +44,18 @@ Each `server/` subfolder has its own `README.md` with detailed documentation.
 - Python 3.12+
 - PostgreSQL 16+ or Docker
 - Local Docker database image defaults to `pgvector/pgvector:pg16`
-- Optional: Ollama or OpenAI credentials for LLM access
+- OpenAI API credentials for agent-backed analysis and chat
 - Optional: n8n for workflow experiments
 
 ## Environment
 
-### Server
+### Backend
 
-Use `server/.env.example` as the reference for local configuration. The backend supports:
+Use `backend/.env.example` as the reference for local configuration. The backend supports:
 
-- `LLM_PROVIDER=ollama` with `OLLAMA_BASE_URL` and `OLLAMA_MODEL`
-- `LLM_PROVIDER=openai` with `OPENAI_API_KEY` and `OPENAI_MODEL`
+- `OPENAI_API_KEY` for OpenAI Agents SDK-backed analysis and chat
+- `OPENAI_AGENT_MODEL` and `OPENAI_AGENT_MAX_TURNS` for the CFO agent runtime
+- optional `OPENAI_ANALYSIS_MODEL` and `OPENAI_ANALYSIS_MAX_TURNS` for `/analyze`
 - `POSTGRES_DSN` or `DATABASE_URL`
 - default local DSN: `postgresql://personal_finance_user:personal_finance_password@localhost:15433/personal_finance`
 - optional `NEWS_API_KEY`
@@ -68,14 +71,14 @@ Typical local client variables:
 
 ## Local Development
 
-### Run the server
+### Run the backend
 
 ```bash
-cd server
+cd backend
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app:app --reload --host 0.0.0.0 --port 18000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 18000
 ```
 
 To import the locally processed statement data into Postgres:
@@ -85,10 +88,10 @@ cd ..
 python3 scripts/import_processed_to_postgres.py
 ```
 
-### Run the client
+### Run the web app
 
 ```bash
-cd client
+cd web
 npm install
 npm run dev
 ```
@@ -99,9 +102,9 @@ The root `docker-compose.yml` provisions:
 
 - `n8n`
 - `db` (`pgvector/pgvector:pg16`)
-- `server`
+- `backend`
 
-The `client` service is included as a commented template and can be enabled when needed.
+The `web` service is included as a commented template and can be enabled when needed.
 
 ```bash
 docker compose up --build
@@ -110,7 +113,7 @@ docker compose up --build
 Default local endpoints after compose startup:
 
 - database: `127.0.0.1:15432`
-- server: `http://localhost:18000`
+- backend: `http://localhost:18000`
 - n8n: `http://localhost:5678`
 - frontend API base: `http://localhost:18000`
 

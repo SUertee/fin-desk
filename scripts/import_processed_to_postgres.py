@@ -10,15 +10,15 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SERVER_DIR = ROOT / "server"
+BACKEND_DIR = ROOT / "backend"
 
-if str(SERVER_DIR) not in sys.path:
-    sys.path.insert(0, str(SERVER_DIR))
+if str(BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(BACKEND_DIR))
 
 from dotenv import load_dotenv
-load_dotenv(SERVER_DIR / ".env")
+load_dotenv(BACKEND_DIR / ".env")
 
-from db.transactions_repo import replace_latest_analysis_run_db, replace_transactions_db
+from app.repositories.transactions_repo import replace_latest_analysis_run_db, replace_transactions_db
 
 
 def load_json(path: Path):
