@@ -1,18 +1,46 @@
+# OS / editor noise
 .DS_Store
 **/.DS_Store
+.Rhistory
+
+# Test / tool caches
+.pytest_cache/
+**/.pytest_cache/
+.playwright-mcp/
+
+# Dependencies / build output
 node_modules/
 **/node_modules/
 .venv/
 **/.venv/
 __pycache__/
 **/__pycache__/
-.env.local
-.Rhistory
 dist/
 build/
 coverage/
-storage/
-.claude
-.superpowers/
+
+# Local secrets
+.env.local
 backend/.env
 web/.env.local
+
+# Private runtime data
+storage/
+reports/
+**/reports/
+
+# Local agent/workflow state
+.claude
+.codex
+.superpowers/
+
+# Private docs and design exploration assets
+docs/
+
+# Draft specs and planning notes
+openspec/
+
+# design-sync machine state
+.ds-sync/
+ds-bundle/
+.design-sync/
