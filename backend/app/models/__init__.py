@@ -3,7 +3,7 @@ models - Pydantic models for request/response payloads.
 Re-exports all models for backwards-compatible imports.
 """
 
-from app.models.analysis import AnalyzeRequest, AnalyzeResponse
+from app.models.analysis import AnalysisAgentOutput, AnalyzeRequest, AnalyzeResponse
 from app.models.agent_data import (
     AgentAction,
     AgentAudit,
@@ -13,6 +13,7 @@ from app.models.agent_data import (
     normalize_finance_agent_data,
 )
 from app.models.chat import ChatRequest, ChatResponse
+from app.models.routing import ConversationRoute
 from app.models.runtime import RuntimePolicyResult
 from app.models.user import AssetSnapshot, ProfileUpdateRequest, UserProfile
 
@@ -20,11 +21,13 @@ __all__ = [
     "AgentAction",
     "AgentAudit",
     "AgentFinding",
+    "AnalysisAgentOutput",
     "AnalyzeRequest",
     "AnalyzeResponse",
     "AssetSnapshot",
     "ChatRequest",
     "ChatResponse",
+    "ConversationRoute",
     "FinanceAgentData",
     "ProfileUpdateRequest",
     "RuntimePolicyResult",

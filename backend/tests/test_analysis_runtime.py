@@ -2,7 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.runtime.analysis_runtime import OpenAIAnalysisRuntime
+from app.models.analysis import AnalysisAgentOutput
+from app.runtime.llm.openai_analysis_runtime import OpenAIAnalysisRuntime
 
 
 CONTEXT = {
@@ -28,9 +29,10 @@ async def test_analysis_runtime_uses_injected_runner_and_normalizes_output(monke
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     class FakeRunner:
-        async def run(self, agent, user_input, max_turns):
+        async def run(self, agent, user_input, max_turns, hooks):
             assert agent == "analysis-agent"
             assert max_turns == 4
+            assert hooks is not None
             assert "Generate the JSON body" in user_input
             assert "Large dinner" in user_input
             return SimpleNamespace(
@@ -39,7 +41,15 @@ async def test_analysis_runtime_uses_injected_runner_and_normalizes_output(monke
                     '"actions": ["Set a dining cap"], '
                     '"budget": {"rules": ["Cap dining"], "monthly_targets": {"dining": 250}}, '
                     '"notes": ""}'
-                )
+                ),
+                context_wrapper=SimpleNamespace(
+                    usage=SimpleNamespace(
+                        requests=1,
+                        input_tokens=60,
+                        output_tokens=20,
+                        total_tokens=80,
+                    )
+                ),
             )
 
     runtime = OpenAIAnalysisRuntime(
@@ -53,6 +63,7 @@ async def test_analysis_runtime_uses_injected_runner_and_normalizes_output(monke
     assert result["actions"] == ["Set a dining cap"]
     assert result["budget"]["monthly_targets"]["dining"] == 250
     assert result["notes"] == ""
+    assert result["_run_observations"].usage.total_tokens == 80
 
 
 @pytest.mark.asyncio
@@ -60,7 +71,8 @@ async def test_analysis_runtime_accepts_fenced_json_from_model(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     class FakeRunner:
-        async def run(self, agent, user_input, max_turns):
+        async def run(self, agent, user_input, max_turns, hooks):
+            assert hooks is not None
             return SimpleNamespace(
                 final_output=(
                     '```json\n'
@@ -75,6 +87,7 @@ async def test_analysis_runtime_accepts_fenced_json_from_model(monkeypatch):
     )
 
     result = await runtime.run(CONTEXT)
+    observations = result.pop("_run_observations")
 
     assert result == {
         "insights": [],
@@ -82,6 +95,37 @@ async def test_analysis_runtime_accepts_fenced_json_from_model(monkeypatch):
         "budget": {},
         "notes": "limited",
     }
+    assert observations.usage.total_tokens == 0
+
+
+@pytest.mark.asyncio
+async def test_analysis_runtime_accepts_typed_agent_output(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    class FakeRunner:
+        async def run(self, agent, user_input, max_turns, hooks):
+            assert hooks is not None
+            return SimpleNamespace(
+                final_output=AnalysisAgentOutput(
+                    insights=["Dining is elevated"],
+                    actions=["Set a dining cap"],
+                    budget={
+                        "rules": ["Cap dining"],
+                        "monthly_targets": {"dining": 250},
+                    },
+                    notes="",
+                )
+            )
+
+    runtime = OpenAIAnalysisRuntime(
+        runner=FakeRunner(),
+        agent_factory=lambda tools: "analysis-agent",
+    )
+
+    result = await runtime.run(CONTEXT)
+
+    assert result["insights"] == ["Dining is elevated"]
+    assert result["budget"]["monthly_targets"]["dining"] == 250
 
 
 @pytest.mark.asyncio
@@ -89,7 +133,8 @@ async def test_analysis_runtime_rejects_invalid_json(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     class FakeRunner:
-        async def run(self, agent, user_input, max_turns):
+        async def run(self, agent, user_input, max_turns, hooks):
+            assert hooks is not None
             return SimpleNamespace(final_output="not json")
 
     runtime = OpenAIAnalysisRuntime(

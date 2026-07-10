@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from app.agents.specialists import build_finance_specialist_agent_tools
+
 
 PROMPT_PATH = Path(__file__).with_name("prompt.md")
 
@@ -20,9 +22,12 @@ def build_cfo_agent(tools: list[Any] | None = None) -> Any:
     except Exception as exc:
         raise RuntimeError("openai-agents package is not installed") from exc
 
+    finance_tools = tools or []
+    specialist_tools = build_finance_specialist_agent_tools()
+
     return Agent(
         name="Finance CFO",
         instructions=load_cfo_instructions(),
         model=os.getenv("OPENAI_AGENT_MODEL", "gpt-4o"),
-        tools=tools or [],
+        tools=[*finance_tools, *specialist_tools],
     )

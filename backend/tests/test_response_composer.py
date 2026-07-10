@@ -1,4 +1,8 @@
-from app.runtime.response_composer import compose_runtime_response
+from app.models.agent_data import AgentAction, AgentAudit, AgentFinding, SummaryCard
+from app.runtime.response.response_composer import (
+    compose_finance_chat_response,
+    compose_runtime_response,
+)
 
 
 def test_compose_runtime_response_normalizes_agent_result():
@@ -95,3 +99,30 @@ def test_compose_runtime_response_repairs_malformed_audit_with_audit_repair():
 
     assert response["data"].audit.status == "needs_review"
     assert response["data"].audit.warnings == ["Audit repair used."]
+
+
+def test_compose_finance_chat_response_builds_stable_payload():
+    response = compose_finance_chat_response(
+        reply="CFO response",
+        summary_cards=[SummaryCard(label="Cash flow", value="+1200", status="good")],
+        findings=[
+            AgentFinding(
+                agent="expense_analyst",
+                title="Dining is elevated",
+                evidence=["Dining totals 320."],
+            )
+        ],
+        actions=[
+            AgentAction(
+                title="Set dining cap",
+                rationale="Dining is the largest flexible category.",
+                effort="low",
+                impact="medium",
+            )
+        ],
+        audit=AgentAudit(confidence=0.8, status="verified", warnings=[]),
+    )
+
+    assert response["agent_used"] == "cfo"
+    assert response["data"]["summary_cards"][0]["label"] == "Cash flow"
+    assert response["data"]["findings"][0]["agent"] == "expense_analyst"

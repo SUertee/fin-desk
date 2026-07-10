@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from app.models.analysis import AnalysisAgentOutput
+
 
 ANALYSIS_AGENT_INSTRUCTIONS = """
 You are a personal finance analysis specialist.
@@ -40,5 +42,6 @@ def build_analysis_agent(tools: list[Any] | None = None) -> Any:
         instructions=ANALYSIS_AGENT_INSTRUCTIONS.strip(),
         model=os.getenv("OPENAI_ANALYSIS_MODEL")
         or os.getenv("OPENAI_AGENT_MODEL", "gpt-4o"),
+        output_type=AnalysisAgentOutput,
         tools=tools or [],
     )

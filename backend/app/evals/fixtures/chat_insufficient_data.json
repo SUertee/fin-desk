@@ -1,0 +1,35 @@
+{
+  "case_id": "chat_insufficient_data",
+  "entrypoint": "chat",
+  "user_id": "eval-no-data",
+  "input": {
+    "message": "How am I doing financially?",
+    "profile": {
+      "name": "Eval User"
+    },
+    "transactions": [],
+    "monthly_totals": [],
+    "chat_history": []
+  },
+  "expected": {
+    "selected_agents": ["cfo", "auditor"],
+    "required_tool_calls": [
+      "get_finance_context",
+      "consult_auditor"
+    ],
+    "output_validations": [
+      {
+        "agent": "auditor",
+        "contract": "SpecialistAgentOutput",
+        "status": "passed"
+      },
+      {
+        "agent": "cfo",
+        "contract": "ChatResponse",
+        "status": "passed"
+      }
+    ],
+    "output_contract": "ChatResponse",
+    "audit_status": "data_limited"
+  }
+}

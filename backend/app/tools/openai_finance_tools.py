@@ -14,9 +14,6 @@ OPENAI_FINANCE_TOOL_NAMES = [
     "get_budget_snapshot",
     "get_anomaly_summary",
     "get_cashflow_summary",
-    "analyze_expense_patterns",
-    "generate_budget_plan",
-    "run_audit_review",
 ]
 
 
@@ -80,28 +77,10 @@ def build_openai_finance_tools(context: dict[str, Any]) -> list[Any]:
         """Return monthly cashflow totals and current income/expense/net snapshot."""
         return payloads["cashflow_summary"]
 
-    @function_tool
-    def analyze_expense_patterns() -> dict:
-        """Return a controlled Expense Analyst review with findings and evidence."""
-        return payloads["expense_analyst_review"]
-
-    @function_tool
-    def generate_budget_plan() -> dict:
-        """Return a controlled Budget Coach plan with recommendations and actions."""
-        return payloads["budget_coach_plan"]
-
-    @function_tool
-    def run_audit_review() -> dict:
-        """Return a controlled audit review for risk, limitations, and evidence quality."""
-        return payloads["audit_review"]
-
     return [
         get_finance_context,
         get_expense_snapshot,
         get_budget_snapshot,
         get_anomaly_summary,
         get_cashflow_summary,
-        analyze_expense_patterns,
-        generate_budget_plan,
-        run_audit_review,
     ]

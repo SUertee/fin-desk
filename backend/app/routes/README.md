@@ -11,6 +11,7 @@ FastAPI route handlers, organized by domain. Each file defines an `APIRouter` th
 | `chat.py` | `POST /chat`, `GET /chat/history/{user_id}`, `DELETE /chat/history/{user_id}` - multi-agent chat |
 | `profile.py` | `GET /profile/{user_id}`, `PUT /profile/{user_id}` - user profile CRUD |
 | `transactions.py` | `GET /transactions/{user_id}`, `GET /analysis-runs/latest/{user_id}` - dashboard data from local Postgres |
+| `agent_runs.py` | `GET /agent-runs/{request_id}`, `GET /agent-runs/{request_id}/replay`, `GET /agent-runs/user/{user_id}` - agent run ledger and replay |
 
 ## Endpoints
 
@@ -26,6 +27,9 @@ FastAPI route handlers, organized by domain. Each file defines an `APIRouter` th
 | PUT | `/profile/{user_id}` | Update user profile fields |
 | GET | `/transactions/{user_id}` | List imported transactions for the dashboard |
 | GET | `/analysis-runs/latest/{user_id}` | Return the latest imported summary snapshot |
+| GET | `/agent-runs/{request_id}` | Return a full agent run record for replay/debugging |
+| GET | `/agent-runs/{request_id}/replay` | Replay a persisted run record, optionally against an eval `case_id` |
+| GET | `/agent-runs/user/{user_id}` | List paginated agent run records for a user, with optional `offset`, `entrypoint`, `runtime_used`, `audit_status`, `has_error`, `created_from`, and `created_to` filters |
 
 ## Adding a New Endpoint
 

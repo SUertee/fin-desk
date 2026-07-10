@@ -104,6 +104,7 @@ def build_finance_context_payload(
     transactions: list[dict[str, Any]],
     monthly_totals: list[dict[str, Any]],
     chat_history: list[dict[str, Any]],
+    memory_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     active = _active_transactions(transactions)
     return {
@@ -112,6 +113,7 @@ def build_finance_context_payload(
         "transactions_sample": active[:80],
         "monthly_totals": monthly_totals,
         "chat_history": chat_history[-10:],
+        "memory_context": memory_context or {},
         "expense_snapshot": build_expense_snapshot(active, monthly_totals),
         "budget_snapshot": build_budget_snapshot(profile, active, monthly_totals),
     }

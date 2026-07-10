@@ -1,0 +1,59 @@
+{
+  "case_id": "chat_spending_review",
+  "entrypoint": "chat",
+  "user_id": "eval-spending",
+  "input": {
+    "message": "Please analyze my spending and find unusual expenses.",
+    "profile": {
+      "name": "Eval User"
+    },
+    "transactions": [
+      {
+        "description": "Cafe",
+        "amount": -12,
+        "category": "dining"
+      },
+      {
+        "description": "Luxury dinner",
+        "amount": -420,
+        "category": "dining"
+      }
+    ],
+    "monthly_totals": [
+      {
+        "month": "2026-06",
+        "net": 2800
+      }
+    ],
+    "chat_history": []
+  },
+  "expected": {
+    "selected_agents": ["cfo", "expense_analyst", "auditor"],
+    "required_tool_calls": [
+      "get_finance_context",
+      "get_expense_snapshot",
+      "get_anomaly_summary",
+      "consult_expense_analyst",
+      "consult_auditor"
+    ],
+    "output_validations": [
+      {
+        "agent": "expense_analyst",
+        "contract": "SpecialistAgentOutput",
+        "status": "passed"
+      },
+      {
+        "agent": "auditor",
+        "contract": "SpecialistAgentOutput",
+        "status": "passed"
+      },
+      {
+        "agent": "cfo",
+        "contract": "ChatResponse",
+        "status": "passed"
+      }
+    ],
+    "output_contract": "ChatResponse",
+    "audit_status": "needs_review"
+  }
+}

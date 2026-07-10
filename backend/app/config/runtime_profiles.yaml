@@ -1,0 +1,6 @@
+default:
+  mode: self_hosted
+  max_tool_calls: 8
+  max_handoffs: 3
+  audit_on_specialist: true
+  allow_market_context: false

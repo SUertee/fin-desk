@@ -1,1 +1,1 @@
-"""Finance AI backend application package."""
+"""FinDesk server application package — A Personal Finance Agent Team."""

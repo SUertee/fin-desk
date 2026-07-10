@@ -1,0 +1,229 @@
+"""SpecialistRunner and specialist run-module tests.
+
+The frozen evidence fixtures double as the per-specialist eval baseline:
+given a fixed SpecialistInput, outputs must validate against the contract,
+carry limitations where data is incomplete, and reference expected evidence.
+"""
+
+import pytest
+
+from app.agents.specialists import REGISTRY, auditor, budget_coach, expense_analyst, market_context
+from app.agents.specialists.contracts import (
+    SpecialistAgentOutput,
+    SpecialistInput,
+)
+from app.models.runtime import RuntimePolicyResult
+from app.runtime.execution.handoff import HandoffRequest
+from app.runtime.execution.specialist_runner import SpecialistRunner
+
+FINANCE_CONTEXT = {
+    "expense_snapshot": {
+        "expense_total": 19433.92,
+        "net_total": -6805.12,
+        "transaction_count": 168,
+        "top_categories": [{"category": "dining", "amount": 7057.0}],
+        "anomalies": [{"description": "宝祈雅苑房东", "amount": -7000.0}],
+    },
+    "budget_snapshot": {"status": "watch", "expense_ratio": 0.82},
+    "transactions_sample": [{"description": "地铁", "amount": -4.0}],
+}
+
+
+class TestRegistry:
+    def test_all_specialists_registered(self):
+        assert set(REGISTRY) == {
+            "expense_analyst",
+            "budget_coach",
+            "auditor",
+            "market_context",
+        }
+
+
+class TestRunnerDispatch:
+    def test_completed_handoff_carries_contract_fields(self):
+        runner = SpecialistRunner()
+        request = HandoffRequest(
+            from_agent="cfo",
+            to_agent="expense_analyst",
+            task="Produce expense review",
+            evidence=FINANCE_CONTEXT,
+        )
+
+        result = runner.run(request)
+
+        assert result.status == "completed"
+        assert result.latency_ms is not None
+        output = SpecialistAgentOutput.model_validate(result.output)
+        assert output.specialist == "expense_analyst"
+        assert result.confidence == output.confidence
+
+    def test_unknown_specialist_fails_typed(self):
+        runner = SpecialistRunner()
+        request = HandoffRequest(from_agent="cfo", to_agent="tax_advisor", task="x")
+
+        result = runner.run(request)
+
+        assert result.status == "failed"
+        assert "Unknown specialist" in result.error_message
+
+    def test_contract_violation_fails_handoff(self):
+        def broken(_input):
+            return {"specialist": "nonsense", "confidence": 5}
+
+        runner = SpecialistRunner(registry={"broken": broken})
+        result = runner.run(HandoffRequest(from_agent="cfo", to_agent="broken", task="x"))
+
+        assert result.status == "failed"
+
+    def test_auditor_receives_validated_prior_outputs(self):
+        captured = {}
+
+        def spy(input: SpecialistInput):
+            captured["input"] = input
+            return auditor.run(input)
+
+        runner = SpecialistRunner(registry={"auditor": spy})
+        peer = expense_analyst.run(SpecialistInput(evidence=FINANCE_CONTEXT))
+        request = HandoffRequest(
+            from_agent="cfo",
+            to_agent="auditor",
+            task="audit",
+            evidence={
+                "finance_context": FINANCE_CONTEXT,
+                "specialists": {"expense_analyst": peer.model_dump()},
+            },
+        )
+
+        result = runner.run(request, policy=RuntimePolicyResult(risk_level="high"))
+
+        assert result.status == "completed"
+        assert set(captured["input"].prior_outputs) == {"expense_analyst"}
+        assert isinstance(
+            captured["input"].prior_outputs["expense_analyst"], SpecialistAgentOutput
+        )
+        assert captured["input"].evidence == FINANCE_CONTEXT  # unwrapped
+        assert captured["input"].policy["risk_level"] == "high"
+
+
+class TestExpenseAnalystFixture:
+    def test_output_cites_evidence(self):
+        output = expense_analyst.run(SpecialistInput(evidence=FINANCE_CONTEXT))
+
+        assert output.specialist == "expense_analyst"
+        assert any("dining" in f.title for f in output.findings)
+        assert any("anomaly" in e for f in output.findings for e in f.evidence)
+
+    def test_empty_evidence_yields_limitations(self):
+        output = expense_analyst.run(SpecialistInput(evidence={}))
+
+        assert output.confidence <= 0.35
+        assert output.limitations  # never silently confident on no data
+
+    def test_import_quality_lowers_stated_confidence(self):
+        evidence = {
+            **FINANCE_CONTEXT,
+            "import_quality": {
+                "reports": [
+                    {
+                        "source_type": "bank_icbc",
+                        "duplicate_count": 5,
+                        "category_confidence": 0.4,
+                    }
+                ]
+            },
+        }
+
+        output = expense_analyst.run(SpecialistInput(evidence=evidence))
+
+        assert any("duplicate" in limitation for limitation in output.limitations)
+        assert any("category" in limitation for limitation in output.limitations)
+
+
+class TestBudgetCoachFixture:
+    @pytest.mark.parametrize(
+        ("status", "risk"), [("risk", "high"), ("watch", "medium"), ("good", "low")]
+    )
+    def test_status_maps_to_risk(self, status, risk):
+        output = budget_coach.run(
+            SpecialistInput(
+                evidence={"budget_snapshot": {"status": status, "expense_ratio": 0.5}}
+            )
+        )
+
+        assert output.findings[0].risk_level == risk
+        assert output.recommendations
+
+    def test_missing_income_is_a_limitation(self):
+        output = budget_coach.run(SpecialistInput(evidence={"budget_snapshot": {}}))
+
+        assert output.confidence < 0.5
+        assert any("income" in limitation for limitation in output.limitations)
+
+
+class TestAuditorFixture:
+    def test_high_risk_policy_needs_review(self):
+        output = auditor.run(
+            SpecialistInput(
+                evidence=FINANCE_CONTEXT,
+                policy={"risk_level": "high", "required_specialists": []},
+            )
+        )
+
+        assert "needs_review" in output.findings[0].title
+
+    def test_grounded_run_verifies(self):
+        peer = expense_analyst.run(SpecialistInput(evidence=FINANCE_CONTEXT))
+        output = auditor.run(
+            SpecialistInput(
+                evidence=FINANCE_CONTEXT,
+                policy={"risk_level": "low", "required_specialists": ["expense_analyst"]},
+                prior_outputs={"expense_analyst": peer},
+            )
+        )
+
+        assert "verified" in output.findings[0].title
+
+
+class TestMarketContextFixture:
+    def test_unconfigured_news_is_typed_unavailable(self, monkeypatch):
+        monkeypatch.delenv("NEWS_API_KEY", raising=False)
+
+        output = market_context.run(SpecialistInput(task="interest rates"))
+
+        assert output.specialist == "market_context"
+        assert output.findings == []
+        assert any("not configured" in limitation for limitation in output.limitations)
+        assert market_context.NOT_ADVICE_LIMITATION in output.limitations
+
+    def test_sourced_articles_become_findings(self, monkeypatch):
+        articles = [
+            {
+                "title": "Central bank holds rates",
+                "url": "https://news.example/rates",
+                "publishedAt": "2026-07-04T10:00:00Z",
+                "source": {"name": "Example News"},
+            },
+            {"title": "No url or timestamp article"},
+        ]
+        monkeypatch.setattr(market_context, "_fetch_articles", lambda query: articles)
+
+        output = market_context.run(SpecialistInput(task="rates"))
+
+        assert len(output.findings) == 1
+        finding = output.findings[0]
+        assert finding.source_url == "https://news.example/rates"
+        assert finding.published_at == "2026-07-04T10:00:00Z"
+        assert any("dropped" in limitation for limitation in output.limitations)
+        assert market_context.UNCERTAINTY_LIMITATION in output.limitations
+        assert market_context.NOT_ADVICE_LIMITATION in output.limitations
+
+    def test_provider_failure_never_fabricates(self, monkeypatch):
+        def boom(query):
+            raise TimeoutError("news timeout")
+
+        monkeypatch.setattr(market_context, "_fetch_articles", boom)
+
+        output = market_context.run(SpecialistInput(task="rates"))
+
+        assert output.findings == []
+        assert any("unavailable" in limitation for limitation in output.limitations)

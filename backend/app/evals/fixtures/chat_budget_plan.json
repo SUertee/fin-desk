@@ -1,0 +1,65 @@
+{
+  "case_id": "chat_budget_plan",
+  "entrypoint": "chat",
+  "user_id": "eval-budget",
+  "input": {
+    "message": "Can you build a budget plan to improve my cash flow?",
+    "profile": {
+      "name": "Eval User",
+      "budget": {
+        "monthly_income": 5200
+      }
+    },
+    "transactions": [
+      {
+        "description": "Rent",
+        "amount": -1800,
+        "category": "housing"
+      },
+      {
+        "description": "Salary",
+        "amount": 5200,
+        "category": "income"
+      }
+    ],
+    "monthly_totals": [
+      {
+        "month": "2026-06",
+        "income": 5200,
+        "expenses": 1800,
+        "net": 3400
+      }
+    ],
+    "chat_history": []
+  },
+  "expected": {
+    "selected_agents": ["cfo", "budget_coach", "auditor"],
+    "required_tool_calls": [
+      "get_finance_context",
+      "get_expense_snapshot",
+      "get_cashflow_summary",
+      "get_budget_snapshot",
+      "consult_budget_coach",
+      "consult_auditor"
+    ],
+    "output_validations": [
+      {
+        "agent": "budget_coach",
+        "contract": "SpecialistAgentOutput",
+        "status": "passed"
+      },
+      {
+        "agent": "auditor",
+        "contract": "SpecialistAgentOutput",
+        "status": "passed"
+      },
+      {
+        "agent": "cfo",
+        "contract": "ChatResponse",
+        "status": "passed"
+      }
+    ],
+    "output_contract": "ChatResponse",
+    "audit_status": "needs_review"
+  }
+}

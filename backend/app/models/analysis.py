@@ -13,6 +13,13 @@ class AnalyzeRequest(BaseModel):
     monthly_totals: List[Dict[str, Any]]
 
 
+class AnalysisAgentOutput(BaseModel):
+    insights: List[str]
+    actions: List[str]
+    budget: Dict[str, Any]
+    notes: str = ""
+
+
 class AnalyzeResponse(BaseModel):
     ok: bool
     meta: Dict[str, Any]

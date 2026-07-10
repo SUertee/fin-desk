@@ -1,74 +1,43 @@
 services:
-  n8n:
-    dns:
-      - 8.8.8.8
-      - 8.8.4.4
-    image: n8nio/n8n:latest
-    container_name: n8n
-    ports:
-      - "5678:5678"
-    environment:
-      - N8N_HOST=localhost
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://localhost:5678/
-      - N8N_CORS_ALLOW_ORIGIN=*
-      - N8N_CORS_ALLOW_METHODS=GET,POST,PUT,DELETE,OPTIONS
-      - N8N_CORS_ALLOW_HEADERS=*
-      - TZ=Australia/Sydney
-    volumes:
-      - ~/.n8n:/home/node/.n8n
-    restart: always
-
   db:
     image: pgvector/pgvector:pg16
-    container_name: personal-finance-team-db
     ports:
-      - "127.0.0.1:15433:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-15433}:5432"
     environment:
-      - POSTGRES_DB=personal_finance
-      - POSTGRES_USER=personal_finance_user
-      - POSTGRES_PASSWORD=personal_finance_password
+      POSTGRES_DB: ${POSTGRES_DB:-personal_finance}
+      POSTGRES_USER: ${POSTGRES_USER:-personal_finance_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-personal_finance_password}
     volumes:
-      - ./storage/db:/var/lib/postgresql/data
+      - finance_postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U personal_finance_user -d personal_finance"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-personal_finance_user} -d ${POSTGRES_DB:-personal_finance}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
-    restart: always
+    restart: unless-stopped
 
   backend:
     build:
       context: ./backend
-    container_name: finance-ai-backend
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "18000:8000"
+      - "127.0.0.1:${BACKEND_PORT:-18000}:8000"
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
-      # Override DSN for Docker internal networking (env_file provides all other vars)
-      - POSTGRES_DSN=postgresql://personal_finance_user:personal_finance_password@db:5432/personal_finance
-      - ALLOWED_ORIGINS=http://localhost:5173
-      - TZ=Australia/Sydney
+      APP_ENV: docker
+      POSTGRES_DSN: postgresql://${POSTGRES_USER:-personal_finance_user}:${POSTGRES_PASSWORD:-personal_finance_password}@db:5432/${POSTGRES_DB:-personal_finance}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:18001,http://127.0.0.1:18001}
     restart: unless-stopped
 
-  # web:
-  #   build:
-  #     context: ./web
-  #   container_name: finance-ai-web
-  #   depends_on:
-  #     - backend
-  #   ports:
-  #     - "5173:5173"
-  #   environment:
-  #     - VITE_N8N_WEBHOOK_URL=http://localhost:5678/webhook-test/finance-analyze-pdf
-  #     - VITE_LLM_ENDPOINT=http://backend:8000/chat
-  #   volumes:
-  #     - ./web:/app
-  #     - /app/node_modules
-  #   restart: always
+volumes:
+  finance_postgres_data:
+    name: personal-finance-team-data
