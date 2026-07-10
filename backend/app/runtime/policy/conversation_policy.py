@@ -48,4 +48,3 @@ def compose_short_cfo_reply(
         if zh
         else "I'm here. Ask where this month's money went, which spending looks unusual, or request a CFO health check."
     )
-

@@ -92,4 +92,3 @@ LIGHT_REPLY_ROUTE = build_route(
     response_mode="light",
     label="light reply",
 )
-
