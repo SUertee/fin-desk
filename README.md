@@ -1,77 +1,97 @@
-# Finance AI Full-Stack Assistant
+# FinDesk
 
-This repository contains a full-stack personal finance assistant built around two main pieces:
+**A Personal Finance Agent Team**
 
-- `web/`: a React + Vite dashboard for transaction review, reports, and multi-agent chat
-- `backend/`: a FastAPI backend for finance analysis, user profiles, and agent orchestration
+FinDesk turns raw statement exports (Alipay, WeChat Pay, bank PDFs) into a reconciled personal ledger, then puts a CFO-led agent team on top of it — with typed handoffs, audit gating, and a replayable run ledger for every answer.
 
-The primary application is the React web app talking to the FastAPI backend. n8n can still be integrated externally if needed, but it is no longer represented as a first-class directory in this repository.
+## Overview
 
-## Architecture
+Most personal-finance tools stop at charts. FinDesk exists to answer the next question — *"so what should I do?"* — and to make every answer inspectable. A self-hosted agent runtime routes each request through policy, bounded tools, and specialist agents; an auditor reviews the evidence before the response is composed; and every run persists a trace you can replay.
+
+The project is equally an exercise in AI engineering discipline: statement parsers reconcile to the payment platforms' own summary figures exactly, cross-source duplicates are flagged with recorded reasons instead of silently dropped, and agent behavior is covered by offline eval fixtures that run in CI without live model calls.
+
+## Core Features
+
+- **Statement import** — dedicated parsers for Alipay CSV (GB18030), WeChat Pay XLSX, and ICBC bank PDFs, with source auto-detection, idempotent re-import, and cross-source duplicate detection (card-tail and counterparty matching)
+- **Transaction analysis** — category rollups, anomaly detection, and monthly cash-flow trends over the reconciled ledger
+- **Budget health review** — expense-ratio evaluation against profile income with explicit `data_limited` states instead of fabricated numbers
+- **CFO brief** — an agent-generated judgment sentence, summary cards, and prioritized actions drive the workspace homepage
+- **Multi-agent chat** — CFO-first conversation with specialist handoffs, per-finding agent attribution, and a "view trace" link on every reply
+- **Import quality evidence** — each import produces a persisted quality report (category confidence, skip reasons, duplicates) that agents cite as caveats
+- **User profile and memory** — persisted preferences (reply language, tone, evidence level) consumed by the response composer; bounded session memory shared across agents
+- **Full-stack dashboard** — spending calendar heatmap with day drill-down, trends, category breakdowns, and a bilingual (zh/en) interface
+
+## Agent Team
+
+| Agent | Role | Activation |
+|---|---|---|
+| **CFO** | Lead agent; owns the final user-facing answer and composes specialist evidence | Every run |
+| **Expense Analyst** | Spending structure, top categories, anomaly review; cites import-quality caveats | Spending intent |
+| **Budget Coach** | Expense-ratio evaluation and low-friction budget actions | Budget intent |
+| **Auditor** | Reviews peer outputs and evidence quality; flags unsupported claims before composition | Audit policy (most runs) |
+| **Market Context** | External market/news facts with mandatory source URLs and timestamps | Market intent **and** an explicit config gate; never by default |
+
+Specialists are `run(SpecialistInput) -> SpecialistAgentOutput` modules resolved from a registry by a single `SpecialistRunner`, which owns dispatch, output-contract validation, latency, and failure mapping. The registry is the seam where an LLM-backed implementation can replace a deterministic one without touching the orchestrator, contracts, traces, or evals.
+
+## Architecture Overview
 
 ```text
-web (React/Vite)
-  -> /analyze, /chat, /profile on backend
-  -> optional n8n webhook integration
-
-backend (FastAPI + OpenAI Agents SDK)
-  -> multi-agent orchestration
-  -> transaction enrichment, anomaly detection, summaries
-  -> pgvector/PostgreSQL-backed profile/chat persistence
+User
+ └─ React/Vite client (workspace, docked CFO chat, settings)
+     └─ FastAPI backend (thin routes)
+         └─ Finance runtime (CFO-first orchestration)
+             ├─ Runtime policy         intent → specialists, audit gating, budgets
+             ├─ Execution plan         bounded tool steps + handoffs
+             ├─ Bounded tools          finance context, snapshots, anomaly,
+             │                         cashflow, import-quality report
+             ├─ SpecialistRunner       registry dispatch + contract validation
+             │   └─ Specialists        expense / budget / auditor / market (gated)
+             ├─ Response composer      preferences-aware reply (zh/en, tone, evidence)
+             └─ Trace collector        → run ledger (audit status, tools, cost)
+                 └─ PostgreSQL + pgvector
+                     (ledger, profiles, memory, import records, run records)
 ```
 
-## Repository Layout
+## Data Flow
+
+1. A chat message (or workspace-brief request) hits a route, which loads the user's transactions, profile, and memory context.
+2. **Runtime policy** classifies intent and risk: which specialists are required, whether audit is mandatory, and the tool-call budget. A typed `requested_specialist` hint can add (never remove) a specialist.
+3. The **planner** emits an execution plan; the **bounded tool executor** runs tool steps (finance context, expense/budget snapshots, import-quality report) and records each call in the trace.
+4. The **SpecialistRunner** executes handoffs from the registry; each output is validated against the `SpecialistAgentOutput` contract — invalid output fails the handoff visibly.
+5. The **auditor** reviews peer outputs; the **response composer** builds the reply honoring user preferences (language, tone, evidence level).
+6. The full run — selected agents, tool calls, handoffs, validations, audit status, latency, cost estimate — persists to the **run ledger**, addressable by the `request_id` returned to the client.
+
+## Tech Stack
+
+- **Frontend**: React 18, Vite, TypeScript, Recharts; lightweight zh/en i18n layer
+- **Backend**: FastAPI, Pydantic v2 contracts at every boundary
+- **Database**: PostgreSQL 16 with pgvector (vector retrieval planned; schema migrations are idempotent DDL)
+- **AI layer**: self-hosted deterministic agent runtime by default; OpenAI (Agents SDK) as an optional provider adapter isolated in `runtime/llm/`
+- **Parsing**: GB18030 decoding, openpyxl (WeChat XLSX), pypdf (bank PDF text extraction)
+- **Infrastructure**: Docker Compose (pgvector + backend), GitHub Actions harness CI
+
+## API Overview
 
 ```text
-web/                     React frontend (Vite + TypeScript)
-backend/
-  app/main.py            FastAPI entrypoint (mounts routers)
-  app/routes/            Route handlers (analyze, chat, profile, health)
-  app/runtime/           Agent runtime and harness components
-  app/agents/            CFO and specialist agent modules
-  app/tools/             Bounded finance tools for agent use
-  app/repositories/      PostgreSQL persistence (connection, repos, schema.sql)
-  app/models/            Pydantic models (user, chat, analysis)
-  app/services/          Business logic (LLM, categorizer, anomalies, memory)
-docker-compose.yml       n8n + pgvector/PostgreSQL + backend
+GET    /health                          runtime identity and component status
+GET    /schema                          analysis output schema
+POST   /analyze                         transaction analysis (typed output contract)
+POST   /chat                            CFO chat (returns request_id for trace lookup)
+GET    /workspace/brief/{user_id}       agent-generated workspace brief
+GET    /profile/{user_id}               profile + preferences
+PUT    /profile/{user_id}               update profile + preferences
+GET    /chat/history/{user_id}          chat history
+DELETE /chat/history/{user_id}          clear chat history
+GET    /transactions/{user_id}          ledger (optional date_from/date_to)
+GET    /transactions/daily/{user_id}    per-day totals for the calendar (?month=)
+POST   /statement-import/import         statement upload (CSV/XLSX/PDF)
+GET    /analysis-runs/latest/{user_id}  latest analysis snapshot
+GET    /agent-runs/{request_id}         run-ledger record / trace projection
 ```
-
-Several `backend/app/` subfolders have their own `README.md` with detailed documentation.
-
-## Prerequisites
-
-- Node.js 20+
-- Python 3.12+
-- PostgreSQL 16+ or Docker
-- Local Docker database image defaults to `pgvector/pgvector:pg16`
-- OpenAI API credentials for agent-backed analysis and chat
-- Optional: n8n for workflow experiments
-
-## Environment
-
-### Backend
-
-Use `backend/.env.example` as the reference for local configuration. The backend supports:
-
-- `OPENAI_API_KEY` for OpenAI Agents SDK-backed analysis and chat
-- `OPENAI_AGENT_MODEL` and `OPENAI_AGENT_MAX_TURNS` for the CFO agent runtime
-- optional `OPENAI_ANALYSIS_MODEL` and `OPENAI_ANALYSIS_MAX_TURNS` for `/analyze`
-- `POSTGRES_DSN` or `DATABASE_URL`
-- default local DSN: `postgresql://personal_finance_user:personal_finance_password@localhost:15433/personal_finance`
-- optional `NEWS_API_KEY`
-
-### Client
-
-Typical local client variables:
-
-- `VITE_API_BASE_URL=http://localhost:18000`
-- `VITE_LLM_ENDPOINT=http://localhost:18000/chat`
-- `VITE_N8N_WEBHOOK_URL=http://localhost:5678/webhook-test/finance-analyze-pdf`
-- no Supabase variables are required for the current local Postgres flow
 
 ## Local Development
 
-### Run the backend
+### Backend
 
 ```bash
 cd backend
@@ -81,57 +101,58 @@ pip install -r requirements.txt
 uvicorn app.main:app --reload --host 0.0.0.0 --port 18000
 ```
 
-To import the locally processed statement data into Postgres:
-
-```bash
-cd ..
-python3 scripts/import_processed_to_postgres.py
-```
-
-### Run the web app
+### Client
 
 ```bash
 cd web
 npm install
-npm run dev
+npm run dev        # http://localhost:18001
 ```
 
-## Docker Compose
-
-The root `docker-compose.yml` provisions:
-
-- `n8n`
-- `db` (`pgvector/pgvector:pg16`)
-- `backend`
-
-The `web` service is included as a commented template and can be enabled when needed.
+### Docker Compose
 
 ```bash
 docker compose up --build
+# db:      127.0.0.1:15433 (pgvector/pgvector:pg16)
+# backend: http://localhost:18000
 ```
 
-Default local endpoints after compose startup:
+The backend applies `connectors/postgres/schema.sql` automatically on startup.
 
-- database: `127.0.0.1:15432`
-- backend: `http://localhost:18000`
-- n8n: `http://localhost:5678`
-- frontend API base: `http://localhost:18000`
+### Tests and Harness CI
 
-## API Overview
+`.github/workflows/harness-ci.yml` runs the backend test suite, module compilation, the offline trace-regression sample, and the web build. Locally:
 
-The backend keeps the current public routes:
+```bash
+cd backend && python -m pytest tests -q
+cd web && npm run build
+```
 
-- `GET /health`
-- `GET /schema`
-- `POST /analyze`
-- `POST /chat`
-- `GET /profile/{user_id}`
-- `PUT /profile/{user_id}`
-- `GET /chat/history/{user_id}`
-- `DELETE /chat/history/{user_id}`
-- `GET /transactions/{user_id}`
-- `GET /analysis-runs/latest/{user_id}`
+## Environment Variables
 
-## Notes on n8n
+| Variable | Purpose |
+|---|---|
+| `POSTGRES_DSN` | database DSN (default local: `postgresql://...@localhost:15433/personal_finance`) |
+| `OPENAI_API_KEY` | optional — enables the OpenAI Agents SDK path for `/analyze` |
+| `OPENAI_AGENT_MODEL`, `OPENAI_AGENT_MAX_TURNS` | OpenAI adapter tuning |
+| `OPENAI_*_COST_PER_1M` | run-ledger cost estimation rates |
+| `MARKET_CONTEXT_ENABLED` | config gate for the Market Context specialist (default off) |
+| `NEWS_API_KEY` | optional — market/news lookups when the gate is on |
+| `VITE_API_BASE_URL` | client → backend base URL (default `http://localhost:18000`) |
 
-If you still use n8n in your setup, treat it as an external integration layer around this repository rather than a source directory inside it.
+## Project Status
+
+Actively evolving. The current focus is personal finance analysis and agent orchestration: multi-source statement ingestion with reconciliation guarantees, the CFO-first runtime with audited specialist handoffs, and workspace surfaces that render agent output rather than client-side heuristics. Single-user local deployment; no authentication layer yet.
+
+## Roadmap
+
+- **Retrieval layer**: typed transaction query tool (structured filters/aggregation), semantic search over transaction history, and a cited finance knowledge base on pgvector
+- **Market connectivity**: FX rates, response caching, and outbound-call budgets behind the existing specialist gate
+- **Schema-driven runtime config**: one Pydantic config schema generating both validation and a visual settings form
+- **Email statement connector**: auto-ingest the bill exports Alipay/WeChat deliver by email
+- **Richer evals**: grow the offline fixture set covering retrieval grounding and citation behavior
+- **Deployment setup**: optional single-host deployment guide
+
+## Disclaimer
+
+FinDesk is a personal finance analysis and education tool. It does not provide professional financial, investment, tax, or legal advice.
