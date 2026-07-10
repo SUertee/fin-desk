@@ -1,21 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Bell, LayoutDashboard, MessagesSquare, Settings as SettingsIcon } from "lucide-react";
 import {
   fetchTransactions,
+  fetchDataSourceStatus,
   fetchLatestAnalysisRun,
   fetchProfile,
+  getApiBaseUrl,
+  importStatement,
 } from "./services/supabaseApi";
+import { fetchWorkspaceBrief } from "./services/supabaseApi";
+import type { WorkspaceBrief } from "./types/financeAgent";
+import type { DataSourceStatus } from "./services/supabaseApi";
 import type { AnalysisRunRow, TransactionRow } from "./types/db";
 
-import { Header } from "./components/Header";
 import { AgentTeamPanel } from "./components/AgentTeamPanel";
-import { MetricsCards } from "./components/MetricsCards";
-import { MonthlyTrends } from "./components/MonthlyTrends";
-import { TransactionsTable } from "./components/TransactionsTable";
-import { SourceBreakdown } from "./components/SourceBreakdown";
-import { CategoryPieChart } from "./components/CategoryPieChart";
-import { IncomeSummary } from "./components/IncomeSummary";
-import { CategoryComparison } from "./components/CategoryComparison";
-import { OperatingSummary } from "./components/OperatingSummary";
+import { FinanceWorkspacePage } from "./pages/FinanceWorkspacePage";
+import { MyOfficePage } from "./pages/MyOfficePage";
+import { SettingsPage } from "./pages/SettingsPage";
+import type { PageId } from "./pages/pageTypes";
+import { useI18n } from "./i18n";
 
 // 小工具：把 number 控制到 2 位，避免 43.760000000000005 这种
 function round2(n: number) {
@@ -73,15 +76,22 @@ function computeMonthlyTotalsFromTxs(txs: TransactionRow[]): MonthlyTotal[] {
 export default function App() {
   // TODO: Replace hardcoded "demo" with auth-based user identification
   const userId = "demo";
+  const { t } = useI18n();
 
+  const [activePage, setActivePage] = useState<PageId>("workspace");
+  const [profileName, setProfileName] = useState("User");
+  const [profile, setProfile] = useState<Record<string, any> | null>(null);
   const [monthlyIncome, setMonthlyIncome] = useState(0);
   const [txs, setTxs] = useState<TransactionRow[]>([]);
   const [monthlyTotalsFromRun, setMonthlyTotalsFromRun] = useState<
     MonthlyTotal[] | null
   >(null);
   const [latestRun, setLatestRun] = useState<AnalysisRunRow | null>(null);
+  const [brief, setBrief] = useState<WorkspaceBrief | null>(null);
+  const [dataSourceStatus, setDataSourceStatus] = useState<DataSourceStatus | null>(null);
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [cfoPrefill, setCfoPrefill] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -91,19 +101,28 @@ export default function App() {
     setErrMsg(null);
 
     try {
-      const [transactions, latestRunResponse, profile] = await Promise.all([
+      const [transactions, latestRunResponse, profile, dataStatus] = await Promise.all([
         fetchTransactions(userId, 2000),
         fetchLatestAnalysisRun(userId),
         fetchProfile(userId),
+        fetchDataSourceStatus(userId).catch(() => null),
       ]);
+      // The brief may run an LLM composition — hydrate it after first paint
+      // instead of blocking the whole page on it.
+      fetchWorkspaceBrief(userId)
+        .then((briefResponse) => setBrief(briefResponse))
+        .catch(() => setBrief(null));
 
+      setProfileName(profile.name || "User");
       setMonthlyIncome(profile.monthly_income || 0);
+      setProfile(profile);
 
       console.log("[api] transactions:", transactions);
       console.log("[api] latestRun:", latestRunResponse);
 
       setTxs(transactions);
       setLatestRun(latestRunResponse ?? null);
+      setDataSourceStatus(dataStatus);
 
       // 这里兼容你两种存法：analysis_runs.output.monthly_totals 或 analysis_runs.monthly_totals
       const totals =
@@ -121,36 +140,14 @@ export default function App() {
 
   const handleUploadStatement = useCallback(
     async (file: File) => {
-      const webhookUrl = import.meta.env.VITE_N8N_WEBHOOK_URL as
-        | string
-        | undefined;
-
-      if (!webhookUrl) {
-        setErrMsg("Missing VITE_N8N_WEBHOOK_URL in your env.");
-        return;
-      }
-
       setIsUploading(true);
       setErrMsg(null);
 
       try {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("user_id", userId || "");
-
-        const response = await fetch(webhookUrl, {
-          method: "POST",
-          body: formData,
-        });
-
-        if (!response.ok) {
-          const text = await response.text();
-          throw new Error(text || "Upload failed");
-        }
-
+        await importStatement(userId, file);
         await load();
       } catch (e: any) {
-        setErrMsg(e?.message ?? "Upload failed");
+        setErrMsg(e?.message ?? "Statement import failed");
       } finally {
         setIsUploading(false);
       }
@@ -321,16 +318,25 @@ export default function App() {
     })).filter((d) => d.currentMonth > 0 || d.average > 0);
   }, [txs, currentMonth]);
 
-  const reportInput = latestRun?.input ?? null;
+  const reportOutput = (latestRun?.output ?? null) as Record<string, any> | null;
   const reportText = useMemo(() => {
-    if (!reportInput) return null;
-    if (typeof reportInput === "string") return reportInput;
-    try {
-      return JSON.stringify(reportInput, null, 2);
-    } catch {
-      return String(reportInput);
+    if (!reportOutput || Object.keys(reportOutput).length === 0) return null;
+    const lines: string[] = [];
+    const insights = reportOutput.insights ?? reportOutput.summary ?? null;
+    if (Array.isArray(insights)) {
+      lines.push("Insights:", ...insights.map((item: any) => `• ${typeof item === "string" ? item : item?.title ?? JSON.stringify(item)}`));
+    } else if (typeof insights === "string") {
+      lines.push(insights);
     }
-  }, [reportInput]);
+    const reportActions = reportOutput.actions ?? reportOutput.recommendations ?? null;
+    if (Array.isArray(reportActions) && reportActions.length > 0) {
+      lines.push("", "Actions:", ...reportActions.map((item: any) => `• ${typeof item === "string" ? item : item?.title ?? JSON.stringify(item)}`));
+    }
+    if (reportOutput.budget) {
+      lines.push("", `Budget: ${typeof reportOutput.budget === "string" ? reportOutput.budget : JSON.stringify(reportOutput.budget)}`);
+    }
+    return lines.length ? lines.join("\n") : null;
+  }, [reportOutput]);
 
   const primaryCurrency = summaryByCurrency[0]?.currency ?? "CNY";
   const primarySummary = summaryByCurrency[0];
@@ -345,121 +351,169 @@ export default function App() {
         ? "watch"
         : "good";
   const duplicateCount = txs.filter((t) => t.is_duplicate).length;
+  const topCategory = useMemo(
+    () => [...categoryData].sort((a, b) => b.amount - a.amount)[0],
+    [categoryData]
+  );
 
-  const operatingSummaryItems = [
-    {
-      label: "Cash flow",
-      value: primarySummary ? `${primarySummary.net.toLocaleString()} ${primaryCurrency}` : "—",
-      note: "Income minus expenses in loaded data",
-      status: primarySummary && primarySummary.net >= 0 ? "good" : "watch",
-    },
-    {
-      label: "Expenses",
-      value: primarySummary ? `${primarySummary.expense.toLocaleString()} ${primaryCurrency}` : "—",
-      note: "Duplicate transactions excluded",
-      status: "neutral",
-    },
-    {
-      label: "Budget risk",
-      value: primaryExpenseRatio !== null ? `${Math.round(primaryExpenseRatio * 100)}%` : "—",
-      note: "Loaded expenses vs income",
-      status: budgetStatus,
-    },
-    {
-      label: "Data quality",
-      value: `${duplicateCount}`,
-      note: "Potential duplicates flagged",
-      status: duplicateCount > 0 ? "watch" : "good",
-    },
-  ] as const;
+  const navItems = [
+    { id: "workspace" as const, label: t("nav.workspace"), icon: LayoutDashboard },
+    { id: "office" as const, label: t("nav.office"), icon: MessagesSquare },
+    { id: "settings" as const, label: t("nav.settings"), icon: SettingsIcon },
+  ];
+
+  const onboardingItems = [
+    budgetStatus === "risk"
+      ? {
+          title: "Reduce discretionary spend this week",
+          body: "Your expense ratio is above the risk threshold. Start with the largest flexible category.",
+          status: "High priority",
+        }
+      : budgetStatus === "watch"
+        ? {
+            title: "Set one weekly spending guardrail",
+            body: "Spending is elevated but controllable. Use a weekly cap before changing the full budget.",
+            status: "Recommended",
+          }
+        : {
+            title: "Keep the current cash-flow rhythm",
+            body: "Loaded income and expenses look stable. Automate savings before adding discretionary spend.",
+            status: "Healthy",
+          },
+    topCategory
+      ? {
+          title: `Review ${topCategory.category}`,
+          body: `${topCategory.category} is currently the largest expense category at ${topCategory.amount.toLocaleString()} ${topCategory.currency}.`,
+          status: "Spending review",
+        }
+      : {
+          title: "Import recent transactions",
+          body: "Add a statement to unlock category review, anomaly checks, and budget recommendations.",
+          status: "Data needed",
+        },
+    duplicateCount > 0
+      ? {
+          title: "Check duplicate transactions",
+          body: `${duplicateCount} potential duplicates are flagged and should be reviewed before relying on reports.`,
+          status: "Data quality",
+        }
+      : {
+          title: "Data quality looks clean",
+          body: "No duplicate transactions are currently flagged in the loaded dataset.",
+          status: "Verified",
+        },
+  ];
+
+  const actionItems =
+    brief?.has_data && brief.actions.length > 0
+      ? brief.actions.map((action) => ({
+          title: action.title,
+          body: action.rationale,
+          status: `Impact ${action.impact} · Effort ${action.effort}`,
+        }))
+      : onboardingItems;
+  const actionSource: "agent" | "onboarding" =
+    brief?.has_data && brief.actions.length > 0 ? "agent" : "onboarding";
+
 
   return (
-    <div className="flex min-h-screen bg-[#f7f8f8]">
-      <div
-        className={`flex-1 flex flex-col transition-all duration-300 ${
-          isSidebarOpen ? "mr-[420px]" : "mr-0"
-        }`}
-      >
-        <Header
-          isSidebarOpen={isSidebarOpen}
-          onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
-          onUploadStatement={handleUploadStatement}
-          isUploading={isUploading}
-        />
-
-        <main className="flex-1 px-8 py-6">
-          <div className="mb-6">
-            <h1 className="mb-2">Financial Overview</h1>
-            <div className="text-sm text-gray-600">
-              {monthlyTrendsData.length > 0
-                ? `${monthlyTrendsData[0].month} to ${
-                    monthlyTrendsData[monthlyTrendsData.length - 1].month
-                  }`
-                : "—"}
+    <div className="product-shell">
+      <header className="product-topbar">
+        <div className="product-topbar-inner">
+          <div className="product-brand-mark">
+            <div className="product-logo">F</div>
+            <div>
+              <div className="product-brand-title">FinDesk</div>
             </div>
           </div>
-
-          {loading && <div className="text-sm text-gray-500">Loading...</div>}
-
-          {errMsg && (
-            <div className="text-sm text-red-600">
-              {errMsg}
+          <nav className="product-tabs">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = activePage === item.id;
+            return (
               <button
-                onClick={load}
-                className="ml-3 text-xs text-blue-600 underline"
+                key={item.id}
+                type="button"
+                onClick={() => setActivePage(item.id)}
+                className={`product-tab ${active ? "product-tab-active" : ""}`}
               >
-                Retry
+                <Icon className="h-4 w-4" />
+                <span>{item.label}</span>
               </button>
-            </div>
-          )}
+            );
+          })}
+        </nav>
+          <div className="product-topbar-actions">
+            <Bell className="product-bell" />
+            <div className="product-avatar">RM</div>
+          </div>
+        </div>
+      </header>
 
-          {!loading && !errMsg && (
-            <>
-              <OperatingSummary items={operatingSummaryItems} />
-              <MetricsCards items={summaryByCurrency} />
-              <IncomeSummary
+      <div
+        className={`product-content${
+          isSidebarOpen && activePage === "workspace" ? " product-content-with-chat" : ""
+        }`}
+      >
+        {activePage === "workspace" ? (
+          <FinanceWorkspacePage
+            userId={userId}
+            actionSource={actionSource}
+            brief={brief}
+            dataSourceStatus={dataSourceStatus}
+            latestImportAt={dataSourceStatus?.latest_import?.created_at ?? null}
+            loading={loading}
+            errMsg={errMsg}
+            isUploading={isUploading}
+            primaryCurrency={primaryCurrency}
+            budgetStatus={budgetStatus}
+            duplicateCount={duplicateCount}
+            monthlyTrendsData={monthlyTrendsData}
+            actionItems={actionItems}
+            categoryData={categoryData}
+            tableTransactions={tableTransactions}
+            onReload={load}
+            onOpenCfo={() => setIsSidebarOpen(true)}
+            onAskCfoAbout={(question) => {
+              setCfoPrefill(question);
+              setIsSidebarOpen(true);
+            }}
+            onUploadStatement={handleUploadStatement}
+          />
+        ) : activePage === "office" ? (
+          <MyOfficePage userId={userId} userName={profileName} />
+        ) : (
+          <main className="settings-shell">
+              {activePage === "settings" && (
+              <SettingsPage
+                userId={userId}
+                profileName={profileName}
+                profile={profile}
+                apiBaseUrl={getApiBaseUrl()}
+                transactionCount={txs.length}
+                dataSourceStatus={dataSourceStatus}
                 monthlyIncome={monthlyIncome}
-                currentMonthExpense={currentMonthExpense}
+                onProfileSaved={load}
+                showDeveloperTools={false}
               />
-              <SourceBreakdown items={sourceData} />
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <MonthlyTrends data={monthlyTrendsData} currency={summaryByCurrency[0]?.currency ?? 'CNY'} />
-                <CategoryPieChart data={categoryData} />
-              </div>
-              <div className="mb-6">
-                <CategoryComparison data={categoryComparisonData} />
-              </div>
-              <TransactionsTable transactions={tableTransactions} />
-
-              <div className="mt-6 bg-white rounded-lg border border-gray-200">
-                <div className="px-5 py-4 border-b border-gray-200">
-                  <h3 className="text-sm text-gray-900">Latest Report</h3>
-                  <div className="text-xs text-gray-500 mt-1">
-                    Generated from analysis_runs.input
-                  </div>
-                </div>
-                <div className="px-5 py-4">
-                  {reportText ? (
-                    <pre className="text-xs text-slate-700 whitespace-pre-wrap break-words">
-                      {reportText}
-                    </pre>
-                  ) : (
-                    <div className="text-xs text-gray-500">
-                      No report available yet.
-                    </div>
-                  )}
-                </div>
-              </div>
-            </>
-          )}
-        </main>
+              )}
+            </main>
+        )}
       </div>
 
-      <AgentTeamPanel
-        isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
-        userId={userId}
-      />
+      {activePage === "workspace" && (
+        <AgentTeamPanel
+          isOpen={isSidebarOpen}
+          onClose={() => setIsSidebarOpen(false)}
+          userId={userId}
+          hasFinanceData={txs.length > 0}
+          topCategory={topCategory?.category}
+          brief={brief}
+          userName={profileName}
+          prefill={cfoPrefill}
+          onPrefillConsumed={() => setCfoPrefill(null)}
+        />
+      )}
     </div>
   );
 }

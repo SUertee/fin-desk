@@ -32,7 +32,7 @@ export function Header({
     <header className="border-b border-[#dfe5e3] bg-white">
       <div className="flex items-center justify-between px-8 py-4">
         <div>
-          <div className="text-lg font-semibold text-[#172026]">Finance OS</div>
+          <div className="text-lg font-semibold text-[#172026]">FinDesk</div>
           <div className="mt-0.5 text-xs text-[#697571]">
             Personal finance operations and agent review
           </div>

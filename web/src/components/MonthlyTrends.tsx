@@ -16,8 +16,8 @@ interface MonthlyTrendsProps {
 export function MonthlyTrends({ data, currency = 'CNY' }: MonthlyTrendsProps) {
   const sym = currencySymbol(currency);
   return (
-    <div className="bg-white p-5 rounded-lg border border-gray-200">
-      <h3 className="text-sm text-gray-900 mb-4">Monthly Breakdown</h3>
+    <div className="dashboard-card">
+      <h3 className="dashboard-card-title">Cash Flow Trend</h3>
       
       <ResponsiveContainer width="100%" height={280}>
         <BarChart data={data}>

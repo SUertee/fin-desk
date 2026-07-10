@@ -18,7 +18,14 @@ interface CategoryPieChartProps {
 }
 
 export function CategoryPieChart({ data }: CategoryPieChartProps) {
-  if (data.length === 0) return null;
+  if (data.length === 0) {
+    return (
+      <div className="dashboard-card">
+        <h3 className="dashboard-card-title">Spending by Category</h3>
+        <div className="dashboard-empty">Import transactions to see category mix.</div>
+      </div>
+    );
+  }
 
   // Group by currency
   const byCurrency: Record<string, CategoryItem[]> = {};
@@ -28,8 +35,8 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
   }
 
   return (
-    <div className="bg-white p-5 rounded-lg border border-gray-200">
-      <h3 className="text-sm text-gray-900 mb-4">Spending by Category</h3>
+    <div className="dashboard-card">
+      <h3 className="dashboard-card-title">Spending by Category</h3>
       {Object.entries(byCurrency).map(([currency, items]) => {
         // Top 8 + "other"
         const sorted = [...items].sort((a, b) => b.amount - a.amount);
@@ -47,7 +54,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
         const sym = currencySymbol(currency);
 
         return (
-          <div key={currency} className="flex flex-col items-center gap-3 mb-4 last:mb-0">
+          <div key={currency} className="category-chart-layout">
             <div style={{ width: 220, height: 220 }}>
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
@@ -72,7 +79,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="w-full">
+            <div className="category-legend">
               {Object.keys(byCurrency).length > 1 && (
                 <div className="text-xs text-gray-500 mb-2">{currency}</div>
               )}

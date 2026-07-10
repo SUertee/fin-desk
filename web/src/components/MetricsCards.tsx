@@ -32,16 +32,16 @@ interface MetricsCardsProps {
 
 export function MetricsCards({ items }: MetricsCardsProps) {
   return (
-    <div className="grid grid-cols-3 gap-4 mb-6">
+    <div className="metrics-cards-grid">
       {/* Total Income Card */}
-      <div className="bg-white p-5 rounded-lg border border-gray-200">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm text-gray-600">Total Income</span>
-          <div className="w-8 h-8 bg-green-50 rounded-lg flex items-center justify-center">
-            <TrendingUp className="w-4 h-4 text-green-600" />
+      <div className="metric-card">
+        <div className="metric-card-header">
+          <span>Total Income</span>
+          <div className="metric-card-icon metric-card-icon-good">
+            <TrendingUp />
           </div>
         </div>
-        <div className="text-green-600">
+        <div className="metric-card-value metric-card-value-good">
           {items.map((s) => (
             <div key={s.currency} className="text-2xl">
               {formatAmount(s.income, s.currency)}
@@ -51,14 +51,14 @@ export function MetricsCards({ items }: MetricsCardsProps) {
       </div>
 
       {/* Total Expenses Card */}
-      <div className="bg-white p-5 rounded-lg border border-gray-200">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm text-gray-600">Total Expenses</span>
-          <div className="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center">
-            <TrendingDown className="w-4 h-4 text-red-600" />
+      <div className="metric-card">
+        <div className="metric-card-header">
+          <span>Total Expenses</span>
+          <div className="metric-card-icon metric-card-icon-risk">
+            <TrendingDown />
           </div>
         </div>
-        <div className="text-red-600">
+        <div className="metric-card-value metric-card-value-risk">
           {items.map((s) => (
             <div key={s.currency} className="text-2xl">
               {formatAmount(s.expense, s.currency)}
@@ -68,16 +68,16 @@ export function MetricsCards({ items }: MetricsCardsProps) {
       </div>
 
       {/* Net Balance Card */}
-      <div className="bg-white p-5 rounded-lg border border-gray-200">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm text-gray-600">Net for Period</span>
-          <div className="w-8 h-8 bg-slate-50 rounded-lg flex items-center justify-center">
-            <DollarSign className="w-4 h-4 text-slate-600" />
+      <div className="metric-card">
+        <div className="metric-card-header">
+          <span>Net for Period</span>
+          <div className="metric-card-icon">
+            <DollarSign />
           </div>
         </div>
-        <div>
+        <div className="metric-card-value">
           {items.map((s) => (
-            <div key={s.currency} className={`text-2xl ${s.net >= 0 ? 'text-slate-900' : 'text-red-600'}`}>
+            <div key={s.currency} className={s.net >= 0 ? '' : 'metric-card-value-risk'}>
               {formatAmount(s.net, s.currency)}
             </div>
           ))}

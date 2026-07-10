@@ -19,7 +19,8 @@ export type AgentMeta = {
   label: string;
   shortLabel: string;
   summary: string;
-  promptPrefix: string;
+  // Typed routing hint honored by runtime policy (additive, never bypasses audit)
+  requestedSpecialist?: "expense_analyst" | "budget_coach";
   badgeClass: string;
   icon: ReactNode;
 };
@@ -30,7 +31,6 @@ export const AGENTS: AgentMeta[] = [
     label: "CFO",
     shortLabel: "CFO",
     summary: "统一入口，协调团队并输出优先级决策。",
-    promptPrefix: "[CFO] ",
     badgeClass: "bg-[#172026] text-white",
     icon: <Landmark className="h-4 w-4" />,
   },
@@ -39,7 +39,7 @@ export const AGENTS: AgentMeta[] = [
     label: "Expense Analyst",
     shortLabel: "Expense",
     summary: "分析支出结构、类别变化、异常和重复交易。",
-    promptPrefix: "[Expense Analyst] ",
+    requestedSpecialist: "expense_analyst",
     badgeClass: "bg-[#4b8078] text-white",
     icon: <ChartNoAxesCombined className="h-4 w-4" />,
   },
@@ -48,7 +48,7 @@ export const AGENTS: AgentMeta[] = [
     label: "Budget Coach",
     shortLabel: "Budget",
     summary: "把预算压力转成低摩擦行动和提醒规则。",
-    promptPrefix: "[Budget Coach] ",
+    requestedSpecialist: "budget_coach",
     badgeClass: "bg-[#6f7f62] text-white",
     icon: <ClipboardCheck className="h-4 w-4" />,
   },
@@ -57,7 +57,6 @@ export const AGENTS: AgentMeta[] = [
     label: "Auditor",
     shortLabel: "Audit",
     summary: "检查证据、风险、过度自信和数据限制。",
-    promptPrefix: "[Auditor] ",
     badgeClass: "bg-[#5f6f78] text-white",
     icon: <BadgeCheck className="h-4 w-4" />,
   },
@@ -66,7 +65,6 @@ export const AGENTS: AgentMeta[] = [
     label: "Market Scout",
     shortLabel: "Market",
     summary: "提供轻量市场和宏观背景，保持风险克制。",
-    promptPrefix: "[Market Scout] ",
     badgeClass: "bg-[#7b6f58] text-white",
     icon: <LineChart className="h-4 w-4" />,
   },

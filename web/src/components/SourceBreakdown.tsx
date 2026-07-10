@@ -29,12 +29,19 @@ export function SourceBreakdown({ items }: SourceBreakdownProps) {
   }
 
   const sources = Object.keys(bySource);
-  if (sources.length === 0) return null;
+  if (sources.length === 0) {
+    return (
+      <div className="dashboard-card source-breakdown-card">
+        <h3 className="dashboard-card-title">Source Breakdown</h3>
+        <div className="dashboard-empty">Connect a statement source to see inflows.</div>
+      </div>
+    );
+  }
 
   return (
-    <div className="mb-6">
-      <h3 className="text-sm text-gray-900 mb-3">Account Sources</h3>
-      <div className={`grid gap-4 ${sources.length >= 3 ? 'grid-cols-3' : sources.length === 2 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+    <div className="dashboard-card source-breakdown-card">
+      <h3 className="dashboard-card-title">Source Breakdown</h3>
+      <div className="source-breakdown-list">
         {sources.map((source) => {
           const config = SOURCE_CONFIG[source] || { label: source, icon: Wallet, color: 'text-gray-600', bg: 'bg-gray-50' };
           const Icon = config.icon;
@@ -42,20 +49,20 @@ export function SourceBreakdown({ items }: SourceBreakdownProps) {
           const totalCount = currencyItems.reduce((s, i) => s + i.count, 0);
 
           return (
-            <div key={source} className="bg-white p-5 rounded-lg border border-gray-200">
-              <div className="flex items-center gap-3 mb-3">
+            <div key={source} className="source-breakdown-item">
+              <div className="source-breakdown-head">
                 <div className={`w-10 h-10 ${config.bg} rounded-lg flex items-center justify-center`}>
                   <Icon className={`w-5 h-5 ${config.color}`} />
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-gray-900">{config.label}</div>
-                  <div className="text-xs text-gray-500">{totalCount} transactions</div>
+                  <div className="source-breakdown-name">{config.label}</div>
+                  <div className="source-breakdown-count">{totalCount} transactions</div>
                 </div>
               </div>
               {currencyItems.map((ci) => (
-                <div key={ci.currency} className="flex justify-between text-xs mt-2">
-                  <span className="text-green-600">+{currencySymbol(ci.currency)}{ci.income.toFixed(2)}</span>
-                  <span className="text-red-600">-{currencySymbol(ci.currency)}{ci.expense.toFixed(2)}</span>
+                <div key={ci.currency} className="source-breakdown-row">
+                  <span>+{currencySymbol(ci.currency)}{ci.income.toFixed(2)}</span>
+                  <span>-{currencySymbol(ci.currency)}{ci.expense.toFixed(2)}</span>
                 </div>
               ))}
             </div>

@@ -18,17 +18,17 @@ const statusClass = {
 
 export function OperatingSummary({ items }: OperatingSummaryProps) {
   return (
-    <section className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+    <section className="operating-summary-grid">
       {items.map((item) => (
         <div
           key={item.label}
-          className={`rounded-xl border px-4 py-4 ${statusClass[item.status ?? "neutral"]}`}
+          className={`operating-summary-card ${statusClass[item.status ?? "neutral"]}`}
         >
-          <div className="text-xs font-medium text-[#697571]">{item.label}</div>
-          <div className="mt-2 text-2xl font-semibold tracking-normal text-[#172026]">
+          <div className="operating-summary-label">{item.label}</div>
+          <div className="operating-summary-value">
             {item.value}
           </div>
-          <div className="mt-1 text-xs text-[#697571]">{item.note}</div>
+          <div className="operating-summary-note">{item.note}</div>
         </div>
       ))}
     </section>

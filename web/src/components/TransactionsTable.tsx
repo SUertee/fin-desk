@@ -97,11 +97,11 @@ export function TransactionsTable({ transactions }: TransactionsTableProps) {
   }, [filtered, monthFilter]);
 
   return (
-    <div className="bg-white rounded-lg border border-gray-200">
+    <div className="transactions-card">
       {/* Header with filters */}
-      <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between flex-wrap gap-3">
-        <h3 className="text-sm text-gray-900">Transactions</h3>
-        <div className="flex items-center gap-3">
+      <div className="transactions-header">
+        <h3>Recent Transactions</h3>
+        <div className="transactions-controls">
           {/* Month filter */}
           <select
             value={monthFilter}

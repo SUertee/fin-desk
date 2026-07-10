@@ -1,3 +1,5 @@
+import type { ConversationRoute } from "./office";
+
 export type SummaryStatus = "neutral" | "good" | "watch" | "risk";
 export type EffortLevel = "low" | "medium" | "high";
 export type ImpactLevel = "low" | "medium" | "high";
@@ -39,5 +41,18 @@ export type FinanceAgentData = {
 export type ChatResponse = {
   reply: string;
   agent_used?: string | null;
+  request_id?: string | null;
   data?: FinanceAgentData | null;
+  route?: ConversationRoute | null;
+};
+
+export type WorkspaceBrief = {
+  request_id?: string | null;
+  generated_at: string;
+  has_data: boolean;
+  headline?: string;
+  period?: { from: string; to: string } | null;
+  summary_cards: SummaryCard[];
+  actions: AgentAction[];
+  audit?: AgentAudit | null;
 };
