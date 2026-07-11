@@ -118,7 +118,7 @@ import pytest
 
 from app.models.routing import RouteCandidate
 from app.runtime.orchestration.entry_router import RouteGuard
-from app.runtime.orchestration.intent_classifier import ModelIntentClassifier
+from app.runtime.orchestration.route_classifier import ModelRouteClassifier
 
 
 class FakeClassifier:
@@ -187,7 +187,7 @@ def test_guard_escalates_model_light_reply_with_finance_facts():
     guard = RouteGuard()
     candidate = _model_candidate("small_talk", "light_reply")
 
-    route, reason = guard.finalize(
+    route, reason = guard.adjudicate(
         candidate, message="随便看看 3000 块去哪了", has_prior_context=False
     )
 
@@ -200,7 +200,7 @@ def test_guard_promotes_contextless_followup_candidate():
     guard = RouteGuard()
     candidate = _model_candidate("follow_up", "cfo_followup")
 
-    route, reason = guard.finalize(
+    route, reason = guard.adjudicate(
         candidate, message="然后呢", has_prior_context=False
     )
 
@@ -254,7 +254,7 @@ async def test_classifier_parses_strict_json_and_rejects_bad_enums():
         async def generate_json(self, prompt, *, profile="router", system=""):
             return SimpleNamespace(data=self.data)
 
-    good = ModelIntentClassifier(
+    good = ModelRouteClassifier(
         lambda: FakeLLM(
             {
                 "intent": "finance_query",
@@ -269,7 +269,7 @@ async def test_classifier_parses_strict_json_and_rejects_bad_enums():
     assert candidate.source == "model"
     assert candidate.confidence == 1.0  # clamped, observability-only
 
-    bad = ModelIntentClassifier(
+    bad = ModelRouteClassifier(
         lambda: FakeLLM({"intent": "run_sql", "execution_path": "cfo_analysis"})
     )
     assert await bad.classify("x", has_prior_context=False) is None

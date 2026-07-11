@@ -1,4 +1,4 @@
-"""Model intent classifier: strict-JSON top-level routing proposals.
+"""Model route classifier: strict-JSON top-level routing proposals.
 
 The model only proposes a semantic path (`RouteCandidate`); it never
 selects tools, specialists, tables, or SQL, and the deterministic
@@ -35,7 +35,7 @@ Routing semantics:
 When unsure between a finance route and a lighter route, prefer the finance route."""
 
 
-class ModelIntentClassifier:
+class ModelRouteClassifier:
     """LLM classifier for the ambiguous band, behind a client getter.
 
     The getter is resolved per call so tests (and runtimes) that null the

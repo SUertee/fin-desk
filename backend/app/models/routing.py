@@ -153,13 +153,25 @@ class RouteCandidate(BaseModel):
 
 ClassifierCallStatus = Literal["skipped", "called", "failed"]
 
+# Which adjudication rule produced the final route. Typed so the run ledger
+# stays queryable and typos fail loudly.
+GuardReason = Literal[
+    "rule_decisive",
+    "fallback_decisive",
+    "model_accepted",
+    "lexical_finance_override",
+    "intent_path_mismatch",
+    "no_context_downgrade",
+    "no_context_promotion",
+]
+
 
 class RouteDecision(BaseModel):
     """Final routing outcome plus the audit trail for the run ledger."""
 
     route: ConversationRoute
     candidate: RouteCandidate
-    guard_reason: str
+    guard_reason: GuardReason
     message_excerpt: str
     classifier_status: ClassifierCallStatus = "skipped"
     classifier_latency_ms: float | None = None

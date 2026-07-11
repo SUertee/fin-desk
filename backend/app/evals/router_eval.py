@@ -141,10 +141,10 @@ def hybrid_route_fn() -> RouteFn:
 
     from app.runtime.llm.deepseek_client import DeepSeekTextClient
     from app.runtime.orchestration.entry_router import EntryRouter
-    from app.runtime.orchestration.intent_classifier import ModelIntentClassifier
+    from app.runtime.orchestration.route_classifier import ModelRouteClassifier
 
     client = DeepSeekTextClient()
-    router = EntryRouter(classifier=ModelIntentClassifier(lambda: client))
+    router = EntryRouter(classifier=ModelRouteClassifier(lambda: client))
 
     async def route_fn(message: str, chat_history: list[dict[str, Any]]) -> ConversationRoute:
         decision = await router.decide(message, chat_history=chat_history)

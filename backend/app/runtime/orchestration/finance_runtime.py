@@ -30,7 +30,7 @@ from app.runtime.memory.finance_memory_extractor import extract_finance_memory
 from app.runtime.memory.session_context import write_session_context
 from app.runtime.observability.trace_collector import TraceCollector
 from app.runtime.orchestration.entry_router import EntryRouter
-from app.runtime.orchestration.intent_classifier import ModelIntentClassifier
+from app.runtime.orchestration.route_classifier import ModelRouteClassifier
 from app.runtime.policy.audit_runner import should_run_audit
 from app.runtime.policy.conversation_policy import compose_short_cfo_reply
 from app.runtime.policy.cost_policy import estimate_run_cost
@@ -133,7 +133,7 @@ class FinanceRuntime:
         self.llm_client = llm_client if llm_client is not None else DeepSeekTextClient()
         # Client getter: nulling self.llm_client also disables classification.
         self.entry_router = EntryRouter(
-            classifier=ModelIntentClassifier(lambda: self.llm_client)
+            classifier=ModelRouteClassifier(lambda: self.llm_client)
         )
 
     async def handle(

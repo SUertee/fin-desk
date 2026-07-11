@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import re
 from time import perf_counter
-from typing import Any
+from typing import Any, Protocol
 
 from app.models.routing import (
     ConversationRoute,
+    GuardReason,
     RouteCandidate,
     RouteDecision,
     route_for_path,
@@ -269,15 +270,17 @@ def _excerpt(message: str, limit: int = 120) -> str:
     return " ".join((message or "").split())[:limit]
 
 
-class RulePreRouter:
-    """Decisive rules on BOTH ends of the spectrum.
+class RouteRules:
+    """Deterministic routing rules, used at two points in the pipeline.
 
-    Clearly social and clearly financial messages get a rule candidate with
-    no LLM involved. Returns None for the ambiguous middle band, which is
-    the only traffic the model classifier ever sees.
+    `decisive()` runs BEFORE the classifier: clearly social and clearly
+    financial messages get a rule candidate with no LLM involved, and only
+    the ambiguous middle band (None) ever reaches the model. `fallback()`
+    runs AFTER the classifier when it is unavailable or invalid, preserving
+    the v1 deterministic tail.
     """
 
-    def preroute(
+    def decisive(
         self,
         message: str,
         *,
@@ -356,7 +359,7 @@ class RulePreRouter:
         return None
 
     def fallback(self, message: str) -> RouteCandidate:
-        """Deterministic v1 tail for the ambiguous band (no classifier)."""
+        """Deterministic v1 tail when no classifier verdict is available."""
 
         text = _normalize(message)
         if _contains_any(text, _QUESTION_PATTERNS):
@@ -382,13 +385,13 @@ class RouteGuard:
     finance pipeline, never down to small talk.
     """
 
-    def finalize(
+    def adjudicate(
         self,
         candidate: RouteCandidate,
         *,
         message: str,
         has_prior_context: bool,
-    ) -> tuple[ConversationRoute, str]:
+    ) -> tuple[ConversationRoute, GuardReason]:
         if candidate.source in ("rule", "fallback"):
             # Rule candidates are already fact-derived; nothing to overrule.
             route = route_for_path(
@@ -397,6 +400,10 @@ class RouteGuard:
             return route, f"{candidate.source}_decisive"
 
         text = _normalize(message)
+        # Keyword check is defensive here: messages that reach the model have
+        # no finance keywords by construction (RouteRules.decisive would have
+        # taken them), so in practice only the digit check fires. The guard
+        # still must not assume the pre-route ran.
         has_finance_signal = _contains_any(text, _FINANCE_PATTERNS) or _contains_digit(text)
 
         # Model undercalled a message that carries verifiable finance facts.
@@ -429,17 +436,27 @@ class RouteGuard:
         return route, "model_accepted"
 
 
-class EntryRouter:
-    """Hybrid entry router: rule pre-route -> model classify -> guard.
+class RouteClassifier(Protocol):
+    """Injected semantic classifier for the ambiguous band."""
 
-    `route()` is the fully deterministic path (pre-route + fallback) and
-    stays synchronous for tests and offline evals. `decide()` is the
+    def available(self) -> bool: ...
+
+    async def classify(
+        self, message: str, *, has_prior_context: bool
+    ) -> RouteCandidate | None: ...
+
+
+class EntryRouter:
+    """Hybrid entry router: RouteRules -> RouteClassifier -> RouteGuard.
+
+    `route()` is the fully deterministic path (decisive rules + fallback)
+    and stays synchronous for tests and offline evals. `decide()` is the
     runtime entrypoint; with no classifier configured it is behaviorally
     identical to `route()`.
     """
 
-    def __init__(self, classifier: Any | None = None):
-        self.pre_router = RulePreRouter()
+    def __init__(self, classifier: RouteClassifier | None = None):
+        self.rules = RouteRules()
         self.guard = RouteGuard()
         self.classifier = classifier
 
@@ -452,10 +469,10 @@ class EntryRouter:
     ) -> ConversationRoute:
         del memory_context
         has_prior_context = _has_history(chat_history)
-        candidate = self.pre_router.preroute(
+        candidate = self.rules.decisive(
             message, has_prior_context=has_prior_context
-        ) or self.pre_router.fallback(message)
-        route, _ = self.guard.finalize(
+        ) or self.rules.fallback(message)
+        route, _ = self.guard.adjudicate(
             candidate, message=message, has_prior_context=has_prior_context
         )
         return route
@@ -469,7 +486,7 @@ class EntryRouter:
     ) -> RouteDecision:
         del memory_context
         has_prior_context = _has_history(chat_history)
-        candidate = self.pre_router.preroute(message, has_prior_context=has_prior_context)
+        candidate = self.rules.decisive(message, has_prior_context=has_prior_context)
 
         classifier_status = "skipped"
         classifier_latency_ms: float | None = None
@@ -490,9 +507,9 @@ class EntryRouter:
                 classifier_status = "failed"
 
         if candidate is None:
-            candidate = self.pre_router.fallback(message)
+            candidate = self.rules.fallback(message)
 
-        route, guard_reason = self.guard.finalize(
+        route, guard_reason = self.guard.adjudicate(
             candidate, message=message, has_prior_context=has_prior_context
         )
         return RouteDecision(
