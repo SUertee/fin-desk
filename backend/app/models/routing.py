@@ -82,6 +82,99 @@ def build_route(
     )
 
 
+# Canonical runtime flags per execution path — the single source of truth.
+# Candidates (rule or model) only ever pick a path; flags are never taken
+# from model output.
+_PATH_PRESETS: dict[str, dict] = {
+    "light_reply": dict(
+        run_finance_pipeline=False,
+        emit_steps=False,
+        attach_evidence=False,
+        memory_scope="session",
+        response_mode="light",
+    ),
+    "cfo_analysis": dict(
+        run_finance_pipeline=True,
+        emit_steps=True,
+        attach_evidence=True,
+        memory_scope="finance_context",
+        response_mode="analysis",
+    ),
+    "cfo_followup": dict(
+        run_finance_pipeline=True,
+        emit_steps=True,
+        attach_evidence=True,
+        memory_scope="finance_context",
+        response_mode="analysis",
+    ),
+    "evidence_only": dict(
+        run_finance_pipeline=False,
+        emit_steps=False,
+        attach_evidence=True,
+        memory_scope="session",
+        response_mode="direct_answer",
+    ),
+    "clarification": dict(
+        run_finance_pipeline=False,
+        emit_steps=False,
+        attach_evidence=False,
+        memory_scope="session",
+        response_mode="ask_clarification",
+    ),
+}
+
+
+def route_for_path(
+    intent: ConversationIntent,
+    execution_path: ConversationExecutionPath,
+    label: str = "",
+) -> ConversationRoute:
+    """Build a ConversationRoute with the canonical flags for a path."""
+
+    return build_route(intent, execution_path, label=label, **_PATH_PRESETS[execution_path])
+
+
+RouteCandidateSource = Literal["rule", "model", "fallback"]
+
+
+class RouteCandidate(BaseModel):
+    """Internal routing proposal (developer layer only, never sent to the UI).
+
+    Confidence is recorded for observability; the route guard never uses it
+    as a decision threshold.
+    """
+
+    intent: ConversationIntent
+    execution_path: ConversationExecutionPath
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+    reason_code: str = ""
+    source: RouteCandidateSource = "rule"
+
+
+ClassifierCallStatus = Literal["skipped", "called", "failed"]
+
+
+class RouteDecision(BaseModel):
+    """Final routing outcome plus the audit trail for the run ledger."""
+
+    route: ConversationRoute
+    candidate: RouteCandidate
+    guard_reason: str
+    message_excerpt: str
+    classifier_status: ClassifierCallStatus = "skipped"
+    classifier_latency_ms: float | None = None
+
+    def ledger_dump(self) -> dict:
+        """Developer-layer projection: bounded excerpt, candidate, guard call."""
+
+        return {
+            "message_excerpt": self.message_excerpt,
+            "candidate": self.candidate.model_dump(),
+            "guard_reason": self.guard_reason,
+            "classifier_status": self.classifier_status,
+        }
+
+
 LIGHT_REPLY_ROUTE = build_route(
     "small_talk",
     "light_reply",

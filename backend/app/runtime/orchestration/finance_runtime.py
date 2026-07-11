@@ -30,6 +30,7 @@ from app.runtime.memory.finance_memory_extractor import extract_finance_memory
 from app.runtime.memory.session_context import write_session_context
 from app.runtime.observability.trace_collector import TraceCollector
 from app.runtime.orchestration.entry_router import EntryRouter
+from app.runtime.orchestration.intent_classifier import ModelIntentClassifier
 from app.runtime.policy.audit_runner import should_run_audit
 from app.runtime.policy.conversation_policy import compose_short_cfo_reply
 from app.runtime.policy.cost_policy import estimate_run_cost
@@ -130,7 +131,10 @@ class FinanceRuntime:
         self.tool_registry = tool_registry or self._build_tool_registry()
         self.specialist_runner = specialist_runner or SpecialistRunner()
         self.llm_client = llm_client if llm_client is not None else DeepSeekTextClient()
-        self.entry_router = EntryRouter()
+        # Client getter: nulling self.llm_client also disables classification.
+        self.entry_router = EntryRouter(
+            classifier=ModelIntentClassifier(lambda: self.llm_client)
+        )
 
     async def handle(
         self,
@@ -159,15 +163,24 @@ class FinanceRuntime:
         trace.set_output_contract("ChatResponse")
 
         try:
-            route = self.entry_router.route(
+            route_decision = await self.entry_router.decide(
                 message,
                 chat_history=chat_history,
                 memory_context=memory_context or {},
             )
+            route = route_decision.route
+            if route_decision.classifier_status != "skipped":
+                trace.record_tool_call(
+                    "route_classify",
+                    status="called" if route_decision.classifier_status == "called" else "failed",
+                    agent="cfo",
+                    latency_ms=route_decision.classifier_latency_ms,
+                )
             if not route.run_finance_pipeline:
                 response_payload = self._compose_non_analysis_response(
                     trace=trace,
                     route=route,
+                    route_decision=route_decision,
                     message=message,
                     profile=profile,
                     transactions=transactions,
@@ -200,6 +213,7 @@ class FinanceRuntime:
                 {
                     **policy.model_dump(),
                     "conversation_route": route.model_dump(mode="json"),
+                    "route_decision": route_decision.ledger_dump(),
                 }
             )
             context = AgentContext(
@@ -426,6 +440,7 @@ class FinanceRuntime:
         *,
         trace: TraceCollector,
         route,
+        route_decision,
         message: str,
         profile: dict[str, Any],
         transactions: list[dict[str, Any]],
@@ -433,7 +448,12 @@ class FinanceRuntime:
         chat_history: list[dict[str, Any]],
         memory_context: dict[str, Any],
     ) -> dict[str, Any]:
-        trace.set_policy({"conversation_route": route.model_dump(mode="json")})
+        trace.set_policy(
+            {
+                "conversation_route": route.model_dump(mode="json"),
+                "route_decision": route_decision.ledger_dump(),
+            }
+        )
         trace.select_agents(["cfo"])
         trace.set_tools_available([])
         trace.set_input_summary(

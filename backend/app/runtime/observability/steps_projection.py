@@ -26,7 +26,7 @@ SPECIALIST_LABELS = {
 }
 
 # Plumbing that would read as noise to a user
-_HIDDEN_TOOLS = {"llm_compose"}
+_HIDDEN_TOOLS = {"llm_compose", "route_classify"}
 _SPECIALIST_TOOL_NAMES = {
     "consult_expense_analyst",
     "consult_budget_coach",

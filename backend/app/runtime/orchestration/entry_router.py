@@ -7,9 +7,15 @@ path before runtime execution, without selecting tools or specialists.
 from __future__ import annotations
 
 import re
+from time import perf_counter
 from typing import Any
 
-from app.models.routing import ConversationRoute, build_route
+from app.models.routing import (
+    ConversationRoute,
+    RouteCandidate,
+    RouteDecision,
+    route_for_path,
+)
 
 
 _WHITESPACE_RE = re.compile(r"\s+")
@@ -257,25 +263,38 @@ def _looks_like_short_social_message(text: str) -> bool:
     return True
 
 
-class EntryRouter:
-    """Deterministic entry router for My Office chat turns."""
+def _excerpt(message: str, limit: int = 120) -> str:
+    """Bounded message excerpt for the run ledger (data minimization)."""
 
-    def route(
+    return " ".join((message or "").split())[:limit]
+
+
+class RulePreRouter:
+    """Decisive rules on BOTH ends of the spectrum.
+
+    Clearly social and clearly financial messages get a rule candidate with
+    no LLM involved. Returns None for the ambiguous middle band, which is
+    the only traffic the model classifier ever sees.
+    """
+
+    def preroute(
         self,
         message: str,
         *,
-        chat_history: list[dict[str, Any]] | None = None,
-        memory_context: dict[str, Any] | None = None,
-    ) -> ConversationRoute:
-        del memory_context
+        has_prior_context: bool,
+    ) -> RouteCandidate | None:
         text = _normalize(message)
         if not text:
-            return self._clarification("empty message")
+            return RouteCandidate(
+                intent="clarification",
+                execution_path="clarification",
+                confidence=1.0,
+                reason_code="empty_message",
+                source="rule",
+            )
 
         has_finance_signal = _contains_any(text, _FINANCE_PATTERNS)
-        has_question_signal = _contains_any(text, _QUESTION_PATTERNS)
         has_followup_signal = _contains_any(text, _FOLLOW_UP_PATTERNS)
-        has_prior_context = _has_history(chat_history)
 
         # Digits usually mean a fresh ledger question ("为什么6月10日花这么多"),
         # not a request for the previous answer's evidence.
@@ -285,88 +304,202 @@ class EntryRouter:
             and not _contains_digit(text)
             and has_prior_context
         ):
-            return build_route(
-                "evidence_request",
-                "evidence_only",
-                run_finance_pipeline=False,
-                emit_steps=False,
-                attach_evidence=True,
-                memory_scope="session",
-                response_mode="direct_answer",
-                label="evidence request",
+            return RouteCandidate(
+                intent="evidence_request",
+                execution_path="evidence_only",
+                confidence=1.0,
+                reason_code="evidence_request",
+                source="rule",
             )
 
         if has_prior_context and has_followup_signal and not has_finance_signal:
-            return build_route(
-                "follow_up",
-                "cfo_followup",
-                run_finance_pipeline=True,
-                emit_steps=True,
-                attach_evidence=True,
-                memory_scope="finance_context",
-                response_mode="analysis",
-                label="contextual follow-up",
+            return RouteCandidate(
+                intent="follow_up",
+                execution_path="cfo_followup",
+                confidence=1.0,
+                reason_code="contextual_followup",
+                source="rule",
             )
 
         if has_finance_signal:
-            return build_route(
-                "finance_query",
-                "cfo_followup" if has_prior_context and has_followup_signal else "cfo_analysis",
-                run_finance_pipeline=True,
-                emit_steps=True,
-                attach_evidence=True,
-                memory_scope="finance_context",
-                response_mode="analysis",
-                label="finance query",
+            return RouteCandidate(
+                intent="finance_query",
+                execution_path=(
+                    "cfo_followup"
+                    if has_prior_context and has_followup_signal
+                    else "cfo_analysis"
+                ),
+                confidence=1.0,
+                reason_code="finance_signal",
+                source="rule",
             )
 
         if _is_acknowledgement(text):
-            return build_route(
-                "acknowledgement",
-                "light_reply",
-                run_finance_pipeline=False,
-                emit_steps=False,
-                attach_evidence=False,
-                memory_scope="session",
-                response_mode="light",
-                label="acknowledgement",
+            return RouteCandidate(
+                intent="acknowledgement",
+                execution_path="light_reply",
+                confidence=1.0,
+                reason_code="exact_acknowledgement",
+                source="rule",
             )
 
         if _is_greeting(text) or _looks_like_short_social_message(text):
-            return build_route(
-                "small_talk",
-                "light_reply",
-                run_finance_pipeline=False,
-                emit_steps=False,
-                attach_evidence=False,
-                memory_scope="session",
-                response_mode="light",
-                label="small talk",
+            return RouteCandidate(
+                intent="small_talk",
+                execution_path="light_reply",
+                confidence=1.0,
+                reason_code="social_message",
+                source="rule",
             )
 
-        if has_question_signal:
-            return self._clarification("non-finance question")
+        # Ambiguous band: no provable signal either way.
+        return None
 
-        return build_route(
-            "unsupported",
-            "clarification",
-            run_finance_pipeline=False,
-            emit_steps=False,
-            attach_evidence=False,
-            memory_scope="session",
-            response_mode="ask_clarification",
-            label="unsupported",
+    def fallback(self, message: str) -> RouteCandidate:
+        """Deterministic v1 tail for the ambiguous band (no classifier)."""
+
+        text = _normalize(message)
+        if _contains_any(text, _QUESTION_PATTERNS):
+            return RouteCandidate(
+                intent="clarification",
+                execution_path="clarification",
+                reason_code="non_finance_question",
+                source="fallback",
+            )
+        return RouteCandidate(
+            intent="unsupported",
+            execution_path="clarification",
+            reason_code="unsupported",
+            source="fallback",
         )
 
-    @staticmethod
-    def _clarification(label: str) -> ConversationRoute:
-        return build_route(
-            "clarification",
-            "clarification",
-            run_finance_pipeline=False,
-            emit_steps=False,
-            attach_evidence=False,
-            memory_scope="session",
-            response_mode="ask_clarification",
-            label=label,
+
+class RouteGuard:
+    """Deterministic final adjudication over routing candidates.
+
+    Uses lexical and state facts only — never model confidence. The
+    fallback direction is asymmetric: uncertainty escalates toward the
+    finance pipeline, never down to small talk.
+    """
+
+    def finalize(
+        self,
+        candidate: RouteCandidate,
+        *,
+        message: str,
+        has_prior_context: bool,
+    ) -> tuple[ConversationRoute, str]:
+        if candidate.source in ("rule", "fallback"):
+            # Rule candidates are already fact-derived; nothing to overrule.
+            route = route_for_path(
+                candidate.intent, candidate.execution_path, label=candidate.reason_code
+            )
+            return route, f"{candidate.source}_decisive"
+
+        text = _normalize(message)
+        has_finance_signal = _contains_any(text, _FINANCE_PATTERNS) or _contains_digit(text)
+
+        # Model undercalled a message that carries verifiable finance facts.
+        if candidate.execution_path in ("light_reply", "clarification") and has_finance_signal:
+            route = route_for_path("finance_query", "cfo_analysis", label="guard escalation")
+            return route, "lexical_finance_override"
+
+        # Model claims a finance intent but proposes a non-finance path.
+        if (
+            candidate.intent in ("finance_query", "follow_up")
+            and candidate.execution_path in ("light_reply", "clarification")
+        ):
+            path = "cfo_followup" if has_prior_context and candidate.intent == "follow_up" else "cfo_analysis"
+            route = route_for_path(candidate.intent, path, label="guard escalation")
+            return route, "intent_path_mismatch"
+
+        # Evidence needs something to point at.
+        if candidate.execution_path == "evidence_only" and not has_prior_context:
+            route = route_for_path("clarification", "clarification", label="guard downgrade")
+            return route, "no_context_downgrade"
+
+        # A follow-up without context is just a fresh question.
+        if candidate.execution_path == "cfo_followup" and not has_prior_context:
+            route = route_for_path("finance_query", "cfo_analysis", label="guard promotion")
+            return route, "no_context_promotion"
+
+        route = route_for_path(
+            candidate.intent, candidate.execution_path, label=candidate.reason_code
+        )
+        return route, "model_accepted"
+
+
+class EntryRouter:
+    """Hybrid entry router: rule pre-route -> model classify -> guard.
+
+    `route()` is the fully deterministic path (pre-route + fallback) and
+    stays synchronous for tests and offline evals. `decide()` is the
+    runtime entrypoint; with no classifier configured it is behaviorally
+    identical to `route()`.
+    """
+
+    def __init__(self, classifier: Any | None = None):
+        self.pre_router = RulePreRouter()
+        self.guard = RouteGuard()
+        self.classifier = classifier
+
+    def route(
+        self,
+        message: str,
+        *,
+        chat_history: list[dict[str, Any]] | None = None,
+        memory_context: dict[str, Any] | None = None,
+    ) -> ConversationRoute:
+        del memory_context
+        has_prior_context = _has_history(chat_history)
+        candidate = self.pre_router.preroute(
+            message, has_prior_context=has_prior_context
+        ) or self.pre_router.fallback(message)
+        route, _ = self.guard.finalize(
+            candidate, message=message, has_prior_context=has_prior_context
+        )
+        return route
+
+    async def decide(
+        self,
+        message: str,
+        *,
+        chat_history: list[dict[str, Any]] | None = None,
+        memory_context: dict[str, Any] | None = None,
+    ) -> RouteDecision:
+        del memory_context
+        has_prior_context = _has_history(chat_history)
+        candidate = self.pre_router.preroute(message, has_prior_context=has_prior_context)
+
+        classifier_status = "skipped"
+        classifier_latency_ms: float | None = None
+        if (
+            candidate is None
+            and self.classifier is not None
+            and self.classifier.available()
+        ):
+            started = perf_counter()
+            model_candidate = await self.classifier.classify(
+                message, has_prior_context=has_prior_context
+            )
+            classifier_latency_ms = round((perf_counter() - started) * 1000, 2)
+            if model_candidate is not None:
+                candidate = model_candidate
+                classifier_status = "called"
+            else:
+                classifier_status = "failed"
+
+        if candidate is None:
+            candidate = self.pre_router.fallback(message)
+
+        route, guard_reason = self.guard.finalize(
+            candidate, message=message, has_prior_context=has_prior_context
+        )
+        return RouteDecision(
+            route=route,
+            candidate=candidate,
+            guard_reason=guard_reason,
+            message_excerpt=_excerpt(message),
+            classifier_status=classifier_status,
+            classifier_latency_ms=classifier_latency_ms,
         )
