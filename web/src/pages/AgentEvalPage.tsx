@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, ClipboardCheck, XCircle } from "lucide-react";
-import { fetchEvalCases } from "../services/supabaseApi";
+import { fetchEvalCases } from "../services/financeApi";
 import type { EvalCaseSummary } from "../types/agentRun";
 
 export function AgentEvalPage() {

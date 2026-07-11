@@ -7,7 +7,7 @@ import {
   ShieldCheck,
   Workflow,
 } from "lucide-react";
-import { fetchAgentRuns, replayAgentRun } from "../services/supabaseApi";
+import { fetchAgentRuns, replayAgentRun } from "../services/financeApi";
 import type {
   AgentHandoff,
   AgentRunPagination,

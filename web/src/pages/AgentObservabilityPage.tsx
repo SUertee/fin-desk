@@ -3,7 +3,7 @@ import { AlertTriangle, Braces, CheckCircle2, RefreshCw, Workflow } from "lucide
 import {
   fetchAgentRunProjection,
   fetchAgentRuns,
-} from "../services/supabaseApi";
+} from "../services/financeApi";
 import type {
   AgentRunProjection,
   AgentRunSummary,

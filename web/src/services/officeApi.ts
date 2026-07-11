@@ -2,7 +2,7 @@
  * My Office backend calls: office sessions, session messages, session-scoped
  * chat streaming, and the answer-level user evidence projection.
  */
-import { getApiBaseUrl } from "./supabaseApi";
+import { getApiBaseUrl } from "./financeApi";
 import type { ChatResponse } from "../types/financeAgent";
 import type {
   EvidenceStep,

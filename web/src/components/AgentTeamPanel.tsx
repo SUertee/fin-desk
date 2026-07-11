@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { ArrowUpRight, BadgeDollarSign, PanelRightClose, Send, ShieldCheck, Sparkles, TrendingUp, X } from "lucide-react";
-import { sendChatMessage, sendChatMessageStream } from "../services/supabaseApi";
+import { sendChatMessage, sendChatMessageStream } from "../services/financeApi";
 import { AGENTS, type AgentType } from "../types/agents";
 import type { ChatResponse } from "../types/financeAgent";
 import { AgentResponse } from "./AgentResponse";

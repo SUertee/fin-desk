@@ -5,7 +5,7 @@ import {
   fetchDailyTotals,
   fetchTransactionsForDay,
   type DailyTotal,
-} from "../services/supabaseApi";
+} from "../services/financeApi";
 import { currencySymbol } from "./MetricsCards";
 
 interface SpendingCalendarProps {

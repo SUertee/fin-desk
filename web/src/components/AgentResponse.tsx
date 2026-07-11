@@ -7,7 +7,7 @@ import {
   ScrollText,
 } from "lucide-react";
 import type { FinanceAgentData } from "../types/financeAgent";
-import { fetchAgentRunProjection } from "../services/supabaseApi";
+import { fetchAgentRunProjection } from "../services/financeApi";
 
 type AgentResponseProps = {
   content: string;

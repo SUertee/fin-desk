@@ -28,7 +28,7 @@ import {
   updateProfile,
   type DataSourceStatus,
   type ProfileUpdatePayload,
-} from "../services/supabaseApi";
+} from "../services/financeApi";
 
 type SettingsPageProps = {
   userId: string;

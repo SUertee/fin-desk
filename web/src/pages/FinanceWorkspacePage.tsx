@@ -17,7 +17,7 @@ import { SpendingCalendar } from "../components/SpendingCalendar";
 import { TransactionsTable } from "../components/TransactionsTable";
 import { currencySymbol } from "../components/MetricsCards";
 import { useI18n } from "../i18n";
-import type { DataSourceStatus } from "../services/supabaseApi";
+import type { DataSourceStatus } from "../services/financeApi";
 import type { WorkspaceBrief } from "../types/financeAgent";
 
 type MonthlyTrend = {
