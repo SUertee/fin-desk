@@ -23,7 +23,10 @@ class DeepSeekTextClient:
 
     def __init__(self, profiles: dict[str, ModelProfile] | None = None):
         self._profiles = profiles or load_model_profiles()
-        self._client = None
+        # One client per profile: profiles differ in timeout (router fails
+        # fast at 10s) and may differ in key/base URL — sharing a single
+        # client would leak the first caller's settings to every profile.
+        self._clients: dict[str, Any] = {}
 
     def _profile(self, name: str) -> ModelProfile:
         profile = self._profiles.get(name)
@@ -39,16 +42,18 @@ class DeepSeekTextClient:
     def available(self, profile_name: str = "chat") -> bool:
         return bool(self.api_key(self._profile(profile_name)))
 
-    def _ensure_client(self, profile: ModelProfile):
-        if self._client is None:
+    def _ensure_client(self, profile_name: str, profile: ModelProfile):
+        client = self._clients.get(profile_name)
+        if client is None:
             from openai import AsyncOpenAI
 
-            self._client = AsyncOpenAI(
+            client = AsyncOpenAI(
                 api_key=self.api_key(profile),
                 base_url=getattr(profile, "api_base_url", "") or DEFAULT_BASE_URL,
                 timeout=profile.timeout_seconds,
             )
-        return self._client
+            self._clients[profile_name] = client
+        return client
 
     async def generate_text(
         self,
@@ -58,7 +63,7 @@ class DeepSeekTextClient:
         system: str = "",
     ) -> LLMResponse:
         model_profile = self._profile(profile)
-        client = self._ensure_client(model_profile)
+        client = self._ensure_client(profile, model_profile)
         messages: list[dict[str, Any]] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -93,7 +98,7 @@ class DeepSeekTextClient:
         final accumulated response with usage."""
 
         model_profile = self._profile(profile)
-        client = self._ensure_client(model_profile)
+        client = self._ensure_client(profile, model_profile)
         messages: list[dict[str, Any]] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -141,7 +146,7 @@ class DeepSeekTextClient:
         import json
 
         model_profile = self._profile(profile)
-        client = self._ensure_client(model_profile)
+        client = self._ensure_client(profile, model_profile)
         messages: list[dict[str, Any]] = []
         if system:
             messages.append({"role": "system", "content": system})

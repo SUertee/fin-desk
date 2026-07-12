@@ -39,6 +39,7 @@ def write_session_context(
     last_entities: list[dict[str, Any]] | None = None,
     last_result_brief: str | None = None,
     last_time_range: dict[str, Any] | None = None,
+    last_query: dict[str, Any] | None = None,
     conversation_summary: str | None = None,
 ) -> dict[str, Any]:
     session_id = _normalize_session_id(session_id)
@@ -51,6 +52,10 @@ def write_session_context(
         existing["last_result_brief"] = str(last_result_brief)[:600]
     if last_time_range is not None:
         existing["last_time_range"] = dict(last_time_range)
+    # Truthy-only write: a run with no typed query must never erase the
+    # previous useful last_query with an empty object.
+    if last_query:
+        existing["last_query"] = dict(last_query)
     if conversation_summary:
         existing["conversation_summary"] = str(conversation_summary)[:1200]
     existing["updated_at"] = datetime.now(timezone.utc).isoformat()

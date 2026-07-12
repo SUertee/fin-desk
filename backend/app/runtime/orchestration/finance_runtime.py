@@ -30,7 +30,9 @@ from app.runtime.memory.finance_memory_extractor import extract_finance_memory
 from app.runtime.memory.session_context import write_session_context
 from app.runtime.observability.trace_collector import TraceCollector
 from app.runtime.orchestration.entry_router import EntryRouter
-from app.runtime.orchestration.route_classifier import ModelRouteClassifier
+from app.runtime.orchestration.intake import ModelTurnContextualizer, TurnContextualizer
+from app.runtime.orchestration.router import ModelIntentClassifier
+from app.models.routing import route_for_path
 from app.runtime.policy.audit_runner import should_run_audit
 from app.runtime.policy.conversation_policy import compose_short_cfo_reply
 from app.runtime.policy.cost_policy import estimate_run_cost
@@ -133,7 +135,10 @@ class FinanceRuntime:
         self.llm_client = llm_client if llm_client is not None else DeepSeekTextClient()
         # Client getter: nulling self.llm_client also disables classification.
         self.entry_router = EntryRouter(
-            classifier=ModelRouteClassifier(lambda: self.llm_client)
+            classifier=ModelIntentClassifier(lambda: self.llm_client)
+        )
+        self.turn_contextualizer = TurnContextualizer(
+            model=ModelTurnContextualizer(lambda: self.llm_client)
         )
 
     async def handle(
@@ -163,8 +168,18 @@ class FinanceRuntime:
         trace.set_output_contract("ChatResponse")
 
         try:
-            route_decision = await self.entry_router.decide(
+            # Intake: resolve follow-up references BEFORE routing. The raw
+            # user text stays untouched for history/UI; everything the
+            # runtime executes reads the effective message.
+            turn = await self.turn_contextualizer.contextualize(
                 message,
+                chat_history=chat_history,
+                memory_context=memory_context or {},
+            )
+            effective_message = turn.effective_message
+
+            route_decision = await self.entry_router.decide(
+                effective_message,
                 chat_history=chat_history,
                 memory_context=memory_context or {},
             )
@@ -176,11 +191,18 @@ class FinanceRuntime:
                     agent="cfo",
                     latency_ms=route_decision.classifier_latency_ms,
                 )
+            # An unresolved reference must never run a fabricated finance
+            # query — ask for clarification instead.
+            if turn.resolution_status == "needs_clarification" and route.run_finance_pipeline:
+                route = route_for_path(
+                    "clarification", "clarification", label="context_clarification"
+                )
             if not route.run_finance_pipeline:
                 response_payload = self._compose_non_analysis_response(
                     trace=trace,
                     route=route,
                     route_decision=route_decision,
+                    turn=turn,
                     message=message,
                     profile=profile,
                     transactions=transactions,
@@ -204,7 +226,7 @@ class FinanceRuntime:
                 return response_payload
 
             policy = evaluate_runtime_policy(
-                user_message=message,
+                user_message=effective_message,
                 transactions=transactions,
                 monthly_totals=monthly_totals,
                 requested_specialist=requested_specialist,
@@ -214,13 +236,16 @@ class FinanceRuntime:
                     **policy.model_dump(),
                     "conversation_route": route.model_dump(mode="json"),
                     "route_decision": route_decision.ledger_dump(),
+                    "contextualization": turn.ledger_dump(),
                 }
             )
             context = AgentContext(
                 request_id=trace.request_id,
                 user_id=user_id,
                 entrypoint=entrypoint,
-                message=message,
+                message=effective_message,
+                raw_message=message,
+                effective_message=effective_message,
                 profile=profile,
                 transactions=transactions,
                 monthly_totals=monthly_totals,
@@ -397,6 +422,7 @@ class FinanceRuntime:
                 trace=trace,
                 context=finance_context,
                 message=message,
+                effective_message=effective_message,
                 chat_history=chat_history,
                 route=route,
                 response_payload=response_payload,
@@ -418,7 +444,9 @@ class FinanceRuntime:
             self._write_memory(
                 user_id=user_id,
                 session_id=session_id,
-                message=message,
+                # Memory extraction (topic/capability/last_query) reads the
+                # effective execution text, not the unresolved reference.
+                message=effective_message,
                 response_payload=response_payload,
                 finance_context=finance_context,
                 chat_history=chat_history,
@@ -441,6 +469,7 @@ class FinanceRuntime:
         trace: TraceCollector,
         route,
         route_decision,
+        turn,
         message: str,
         profile: dict[str, Any],
         transactions: list[dict[str, Any]],
@@ -452,6 +481,7 @@ class FinanceRuntime:
             {
                 "conversation_route": route.model_dump(mode="json"),
                 "route_decision": route_decision.ledger_dump(),
+                "contextualization": turn.ledger_dump(),
             }
         )
         trace.select_agents(["cfo"])
@@ -672,6 +702,7 @@ class FinanceRuntime:
         trace: TraceCollector,
         context: dict[str, Any],
         message: str,
+        effective_message: str = "",
         chat_history: list[dict[str, Any]],
         route,
         response_payload: dict[str, Any],
@@ -717,9 +748,17 @@ class FinanceRuntime:
                 f"{turn.get('role')}: {str(turn.get('content'))[:200]}"
                 for turn in (chat_history or [])[-6:]
             )
+            # Raw text keeps the user's phrasing; the contextualized reading
+            # tells the composer what the evidence actually answers.
+            interpreted = (
+                f"Interpreted as: {effective_message}\n\n"
+                if effective_message and effective_message != message
+                else ""
+            )
             prompt = (
                 f"User message: {message}\n\n"
-                f"Evidence digest:\n{digest}\n\n"
+                + interpreted
+                + f"Evidence digest:\n{digest}\n\n"
                 + (f"Recent conversation:\n{recent}\n\n" if recent else "")
                 + "Compose the CFO reply."
             )

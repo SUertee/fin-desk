@@ -27,7 +27,19 @@ _CONTEXT_HISTORY = [
     {"role": "assistant", "content": "shopping 本月支出 ¥11,348，占总支出 22.7%，建议复核大额消费。"},
 ]
 
-RouteFn = Callable[[str, list[dict[str, Any]]], Awaitable[ConversationRoute]]
+# Proven finance context: referring-back intents key on session memory
+# (written only by the finance pipeline), not on raw chat text.
+_CONTEXT_MEMORY = {
+    "session_memory": {
+        "last_topic": {"capability": "spending_review", "focus": "shopping"},
+        "last_result_brief": "shopping 本月支出 ¥11,348，占总支出 22.7%，建议复核大额消费。",
+    }
+}
+
+RouteFn = Callable[
+    [str, list[dict[str, Any]], dict[str, Any] | None],
+    Awaitable[ConversationRoute],
+]
 
 
 class RouterEvalCase(BaseModel):
@@ -105,7 +117,8 @@ async def run_router_eval(
     by_category: dict[str, CategoryScore] = {}
     for case in cases:
         history = _CONTEXT_HISTORY if case.has_prior_context else []
-        route = await route_fn(case.message, history)
+        memory = _CONTEXT_MEMORY if case.has_prior_context else None
+        route = await route_fn(case.message, history, memory)
         result = evaluate_case(route, case)
         results.append(result)
         score = by_category.setdefault(case.category, CategoryScore(total=0, passed=0))
@@ -122,12 +135,18 @@ async def run_router_eval(
 def deterministic_route_fn() -> RouteFn:
     """Current rule router wrapped in the async eval interface."""
 
-    from app.runtime.orchestration.entry_router import EntryRouter
+    from app.runtime.orchestration.router import EntryRouter
 
     router = EntryRouter()
 
-    async def route_fn(message: str, chat_history: list[dict[str, Any]]) -> ConversationRoute:
-        return router.route(message, chat_history=chat_history)
+    async def route_fn(
+        message: str,
+        chat_history: list[dict[str, Any]],
+        memory_context: dict[str, Any] | None = None,
+    ) -> ConversationRoute:
+        return router.route(
+            message, chat_history=chat_history, memory_context=memory_context
+        )
 
     return route_fn
 
@@ -140,14 +159,20 @@ def hybrid_route_fn() -> RouteFn:
     """
 
     from app.runtime.llm.deepseek_client import DeepSeekTextClient
-    from app.runtime.orchestration.entry_router import EntryRouter
-    from app.runtime.orchestration.route_classifier import ModelRouteClassifier
+    from app.runtime.orchestration.router import EntryRouter
+    from app.runtime.orchestration.router import ModelIntentClassifier
 
     client = DeepSeekTextClient()
-    router = EntryRouter(classifier=ModelRouteClassifier(lambda: client))
+    router = EntryRouter(classifier=ModelIntentClassifier(lambda: client))
 
-    async def route_fn(message: str, chat_history: list[dict[str, Any]]) -> ConversationRoute:
-        decision = await router.decide(message, chat_history=chat_history)
+    async def route_fn(
+        message: str,
+        chat_history: list[dict[str, Any]],
+        memory_context: dict[str, Any] | None = None,
+    ) -> ConversationRoute:
+        decision = await router.decide(
+            message, chat_history=chat_history, memory_context=memory_context
+        )
         return decision.route
 
     return route_fn

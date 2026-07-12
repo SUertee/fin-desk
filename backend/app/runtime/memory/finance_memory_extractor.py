@@ -45,6 +45,7 @@ def extract_finance_memory(
         ),
         "last_result_brief": " ".join(bit for bit in result_bits if bit)[:600],
         "last_time_range": period,
+        "last_query": _last_query_from_context(finance_context, user_message),
         "conversation_summary": build_conversation_summary(
             [
                 *chat_history,
@@ -53,6 +54,23 @@ def extract_finance_memory(
             ]
         ),
     }
+
+
+def _last_query_from_context(
+    finance_context: dict[str, Any], user_message: str
+) -> dict[str, Any] | None:
+    """Typed source of truth for follow-up turns.
+
+    Prefers `query_transactions.filters`; returns None when no typed query
+    ran so the session-memory writer never erases a previous useful
+    last_query with an empty object.
+    """
+
+    filters = (finance_context.get("transaction_query") or {}).get("filters") or {}
+    if not filters:
+        return None
+    metric = "expense_share" if "占比" in (user_message or "") else "total"
+    return {**{k: v for k, v in filters.items() if v is not None}, "metric": metric}
 
 
 def _period_from_monthly_totals(monthly_totals: list[dict[str, Any]]) -> dict[str, str]:
