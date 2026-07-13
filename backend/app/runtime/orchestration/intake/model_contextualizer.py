@@ -17,6 +17,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
 
+from typing import Literal, Optional
+
+from pydantic import BaseModel
+
 from app.runtime.orchestration.intake.contracts import (
     ContextualizedTurn,
     ResolvedSlot,
@@ -24,6 +28,22 @@ from app.runtime.orchestration.intake.contracts import (
 from app.runtime.orchestration.router.facts import excerpt
 
 logger = logging.getLogger(__name__)
+
+ModelCallStatus = Literal["called", "invalid_output", "failed"]
+
+
+class ModelContextualizationResult(BaseModel):
+    """Typed outcome of one model contextualization attempt.
+
+    `called` means a contract-valid turn was produced; `invalid_output`
+    means the model answered but violated the contract (rejected);
+    `failed` means the call itself errored. Latency is measured by the
+    caller so fakes in tests stay trivial.
+    """
+
+    status: ModelCallStatus
+    turn: Optional[ContextualizedTurn] = None
+    model_name: Optional[str] = None
 
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "turn_contextualizer.md"
 
@@ -83,20 +103,32 @@ class ModelTurnContextualizer:
         raw_message: str,
         chat_history: list[dict[str, Any]] | None = None,
         memory_context: dict[str, Any] | None = None,
-    ) -> ContextualizedTurn | None:
+    ) -> "ModelContextualizationResult":
         client = self._client()
         if client is None:
-            return None
+            return ModelContextualizationResult(status="failed")
         try:
             result = await client.generate_json(
                 _render_user_prompt(raw_message, chat_history, memory_context),
                 profile="router",
                 system=_system_prompt(),
             )
+        except Exception:
+            # Provider/network/timeout errors — deterministic result stands.
+            logger.warning(
+                "Turn contextualization call failed; deterministic result kept",
+                exc_info=True,
+            )
+            return ModelContextualizationResult(status="failed")
+
+        model_name = getattr(result, "model_name", None)
+        try:
             data = result.data or {}
             status = data.get("resolution_status")
             if status not in ("resolved", "needs_clarification"):
-                return None
+                return ModelContextualizationResult(
+                    status="invalid_output", model_name=model_name
+                )
             effective = str(data.get("effective_message") or "").strip()
             if not effective or status == "needs_clarification":
                 effective = raw_message
@@ -113,7 +145,7 @@ class ModelTurnContextualizer:
                         raw_text=None,
                     )
                 )
-            return ContextualizedTurn(
+            turn = ContextualizedTurn(
                 raw_message=raw_message,
                 effective_message=effective,
                 rewrite_applied=effective != raw_message,
@@ -122,13 +154,18 @@ class ModelTurnContextualizer:
                 confidence=_clamp(data.get("confidence")),
                 ambiguity_reason=str(data.get("ambiguity_reason") or "")[:64],
             )
+            return ModelContextualizationResult(
+                status="called", turn=turn, model_name=model_name
+            )
         except Exception:
-            # Enum/schema violations land here too — deterministic result stands.
+            # Contract violations (bad slot enums, ...) — output rejected.
             logger.warning(
-                "Turn contextualization failed; deterministic result kept",
+                "Turn contextualization output invalid; deterministic result kept",
                 exc_info=True,
             )
-            return None
+            return ModelContextualizationResult(
+                status="invalid_output", model_name=model_name
+            )
 
 
 def _clamp(value: Any) -> float:

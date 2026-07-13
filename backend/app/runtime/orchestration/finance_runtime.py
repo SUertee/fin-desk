@@ -171,12 +171,23 @@ class FinanceRuntime:
             # Intake: resolve follow-up references BEFORE routing. The raw
             # user text stays untouched for history/UI; everything the
             # runtime executes reads the effective message.
-            turn = await self.turn_contextualizer.contextualize(
+            intake = await self.turn_contextualizer.contextualize_with_trace(
                 message,
                 chat_history=chat_history,
                 memory_context=memory_context or {},
             )
+            turn = intake.turn
             effective_message = turn.effective_message
+            contextualization_record = self._contextualization_record(intake, message)
+            # Account for the real LLM call only — a deterministic resolve
+            # must never fabricate one.
+            if intake.model_status in ("called", "failed", "invalid_output"):
+                trace.record_tool_call(
+                    "turn_contextualize",
+                    status="called" if intake.model_status == "called" else "failed",
+                    agent="cfo",
+                    latency_ms=intake.model_latency_ms,
+                )
 
             route_decision = await self.entry_router.decide(
                 effective_message,
@@ -202,7 +213,7 @@ class FinanceRuntime:
                     trace=trace,
                     route=route,
                     route_decision=route_decision,
-                    turn=turn,
+                    contextualization_record=contextualization_record,
                     message=message,
                     profile=profile,
                     transactions=transactions,
@@ -236,7 +247,7 @@ class FinanceRuntime:
                     **policy.model_dump(),
                     "conversation_route": route.model_dump(mode="json"),
                     "route_decision": route_decision.ledger_dump(),
-                    "contextualization": turn.ledger_dump(),
+                    "contextualization": contextualization_record,
                 }
             )
             context = AgentContext(
@@ -469,7 +480,7 @@ class FinanceRuntime:
         trace: TraceCollector,
         route,
         route_decision,
-        turn,
+        contextualization_record: dict[str, Any],
         message: str,
         profile: dict[str, Any],
         transactions: list[dict[str, Any]],
@@ -481,7 +492,7 @@ class FinanceRuntime:
             {
                 "conversation_route": route.model_dump(mode="json"),
                 "route_decision": route_decision.ledger_dump(),
-                "contextualization": turn.ledger_dump(),
+                "contextualization": contextualization_record,
             }
         )
         trace.select_agents(["cfo"])
@@ -509,6 +520,32 @@ class FinanceRuntime:
             "request_id": trace.request_id,
             "data": None,
             "route": route.model_dump(mode="json"),
+        }
+
+    @staticmethod
+    def _contextualization_record(intake, raw_message: str) -> dict[str, Any]:
+        """Developer-layer intake projection for the run ledger.
+
+        Bounded by construction: message excerpts only — never the full
+        chat history, prompts, or raw ledger payloads.
+        """
+
+        from app.runtime.orchestration.router.facts import excerpt
+
+        turn = intake.turn
+        return {
+            "stage": "turn_contextualization",
+            "raw_message_excerpt": excerpt(raw_message),
+            "effective_message_excerpt": (
+                excerpt(turn.effective_message) if turn.rewrite_applied else ""
+            ),
+            **turn.ledger_dump(),
+            "model": {
+                "status": intake.model_status,
+                "latency_ms": intake.model_latency_ms,
+                "model_name": intake.model_name,
+                "profile": "router",
+            },
         }
 
     def _build_tool_registry(self) -> ToolRegistry:

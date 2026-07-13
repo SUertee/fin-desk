@@ -225,8 +225,10 @@ class TestModelTurnContextualizer:
                 }
             )
         )
-        turn = await model.contextualize("那餐饮呢？")
+        result = await model.contextualize("那餐饮呢？")
 
+        assert result.status == "called"
+        turn = result.turn
         assert turn is not None
         assert turn.resolution_status == "resolved"
         assert turn.resolved_slots[0].source == "model"
@@ -234,10 +236,34 @@ class TestModelTurnContextualizer:
         assert "execution_path" not in dumped
         assert "sql" not in dumped
 
+        # Invalid status enum -> output rejected, never a crash.
         bad = ModelTurnContextualizer(
             lambda: FakeLLM({"resolution_status": "run_pipeline"})
         )
-        assert await bad.contextualize("那餐饮呢？") is None
+        assert (await bad.contextualize("那餐饮呢？")).status == "invalid_output"
+
+        # Contract-violating slot enums -> invalid_output as well.
+        bad_slots = ModelTurnContextualizer(
+            lambda: FakeLLM(
+                {
+                    "effective_message": "x",
+                    "resolution_status": "resolved",
+                    "resolved_slots": [{"slot_type": "sql_table", "value": "t"}],
+                }
+            )
+        )
+        assert (await bad_slots.contextualize("那餐饮呢？")).status == "invalid_output"
+
+        # Provider errors -> failed.
+        class ExplodingLLM:
+            def available(self, profile="router"):
+                return True
+
+            async def generate_json(self, prompt, *, profile="router", system=""):
+                raise TimeoutError("provider timeout")
+
+        failing = ModelTurnContextualizer(lambda: ExplodingLLM())
+        assert (await failing.contextualize("那餐饮呢？")).status == "failed"
 
 
 class TestLastQueryMemory:
@@ -351,8 +377,26 @@ class TestRuntimeIntegration:
         # Run ledger records the rewrite for developers only.
         record = records[0]
         contextualization = record.policy["contextualization"]
+        assert contextualization["stage"] == "turn_contextualization"
         assert contextualization["rewrite_applied"] is True
         assert contextualization["resolution_status"] == "resolved"
+        assert contextualization["raw_message_excerpt"] == "那餐饮呢？"
+        assert "2026年6月" in contextualization["effective_message_excerpt"]
+        # Deterministic resolve: no fabricated LLM call anywhere.
+        assert contextualization["model"]["status"] == "skipped_deterministic"
+        assert "turn_contextualize" not in {c.name for c in record.tool_calls}
+        # Bounded projection only — no history, no prompts, no payloads.
+        assert set(contextualization) == {
+            "stage",
+            "raw_message_excerpt",
+            "effective_message_excerpt",
+            "resolution_status",
+            "rewrite_applied",
+            "confidence",
+            "ambiguity_reason",
+            "resolved_slots",
+            "model",
+        }
         assert result["route"]["execution_path"] == "cfo_analysis"
 
     async def test_unresolved_reference_routes_to_clarification(self, monkeypatch):
@@ -362,6 +406,9 @@ class TestRuntimeIntegration:
         assert result["route"]["execution_path"] == "clarification"
         contextualization = records[0].policy["contextualization"]
         assert contextualization["resolution_status"] == "needs_clarification"
+        # llm_client is None -> the model stage is honestly "unavailable".
+        assert contextualization["model"]["status"] == "skipped_model_unavailable"
+        assert contextualization["effective_message_excerpt"] == ""
 
     async def test_chat_route_persists_raw_message(self, monkeypatch):
         from app.models.chat import ChatRequest
@@ -412,3 +459,101 @@ class TestRuntimeIntegration:
 
         user_rows = [row for row in saved if row["role"] == "user"]
         assert user_rows and user_rows[0]["content"] == "那餐饮呢？"
+
+
+    async def test_capability_question_stays_light_end_to_end(self, monkeypatch):
+        result, records, captured = await self._run(monkeypatch, "你有什么用？", None)
+
+        route = result["route"]
+        assert route["run_finance_pipeline"] is False
+        assert route["attach_evidence"] is False
+        assert route["emit_steps"] is False
+        assert result["data"] is None  # no evidence / team-process payload
+        assert captured == []
+
+
+class TestIntakeOutcomeStatuses:
+    @pytest.mark.asyncio
+    async def test_deterministic_resolution_never_reports_a_model_call(self):
+        contextualizer = TurnContextualizer(model=None)
+        outcome = await contextualizer.contextualize_with_trace(
+            "那餐饮呢？", memory_context=LAST_QUERY_SHOPPING_SHARE, today=TODAY
+        )
+
+        assert outcome.model_status == "skipped_deterministic"
+        assert outcome.model_latency_ms is None
+        assert outcome.turn.resolution_status == "resolved"
+
+    @pytest.mark.asyncio
+    async def test_unavailable_model_is_reported_as_skipped(self):
+        class UnavailableModel:
+            def available(self):
+                return False
+
+            async def contextualize(self, *args, **kwargs):
+                raise AssertionError("must not be called")
+
+        contextualizer = TurnContextualizer(model=UnavailableModel())
+        outcome = await contextualizer.contextualize_with_trace(
+            "那餐饮呢？", memory_context=None
+        )
+
+        assert outcome.model_status == "skipped_model_unavailable"
+        assert outcome.turn.resolution_status == "needs_clarification"
+
+    @pytest.mark.asyncio
+    async def test_model_statuses_flow_through_the_facade(self):
+        from app.runtime.orchestration.intake import (
+            ContextualizedTurn,
+            ModelContextualizationResult,
+        )
+
+        class TypedModel:
+            def __init__(self, result):
+                self.result = result
+
+            def available(self):
+                return True
+
+            async def contextualize(self, *args, **kwargs):
+                return self.result
+
+        resolved = ModelContextualizationResult(
+            status="called",
+            turn=ContextualizedTurn(
+                raw_message="那个呢？",
+                effective_message="2026年6月餐饮花了多少？",
+                rewrite_applied=True,
+                resolution_status="resolved",
+                confidence=0.8,
+            ),
+            model_name="deepseek-chat",
+        )
+        outcome = await TurnContextualizer(model=TypedModel(resolved)).contextualize_with_trace(
+            "那个呢？", memory_context=None
+        )
+        assert outcome.model_status == "called"
+        assert outcome.model_name == "deepseek-chat"
+        assert outcome.model_latency_ms is not None
+        assert outcome.turn.rewrite_applied is True
+
+        for status in ("invalid_output", "failed"):
+            outcome = await TurnContextualizer(
+                model=TypedModel(ModelContextualizationResult(status=status))
+            ).contextualize_with_trace("那个呢？", memory_context=None)
+            assert outcome.model_status == status
+            # deterministic turn stands; request never fails
+            assert outcome.turn.resolution_status == "needs_clarification"
+
+
+def test_turn_contextualize_hidden_from_user_steps():
+    from app.runtime.observability.steps_projection import project_steps
+
+    steps = project_steps(
+        {
+            "tool_calls": [{"name": "turn_contextualize", "status": "called"}],
+            "handoffs": [],
+        }
+    )
+
+    assert steps == []
