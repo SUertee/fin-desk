@@ -340,7 +340,9 @@ async def test_model_classifier_parses_intent_only_json():
     good_llm = FakeLLM(
         {"intent": "finance_question", "confidence": 1.7, "reason_code": "colloquial"}
     )
-    candidate = await ModelIntentClassifier(lambda: good_llm).classify(payload)
+    classification = await ModelIntentClassifier(lambda: good_llm).classify(payload)
+    assert classification.status == "called"
+    candidate = classification.candidate
     assert candidate is not None
     assert candidate.source == "model"
     assert candidate.confidence == 1.0  # clamped, observability-only
@@ -351,7 +353,9 @@ async def test_model_classifier_parses_intent_only_json():
 
     # invalid JSON payloads and out-of-enum intents fall back, never crash
     for bad in ({}, {"intent": "run_sql"}, {"intent": "cfo_analysis"}):
-        assert await ModelIntentClassifier(lambda: FakeLLM(bad)).classify(payload) is None
+        result = await ModelIntentClassifier(lambda: FakeLLM(bad)).classify(payload)
+        assert result.status == "invalid_output"
+        assert result.candidate is None
 
 
 def test_route_classify_hidden_from_user_steps():

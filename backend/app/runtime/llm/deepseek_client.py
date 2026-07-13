@@ -13,6 +13,7 @@ from typing import Any
 from app.config.settings import ModelProfile, load_model_profiles
 from app.models.runtime import AgentRunUsage
 from app.runtime.llm.client import LLMResponse
+from app.runtime.llm.usage import usage_from_response
 
 DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
 DEFAULT_MODEL = "deepseek-chat"
@@ -74,15 +75,9 @@ class DeepSeekTextClient:
             temperature=model_profile.temperature,
             max_tokens=model_profile.max_tokens,
         )
-        usage = response.usage
         return LLMResponse(
             content=(response.choices[0].message.content or "").strip(),
-            usage=AgentRunUsage(
-                requests=1,
-                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-                output_tokens=getattr(usage, "completion_tokens", 0) or 0,
-                total_tokens=getattr(usage, "total_tokens", 0) or 0,
-            ),
+            usage=usage_from_response(response.usage),
             model_name=response.model,
         )
 
@@ -112,7 +107,7 @@ class DeepSeekTextClient:
             stream_options={"include_usage": True},
         )
         parts: list[str] = []
-        usage = AgentRunUsage(requests=1)
+        usage = AgentRunUsage(request_count=1)
         model_name = model_profile.model or DEFAULT_MODEL
         async for chunk in stream:
             if getattr(chunk, "model", None):
@@ -124,12 +119,7 @@ class DeepSeekTextClient:
                     await on_delta(delta)
             chunk_usage = getattr(chunk, "usage", None)
             if chunk_usage is not None:
-                usage = AgentRunUsage(
-                    requests=1,
-                    input_tokens=getattr(chunk_usage, "prompt_tokens", 0) or 0,
-                    output_tokens=getattr(chunk_usage, "completion_tokens", 0) or 0,
-                    total_tokens=getattr(chunk_usage, "total_tokens", 0) or 0,
-                )
+                usage = usage_from_response(chunk_usage)
         return LLMResponse(
             content="".join(parts).strip(),
             usage=usage,
@@ -163,15 +153,9 @@ class DeepSeekTextClient:
             data = json.loads(content)
         except json.JSONDecodeError:
             data = {}
-        usage = response.usage
         return LLMResponse(
             content=content,
             data=data,
-            usage=AgentRunUsage(
-                requests=1,
-                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-                output_tokens=getattr(usage, "completion_tokens", 0) or 0,
-                total_tokens=getattr(usage, "total_tokens", 0) or 0,
-            ),
+            usage=usage_from_response(response.usage),
             model_name=response.model,
         )

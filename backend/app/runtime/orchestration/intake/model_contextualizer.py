@@ -21,6 +21,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel
 
+from app.models.runtime import AgentRunUsage
 from app.runtime.orchestration.intake.contracts import (
     ContextualizedTurn,
     ResolvedSlot,
@@ -41,9 +42,14 @@ class ModelContextualizationResult(BaseModel):
     caller so fakes in tests stay trivial.
     """
 
+    model_config = {"arbitrary_types_allowed": True}
+
     status: ModelCallStatus
     turn: Optional[ContextualizedTurn] = None
     model_name: Optional[str] = None
+    # Billing facts: present whenever the provider answered, even when the
+    # payload was rejected as invalid — those tokens were charged.
+    usage: Optional[AgentRunUsage] = None
 
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "turn_contextualizer.md"
 
@@ -122,12 +128,13 @@ class ModelTurnContextualizer:
             return ModelContextualizationResult(status="failed")
 
         model_name = getattr(result, "model_name", None)
+        usage = getattr(result, "usage", None)
         try:
             data = result.data or {}
             status = data.get("resolution_status")
             if status not in ("resolved", "needs_clarification"):
                 return ModelContextualizationResult(
-                    status="invalid_output", model_name=model_name
+                    status="invalid_output", model_name=model_name, usage=usage
                 )
             effective = str(data.get("effective_message") or "").strip()
             if not effective or status == "needs_clarification":
@@ -155,7 +162,7 @@ class ModelTurnContextualizer:
                 ambiguity_reason=str(data.get("ambiguity_reason") or "")[:64],
             )
             return ModelContextualizationResult(
-                status="called", turn=turn, model_name=model_name
+                status="called", turn=turn, model_name=model_name, usage=usage
             )
         except Exception:
             # Contract violations (bad slot enums, ...) — output rejected.
@@ -164,7 +171,7 @@ class ModelTurnContextualizer:
                 exc_info=True,
             )
             return ModelContextualizationResult(
-                status="invalid_output", model_name=model_name
+                status="invalid_output", model_name=model_name, usage=usage
             )
 
 

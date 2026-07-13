@@ -33,6 +33,19 @@ from app.runtime.orchestration.router.resolver import (
 )
 
 
+def _normalize_classification(raw: Any) -> "IntentClassification":
+    """Tolerate legacy/fake classifiers returning a candidate or None."""
+
+    from app.runtime.orchestration.router.intent_model import IntentClassification
+    from app.runtime.orchestration.router.intent_types import IntentCandidate
+
+    if isinstance(raw, IntentClassification):
+        return raw
+    if isinstance(raw, IntentCandidate):
+        return IntentClassification(status="called", candidate=raw)
+    return IntentClassification(status="failed")
+
+
 class EntryRouter:
     """Hybrid entry router with a deterministic spine."""
 
@@ -65,18 +78,23 @@ class EntryRouter:
 
         classifier_status: ClassifierCallStatus = "skipped"
         classifier_latency_ms: float | None = None
+        classifier_usage = None
+        classifier_model: str | None = None
         if candidate is None and self.classifier is not None and self.classifier.available():
             payload = build_classifier_input(
                 message, facts, chat_history, memory_context
             )
             started = perf_counter()
-            model_candidate = await self.classifier.classify(payload)
+            raw_result = await self.classifier.classify(payload)
             classifier_latency_ms = round((perf_counter() - started) * 1000, 2)
-            if model_candidate is not None:
-                candidate = model_candidate
+            classification = _normalize_classification(raw_result)
+            classifier_usage = classification.usage
+            classifier_model = classification.model_name
+            if classification.candidate is not None:
+                candidate = classification.candidate
                 classifier_status = "called"
             else:
-                classifier_status = "failed"
+                classifier_status = classification.status
 
         if candidate is None:
             candidate = self.rules.fallback(facts)
@@ -89,4 +107,6 @@ class EntryRouter:
             message_excerpt=excerpt(message),
             classifier_status=classifier_status,
             classifier_latency_ms=classifier_latency_ms,
+            classifier_usage=classifier_usage,
+            classifier_model=classifier_model,
         )

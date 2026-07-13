@@ -12,8 +12,11 @@ from __future__ import annotations
 import logging
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Literal, Optional
 
+from pydantic import BaseModel
+
+from app.models.runtime import AgentRunUsage
 from app.runtime.orchestration.router.intent_types import (
     ClassifierInput,
     IntentCandidate,
@@ -47,6 +50,21 @@ def _render_user_prompt(payload: ClassifierInput) -> str:
     return "\n".join(lines)
 
 
+class IntentClassification(BaseModel):
+    """Typed outcome of one classification attempt, usage included.
+
+    `invalid_output` still carries usage when the provider reported it —
+    the tokens were billed regardless of contract validity.
+    """
+
+    model_config = {"arbitrary_types_allowed": True}
+
+    status: Literal["called", "invalid_output", "failed"]
+    candidate: Optional[IntentCandidate] = None
+    usage: Optional[AgentRunUsage] = None
+    model_name: Optional[str] = None
+
+
 class ModelIntentClassifier:
     """LLM intent classifier behind a client getter.
 
@@ -66,31 +84,50 @@ class ModelIntentClassifier:
             return False
         return bool(getattr(client, "available", lambda *_: False)("router"))
 
-    async def classify(self, payload: ClassifierInput) -> IntentCandidate | None:
+    async def classify(self, payload: ClassifierInput) -> "IntentClassification":
         client = self._client()
         if client is None:
-            return None
+            return IntentClassification(status="failed")
         try:
             result = await client.generate_json(
                 _render_user_prompt(payload),
                 profile="router",
                 system=_system_prompt(),
             )
+        except Exception:
+            # Provider/network/timeout errors — deterministic fallback.
+            logger.warning(
+                "Intent classification call failed; deterministic fallback",
+                exc_info=True,
+            )
+            return IntentClassification(status="failed")
+
+        # The provider charged for the response either way; account for it
+        # even when the payload turns out to violate the contract.
+        usage = getattr(result, "usage", None)
+        model_name = getattr(result, "model_name", None)
+        try:
             data = result.data or {}
             confidence = 0.0
             try:
                 confidence = min(max(float(data.get("confidence") or 0.0), 0.0), 1.0)
             except (TypeError, ValueError):
                 confidence = 0.0
-            return IntentCandidate(
+            candidate = IntentCandidate(
                 intent=data.get("intent"),
                 confidence=confidence,
                 reason_code=str(data.get("reason_code") or "model")[:64],
                 source="model",
             )
-        except Exception:
-            # Enum/schema violations land here too — deterministic fallback.
-            logger.warning(
-                "Intent classification failed; deterministic fallback", exc_info=True
+            return IntentClassification(
+                status="called", candidate=candidate, usage=usage, model_name=model_name
             )
-            return None
+        except Exception:
+            # Enum/schema violations — output rejected, usage still real.
+            logger.warning(
+                "Intent classification output invalid; deterministic fallback",
+                exc_info=True,
+            )
+            return IntentClassification(
+                status="invalid_output", usage=usage, model_name=model_name
+            )

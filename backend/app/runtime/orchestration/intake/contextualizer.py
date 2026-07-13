@@ -14,6 +14,8 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel
 
+from app.models.runtime import AgentRunUsage
+
 from app.runtime.orchestration.intake.contracts import (
     ContextualizedTurn,
     unchanged_turn,
@@ -37,10 +39,13 @@ IntakeModelStatus = Literal[
 class IntakeOutcome(BaseModel):
     """Contextualized turn plus the developer-layer account of the model call."""
 
+    model_config = {"arbitrary_types_allowed": True}
+
     turn: ContextualizedTurn
     model_status: IntakeModelStatus = "skipped_deterministic"
     model_latency_ms: Optional[float] = None
     model_name: Optional[str] = None
+    model_usage: Optional["AgentRunUsage"] = None
 
 
 def _normalize_model_result(result: Any) -> ModelContextualizationResult:
@@ -114,10 +119,12 @@ class TurnContextualizer:
                 model_status="called",
                 model_latency_ms=latency_ms,
                 model_name=result.model_name,
+                model_usage=result.usage,
             )
         return IntakeOutcome(
             turn=turn,
             model_status=result.status if result.status != "called" else "failed",
             model_latency_ms=latency_ms,
             model_name=result.model_name,
+            model_usage=result.usage,
         )

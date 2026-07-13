@@ -199,3 +199,52 @@ def test_trace_collector_records_output_validation_failure():
             "errors": ["reply: Field required (missing)"],
         }
     ]
+
+
+def test_add_usage_accumulates_across_stages():
+    trace = TraceCollector.start_run(
+        user_id="demo", entrypoint="chat", runtime_requested="self_hosted"
+    )
+
+    trace.add_usage(
+        AgentRunUsage(
+            request_count=1, model_response_count=1,
+            input_tokens=100, output_tokens=20, total_tokens=120,
+        )
+    )
+    trace.add_usage(
+        {"request_count": 1, "model_response_count": 1,
+         "input_tokens": 40, "output_tokens": 10, "total_tokens": 50}
+    )
+
+    assert trace.usage.request_count == 2
+    assert trace.usage.model_response_count == 2
+    assert trace.usage.input_tokens == 140
+    assert trace.usage.output_tokens == 30
+    assert trace.usage.total_tokens == 170
+
+
+def test_add_usage_tolerates_none_and_empty():
+    trace = TraceCollector.start_run(
+        user_id="demo", entrypoint="chat", runtime_requested="self_hosted"
+    )
+
+    trace.add_usage(None)
+    trace.add_usage({})
+    trace.add_usage(AgentRunUsage())
+
+    assert trace.usage.total_tokens == 0
+    assert trace.usage.request_count == 0
+
+
+def test_set_usage_keeps_overwrite_semantics():
+    trace = TraceCollector.start_run(
+        user_id="demo", entrypoint="chat", runtime_requested="self_hosted"
+    )
+
+    trace.add_usage({"request_count": 1, "input_tokens": 100, "total_tokens": 100})
+    trace.set_usage({"request_count": 1, "input_tokens": 5, "total_tokens": 5})
+
+    # set_usage overwrites (legacy single-stage behavior), never adds.
+    assert trace.usage.input_tokens == 5
+    assert trace.usage.total_tokens == 5

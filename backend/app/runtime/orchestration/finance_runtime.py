@@ -11,7 +11,7 @@ from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
 from app.connectors.postgres.statement_import_store import list_latest_quality_reports_db
 from app.models.agent_data import AgentAction, AgentAudit, AgentFinding, SummaryCard
 from app.models.chat import ChatResponse
-from app.models.runtime import RuntimePolicyResult
+from app.models.runtime import AgentRunUsage, RuntimePolicyResult
 from app.runtime.contracts.output_validation import validate_output_contract
 from app.runtime.execution import (
     AgentContext,
@@ -171,6 +171,7 @@ class FinanceRuntime:
             # Intake: resolve follow-up references BEFORE routing. The raw
             # user text stays untouched for history/UI; everything the
             # runtime executes reads the effective message.
+            llm_stages: dict[str, dict[str, Any]] = {}
             intake = await self.turn_contextualizer.contextualize_with_trace(
                 message,
                 chat_history=chat_history,
@@ -188,6 +189,15 @@ class FinanceRuntime:
                     agent="cfo",
                     latency_ms=intake.model_latency_ms,
                 )
+                trace.add_usage(intake.model_usage)
+                llm_stages["turn_contextualize"] = self._llm_stage_entry(
+                    trace,
+                    status=intake.model_status,
+                    usage=intake.model_usage,
+                    model_name=intake.model_name,
+                    profile="router",
+                    latency_ms=intake.model_latency_ms,
+                )
 
             route_decision = await self.entry_router.decide(
                 effective_message,
@@ -200,6 +210,15 @@ class FinanceRuntime:
                     "route_classify",
                     status="called" if route_decision.classifier_status == "called" else "failed",
                     agent="cfo",
+                    latency_ms=route_decision.classifier_latency_ms,
+                )
+                trace.add_usage(route_decision.classifier_usage)
+                llm_stages["route_classify"] = self._llm_stage_entry(
+                    trace,
+                    status=route_decision.classifier_status,
+                    usage=route_decision.classifier_usage,
+                    model_name=route_decision.classifier_model,
+                    profile="router",
                     latency_ms=route_decision.classifier_latency_ms,
                 )
             # An unresolved reference must never run a fabricated finance
@@ -221,6 +240,8 @@ class FinanceRuntime:
                     chat_history=chat_history,
                     memory_context=memory_context or {},
                 )
+                if llm_stages:
+                    trace.policy["llm_usage_by_stage"] = llm_stages
                 _, response_validation = validate_output_contract(
                     agent="cfo",
                     contract="ChatResponse",
@@ -429,7 +450,7 @@ class FinanceRuntime:
                         }
                     )
                 )
-            await self._llm_compose_reply(
+            compose_stage = await self._llm_compose_reply(
                 trace=trace,
                 context=finance_context,
                 message=message,
@@ -439,6 +460,10 @@ class FinanceRuntime:
                 response_payload=response_payload,
                 on_reply_delta=on_reply_delta,
             )
+            if compose_stage is not None:
+                llm_stages["llm_compose"] = compose_stage
+            if llm_stages:
+                trace.policy["llm_usage_by_stage"] = llm_stages
             _, response_validation = validate_output_contract(
                 agent="cfo",
                 contract="ChatResponse",
@@ -521,6 +546,43 @@ class FinanceRuntime:
             "data": None,
             "route": route.model_dump(mode="json"),
         }
+
+    def _llm_stage_entry(
+        self,
+        trace: TraceCollector,
+        *,
+        status: str,
+        usage,
+        model_name: str | None,
+        profile: str,
+        latency_ms: float | None,
+    ) -> dict[str, Any]:
+        """Bounded per-stage LLM accounting for policy.llm_usage_by_stage.
+
+        Metadata only — tokens, estimated cost, model, profile, status.
+        Never prompts, chat history, or ledger payloads. Usage is included
+        whenever the provider reported one, even for invalid output: those
+        tokens were billed.
+        """
+
+        entry: dict[str, Any] = {
+            "status": status,
+            "latency_ms": latency_ms,
+            "model_name": model_name,
+            "profile": profile,
+        }
+        if usage is not None:
+            parsed = AgentRunUsage.model_validate(usage)
+            cost = estimate_run_cost(
+                entrypoint=trace.entrypoint, usage=parsed, model_name=model_name
+            )
+            entry.update(
+                input_tokens=parsed.input_tokens,
+                output_tokens=parsed.output_tokens,
+                total_tokens=parsed.total_tokens,
+                estimated_cost_usd=cost.estimated_total_cost,
+            )
+        return entry
 
     @staticmethod
     def _contextualization_record(intake, raw_message: str) -> dict[str, Any]:
@@ -744,7 +806,7 @@ class FinanceRuntime:
         route,
         response_payload: dict[str, Any],
         on_reply_delta=None,
-    ) -> None:
+    ) -> dict[str, Any] | None:
         """Compose the final reply with the LLM when available.
 
         Grounded strictly in the run's evidence digest; on missing key or any
@@ -754,7 +816,7 @@ class FinanceRuntime:
 
         if not self.llm_client or not getattr(self.llm_client, "available", lambda *_: False)("chat"):
             trace.record_tool_call("llm_compose", status="skipped", agent="cfo")
-            return
+            return None
         started = perf_counter()
         try:
             digest = self._evidence_digest(context, response_payload)
@@ -805,23 +867,37 @@ class FinanceRuntime:
                 )
             else:
                 result = await self.llm_client.generate_text(prompt, profile="chat", system=system)
+            # The provider billed this response whether or not the content
+            # is usable — accumulate (never overwrite prior stages).
+            latency_ms = round((perf_counter() - started) * 1000, 2)
+            trace.add_usage(result.usage)
+            trace.record_tool_call(
+                "llm_compose", status="called", agent="cfo", latency_ms=latency_ms
+            )
             if result.content:
                 response_payload["reply"] = result.content
-                trace.set_usage(result.usage)
                 trace.set_model_name(result.model_name or "deepseek-chat")
-                trace.record_tool_call(
-                    "llm_compose",
-                    status="called",
-                    agent="cfo",
-                    latency_ms=round((perf_counter() - started) * 1000, 2),
-                )
+            return self._llm_stage_entry(
+                trace,
+                status="called" if result.content else "empty_content",
+                usage=result.usage,
+                model_name=result.model_name or "deepseek-chat",
+                profile="chat",
+                latency_ms=latency_ms,
+            )
         except Exception as exc:
             logger.warning("LLM compose failed; deterministic reply kept: %s", exc)
+            latency_ms = round((perf_counter() - started) * 1000, 2)
             trace.record_tool_call(
-                "llm_compose",
+                "llm_compose", status="failed", agent="cfo", latency_ms=latency_ms
+            )
+            return self._llm_stage_entry(
+                trace,
                 status="failed",
-                agent="cfo",
-                latency_ms=round((perf_counter() - started) * 1000, 2),
+                usage=None,
+                model_name=None,
+                profile="chat",
+                latency_ms=latency_ms,
             )
 
     @staticmethod

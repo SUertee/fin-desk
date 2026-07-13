@@ -173,7 +173,29 @@ class TraceCollector:
         self.output_validations.append(parsed)
 
     def set_usage(self, usage: AgentRunUsage | dict[str, Any]) -> None:
+        """Overwrite semantics — kept for existing single-stage callers."""
+
         self.usage = AgentRunUsage.model_validate(usage)
+
+    def add_usage(self, usage: AgentRunUsage | dict[str, Any] | None) -> None:
+        """Accumulate one LLM stage's usage into the run total.
+
+        Multiple stages (route_classify, turn_contextualize, llm_compose)
+        each add their share; None or empty payloads are safe no-ops.
+        """
+
+        if usage is None:
+            return
+        parsed = AgentRunUsage.model_validate(usage)
+        self.usage = AgentRunUsage(
+            request_count=self.usage.request_count + parsed.request_count,
+            model_response_count=(
+                self.usage.model_response_count + parsed.model_response_count
+            ),
+            input_tokens=self.usage.input_tokens + parsed.input_tokens,
+            output_tokens=self.usage.output_tokens + parsed.output_tokens,
+            total_tokens=self.usage.total_tokens + parsed.total_tokens,
+        )
 
     def set_model_name(self, model_name: str | None) -> None:
         self.model_name = model_name
