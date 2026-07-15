@@ -39,17 +39,17 @@ def test_trace_collector_records_runtime_and_policy():
     )
     trace.set_cost(
         {
-            "model_name": "gpt-test",
-            "currency": "USD",
-            "estimated_total_cost": 0.001,
-            "pricing_source": "env_per_1m_tokens",
+            "status": "complete",
+            "reporting_currency": "USD",
+            "billing_totals": [{"amount": "0.001", "currency": "USD"}],
+            "reporting_total": {"amount": "0.001", "currency": "USD"},
         }
     )
     trace.mark_runtime_used("openai")
 
     logged = trace.to_log_dict()
 
-    assert logged["schema_version"] == "agent-run-record/v1"
+    assert logged["schema_version"] == "agent-run-record/v2"
     assert logged["user_id"] == "demo"
     assert logged["entrypoint"] == "chat"
     assert logged["runtime_requested"] == "openai"
@@ -77,8 +77,11 @@ def test_trace_collector_records_runtime_and_policy():
         "output_tokens": 25,
         "total_tokens": 125,
     }
-    assert logged["cost"]["model_name"] == "gpt-test"
-    assert logged["cost"]["estimated_total_cost"] == 0.001
+    assert logged["cost"]["status"] == "complete"
+    assert logged["cost"]["reporting_total"] == {
+        "amount": "0.001",
+        "currency": "USD",
+    }
     assert logged["latency_ms"] >= 0
 
 

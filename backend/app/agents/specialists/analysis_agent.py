@@ -31,6 +31,12 @@ Rules:
 """
 
 
+def analysis_agent_model_name() -> str:
+    return os.getenv("OPENAI_ANALYSIS_MODEL") or os.getenv(
+        "OPENAI_AGENT_MODEL", "gpt-4o"
+    )
+
+
 def build_analysis_agent(tools: list[Any] | None = None) -> Any:
     try:
         from agents import Agent
@@ -40,8 +46,7 @@ def build_analysis_agent(tools: list[Any] | None = None) -> Any:
     return Agent(
         name="Finance Analysis Specialist",
         instructions=ANALYSIS_AGENT_INSTRUCTIONS.strip(),
-        model=os.getenv("OPENAI_ANALYSIS_MODEL")
-        or os.getenv("OPENAI_AGENT_MODEL", "gpt-4o"),
+        model=analysis_agent_model_name(),
         output_type=AnalysisAgentOutput,
         tools=tools or [],
     )

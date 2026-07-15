@@ -64,8 +64,10 @@ PostgreSQL connector layer: connection management, schema, and data storage adap
 | `input_tokens` | INTEGER | Input token total |
 | `output_tokens` | INTEGER | Output token total |
 | `total_tokens` | INTEGER | Combined token total |
-| `cost_currency` | TEXT | Currency used for configured cost estimates |
-| `estimated_total_cost` | DOUBLE PRECISION | Estimated cost from configured per-1M token rates |
+| `cost_status` | TEXT | `complete`, `partial`, or `not_applicable` |
+| `billing_totals` | JSONB | Native provider costs grouped by billing currency |
+| `reporting_currency` | TEXT | Currency selected for unified cost reporting |
+| `reporting_total_cost` | NUMERIC | Converted total when all required FX snapshots exist |
 | `record` | JSONB | Full versioned `AgentRunRecord` payload, including tools, handoffs, output validations, usage, and errors |
 | `created_at` | TIMESTAMPTZ | When the record was persisted |
 
@@ -94,13 +96,13 @@ DATABASE_URL=postgresql://personal_finance_user:personal_finance_password@localh
 
 If neither is set, the app falls back to in-memory storage only (no persistence across restarts).
 
-Cost estimates are disabled by default. To enable them, configure per-1M token
-rates in the backend environment:
+Model-native prices are configured per profile in `app/config/model_profiles.yaml`.
+Select the deployment reporting currency with:
 
 ```
-OPENAI_COST_CURRENCY=USD
-OPENAI_AGENT_INPUT_COST_PER_1M=...
-OPENAI_AGENT_OUTPUT_COST_PER_1M=...
-OPENAI_ANALYSIS_INPUT_COST_PER_1M=...
-OPENAI_ANALYSIS_OUTPUT_COST_PER_1M=...
+FINANCE_REPORTING_CURRENCY=USD
 ```
+
+Cross-currency reporting uses dated rows from `exchange_rate_snapshots`; the
+chat path never calls a live FX provider. Missing snapshots leave native costs
+intact and mark the run cost as partial.

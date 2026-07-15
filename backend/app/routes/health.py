@@ -30,7 +30,7 @@ def health():
             "harness.agent_contracts",
             "policy.runtime_policy",
             "policy.audit_runner",
-            "policy.cost_policy",
+            "costing.service",
             "observability.trace_collector",
             "observability.run_observer",
             "contracts.output_validation",

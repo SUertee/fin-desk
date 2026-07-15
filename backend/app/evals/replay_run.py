@@ -16,7 +16,10 @@ from app.evals.replay import (
     get_eval_case,
 )
 from app.models.runtime import AgentRunRecord
-from app.connectors.postgres.run_ledger_store import get_agent_run_record_db
+from app.connectors.postgres.run_ledger_store import (
+    get_agent_run_record_db,
+    normalize_agent_run_record,
+)
 
 
 RecordLoader = Callable[[str], dict[str, Any] | None]
@@ -70,7 +73,7 @@ def replay_agent_run(
             error="Agent run record not found",
         )
 
-    record = AgentRunRecord.model_validate(raw_record)
+    record = AgentRunRecord.model_validate(normalize_agent_run_record(raw_record))
     evaluation = None
     if case_id:
         case = get_eval_case(case_id, fixtures_dir)

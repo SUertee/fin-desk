@@ -6,15 +6,59 @@ export type AgentRunUsage = {
   total_tokens: number;
 };
 
-export type AgentRunCost = {
-  model_name?: string | null;
+export type DecimalString = string;
+
+export type MoneyAmount = {
+  amount: DecimalString;
   currency: string;
-  input_cost_per_1m?: number | null;
-  output_cost_per_1m?: number | null;
-  estimated_input_cost?: number;
-  estimated_output_cost?: number;
-  estimated_total_cost: number;
-  pricing_source?: string;
+};
+
+export type ExchangeRateSnapshot = {
+  billing_currency: string;
+  reporting_currency: string;
+  exchange_rate: DecimalString;
+  exchange_rate_date: string;
+  exchange_rate_source: string;
+};
+
+export type ModelPricing = {
+  profile: string;
+  provider: string;
+  model_name: string;
+  billing_currency: string;
+  input_cost_per_1m: DecimalString;
+  output_cost_per_1m: DecimalString;
+  pricing_source: string;
+  pricing_effective_date: string;
+};
+
+export type LLMStageCost = {
+  stage: string;
+  status: string;
+  profile: string;
+  provider?: string | null;
+  model_name?: string | null;
+  usage: AgentRunUsage;
+  pricing?: ModelPricing | null;
+  billing_input_cost?: MoneyAmount | null;
+  billing_output_cost?: MoneyAmount | null;
+  billing_total?: MoneyAmount | null;
+  reporting_total?: MoneyAmount | null;
+  exchange_rate_snapshot?: ExchangeRateSnapshot | null;
+  issues: Array<
+    | "missing_pricing"
+    | "missing_exchange_rate"
+    | "historical_v1_detail_unavailable"
+  >;
+};
+
+export type AgentRunCost = {
+  status: "complete" | "partial" | "not_applicable";
+  issues: LLMStageCost["issues"];
+  reporting_currency: string;
+  billing_totals: MoneyAmount[];
+  reporting_total?: MoneyAmount | null;
+  stages: LLMStageCost[];
 };
 
 export type AgentToolCall = {

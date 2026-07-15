@@ -55,7 +55,8 @@ async def test_analyze_route_uses_openai_analysis_runtime(monkeypatch):
     assert saved_records[0].output_validations[0].status == "passed"
     assert saved_records[0].output_validations[0].contract == "AnalyzeResponse"
     assert saved_records[0].input_summary.transaction_count == 2
-    assert saved_records[0].cost.pricing_source == "env_per_1m_tokens"
+    assert saved_records[0].cost.status == "not_applicable"
+    assert saved_records[0].cost.issues == []
 
 
 @pytest.mark.asyncio

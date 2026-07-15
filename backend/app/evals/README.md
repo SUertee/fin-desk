@@ -74,7 +74,7 @@ The export format supports either raw `AgentRunRecord` objects or wrapped
 records with an explicit fixture mapping:
 
 ```json
-{"case_id":"chat_spending_review","record":{"schema_version":"agent-run-record/v1"}}
+{"case_id":"chat_spending_review","record":{"schema_version":"agent-run-record/v2"}}
 ```
 
 When `case_id` is omitted, the harness attempts to match a fixture by

@@ -239,4 +239,4 @@ class TraceCollector:
         )
 
     def to_log_dict(self) -> dict[str, Any]:
-        return self.to_run_record().model_dump()
+        return self.to_run_record().model_dump(mode="json")

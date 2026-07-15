@@ -152,6 +152,29 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
 CREATE INDEX IF NOT EXISTS idx_analysis_runs_user_created_at
     ON analysis_runs (user_id, created_at DESC, id DESC);
 
+-- Immutable exchange-rate snapshots used by AI cost reporting
+CREATE TABLE IF NOT EXISTS exchange_rate_snapshots (
+    billing_currency    TEXT NOT NULL,
+    reporting_currency  TEXT NOT NULL,
+    exchange_rate       NUMERIC(28, 12) NOT NULL CHECK (exchange_rate > 0),
+    exchange_rate_date  DATE NOT NULL,
+    exchange_rate_source TEXT NOT NULL,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (
+        billing_currency,
+        reporting_currency,
+        exchange_rate_date,
+        exchange_rate_source
+    )
+);
+
+CREATE INDEX IF NOT EXISTS idx_exchange_rate_lookup
+    ON exchange_rate_snapshots (
+        billing_currency,
+        reporting_currency,
+        exchange_rate_date DESC
+    );
+
 -- Agent harness run ledger for audit and replay
 CREATE TABLE IF NOT EXISTS agent_run_records (
     request_id        TEXT PRIMARY KEY,
@@ -168,8 +191,10 @@ CREATE TABLE IF NOT EXISTS agent_run_records (
     input_tokens      INTEGER NOT NULL DEFAULT 0,
     output_tokens     INTEGER NOT NULL DEFAULT 0,
     total_tokens      INTEGER NOT NULL DEFAULT 0,
-    cost_currency     TEXT NOT NULL DEFAULT 'USD',
-    estimated_total_cost DOUBLE PRECISION NOT NULL DEFAULT 0,
+    cost_status       TEXT NOT NULL DEFAULT 'not_applicable',
+    billing_totals    JSONB NOT NULL DEFAULT '[]'::jsonb,
+    reporting_currency TEXT NOT NULL DEFAULT 'USD',
+    reporting_total_cost NUMERIC(28, 12),
     record            JSONB NOT NULL,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -182,6 +207,12 @@ CREATE INDEX IF NOT EXISTS idx_agent_run_records_entrypoint_created_at
 
 CREATE INDEX IF NOT EXISTS idx_agent_run_records_error_created_at
     ON agent_run_records (error_type, created_at DESC);
+
+-- V2 cost columns for databases created before multi-currency accounting.
+ALTER TABLE agent_run_records ADD COLUMN IF NOT EXISTS cost_status TEXT NOT NULL DEFAULT 'not_applicable';
+ALTER TABLE agent_run_records ADD COLUMN IF NOT EXISTS billing_totals JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE agent_run_records ADD COLUMN IF NOT EXISTS reporting_currency TEXT NOT NULL DEFAULT 'USD';
+ALTER TABLE agent_run_records ADD COLUMN IF NOT EXISTS reporting_total_cost NUMERIC(28, 12);
 
 -- Category correction feedback (for improving categorization accuracy)
 -- CREATE TABLE IF NOT EXISTS category_corrections (

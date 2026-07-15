@@ -1,14 +1,18 @@
 """/analyze endpoint backed by the OpenAI Agents SDK analysis runtime."""
 
 import logging
+from datetime import date
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from app.models.analysis import AnalyzeRequest, AnalyzeResponse
+from app.agents.specialists.analysis_agent import analysis_agent_model_name
+from app.config.settings import get_settings
+from app.connectors.postgres.exchange_rate_store import get_exchange_rate_snapshot_db
 from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
 from app.runtime.llm.openai_analysis_runtime import OpenAIAnalysisRuntime
-from app.runtime.policy.cost_policy import estimate_run_cost, model_name_for_entrypoint
+from app.runtime.costing import CostingService
 from app.runtime.contracts.output_validation import validate_output_contract
 from app.runtime.observability.trace_collector import TraceCollector
 from app.services.anomalies import detect_anomalies
@@ -18,6 +22,7 @@ from app.services.summaries import build_category_summary
 logger = logging.getLogger(__name__)
 router = APIRouter()
 _runtime = OpenAIAnalysisRuntime()
+_costing = CostingService(exchange_rate_lookup=get_exchange_rate_snapshot_db)
 
 
 def _persist_trace(trace: TraceCollector) -> None:
@@ -27,11 +32,12 @@ def _persist_trace(trace: TraceCollector) -> None:
 
 
 def _finalize_trace_cost(trace: TraceCollector) -> None:
+    settings = get_settings()
     trace.set_cost(
-        estimate_run_cost(
-            entrypoint=trace.entrypoint,
-            usage=trace.usage,
-            model_name=trace.model_name,
+        _costing.cost_stage_entries(
+            trace.policy.get("llm_usage_by_stage") or {},
+            reporting_currency=settings.cost.reporting_currency,
+            accounting_date=date.today(),
         )
     )
 
@@ -43,7 +49,7 @@ async def analyze(req: AnalyzeRequest):
         entrypoint="analyze",
         runtime_requested="openai",
     )
-    trace.set_model_name(model_name_for_entrypoint("analyze"))
+    trace.set_model_name(analysis_agent_model_name())
     trace.select_agents(["analysis_specialist"])
     trace.set_output_contract("AnalyzeResponse")
     try:
@@ -67,12 +73,21 @@ async def analyze(req: AnalyzeRequest):
         analysis = await _runtime.run(payload)
         observations = analysis.pop("_run_observations", None)
         if observations is not None:
+            settings = get_settings()
             trace.record_observations(
                 tool_calls=observations.tool_calls,
                 handoffs=observations.handoffs,
                 output_validations=observations.output_validations,
                 usage=observations.usage,
             )
+            trace.policy["llm_usage_by_stage"] = {
+                "analysis": {
+                    "status": "called",
+                    "model_name": trace.model_name,
+                    "profile": settings.analysis_model_profile,
+                    **observations.usage.model_dump(mode="json"),
+                }
+            }
         trace.mark_runtime_used("openai")
         response_payload = {
             "ok": True,

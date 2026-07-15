@@ -6,6 +6,9 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.costing import AgentRunCost
+from app.models.runtime_usage import AgentRunUsage
+
 
 ComplexityLevel = Literal["simple", "moderate", "complex"]
 RiskLevel = Literal["low", "medium", "high"]
@@ -69,33 +72,10 @@ class AgentOutputValidation(BaseModel):
     errors: list[str] = Field(default_factory=list)
 
 
-class AgentRunUsage(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    request_count: int = Field(default=0, ge=0)
-    model_response_count: int = Field(default=0, ge=0)
-    input_tokens: int = Field(default=0, ge=0)
-    output_tokens: int = Field(default=0, ge=0)
-    total_tokens: int = Field(default=0, ge=0)
-
-
-class AgentRunCost(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    model_name: str | None = None
-    currency: str = "USD"
-    input_cost_per_1m: float | None = Field(default=None, ge=0)
-    output_cost_per_1m: float | None = Field(default=None, ge=0)
-    estimated_input_cost: float = Field(default=0, ge=0)
-    estimated_output_cost: float = Field(default=0, ge=0)
-    estimated_total_cost: float = Field(default=0, ge=0)
-    pricing_source: str = "not_configured"
-
-
 class AgentRunRecord(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
-    schema_version: str = "agent-run-record/v1"
+    schema_version: Literal["agent-run-record/v2"] = "agent-run-record/v2"
     request_id: str
     entrypoint: RuntimeEntrypoint
     user_id: str
