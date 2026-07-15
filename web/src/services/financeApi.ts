@@ -117,12 +117,97 @@ export type ProfileUpdatePayload = {
   monthly_expenses?: number;
   notes?: string;
   preferences?: UserPreferencesPayload;
+  cost_preferences?: CostReportingPreferencesPayload;
 };
 
 export type UserPreferencesPayload = {
   response_tone: "concise" | "balanced" | "comprehensive";
   preferred_language: "en" | "zh" | "auto";
   evidence_level: "brief" | "detailed" | "audit_heavy";
+};
+
+export type CostReportingPreferencesPayload = {
+  reporting_currency: string;
+  monthly_ai_budget: number | null;
+};
+
+export type MoneyAmount = {
+  amount: string;
+  currency: string;
+};
+
+export type ExchangeRateSnapshot = {
+  billing_currency: string;
+  reporting_currency: string;
+  exchange_rate: string;
+  exchange_rate_date: string;
+  exchange_rate_source: string;
+};
+
+export type AiCostOverview = {
+  user_id: string;
+  period: { date_from: string; date_to: string };
+  status: "complete" | "partial" | "empty";
+  issues: string[];
+  reporting_currency: string;
+  coverage: {
+    run_count: number;
+    billable_run_count: number;
+    complete_run_count: number;
+    partial_run_count: number;
+    provider_count: number;
+    subscription_status: "not_connected";
+    latest_exchange_rate_date: string | null;
+  };
+  summary: {
+    tracked_total: MoneyAmount | null;
+    api_usage_total: MoneyAmount | null;
+    converted_subtotal: MoneyAmount | null;
+    subscription_total: MoneyAmount | null;
+    budget: {
+      status:
+        | "not_configured"
+        | "on_track"
+        | "watch"
+        | "over_budget"
+        | "unavailable";
+      limit: MoneyAmount | null;
+      utilization_percent: string | null;
+    };
+  };
+  trend: Array<{
+    date: string;
+    status: "complete" | "partial";
+    reporting_total: MoneyAmount | null;
+    run_count: number;
+  }>;
+  breakdowns: {
+    providers: AiCostBreakdownItem[];
+    models: AiCostBreakdownItem[];
+    entrypoints: AiCostBreakdownItem[];
+  };
+  items: AiCostItem[];
+};
+
+export type AiCostBreakdownItem = {
+  key: string;
+  label: string;
+  reporting_total: MoneyAmount;
+  share_percent: string;
+  run_count: number;
+};
+
+export type AiCostItem = {
+  request_id: string;
+  occurred_at: string;
+  entrypoint: string;
+  providers: string[];
+  models: string[];
+  status: "complete" | "partial";
+  issues: string[];
+  billing_totals: MoneyAmount[];
+  reporting_total: MoneyAmount | null;
+  exchange_rate_snapshots: ExchangeRateSnapshot[];
 };
 
 export async function updateProfile(
@@ -158,6 +243,29 @@ export async function updateProfile(
     monthly_expenses: number;
     notes: string;
   };
+}
+
+export async function fetchAiCostOverview(
+  userId: string,
+  dateFrom: string,
+  dateTo: string,
+  reportingCurrency?: string
+): Promise<AiCostOverview> {
+  const params = new URLSearchParams({
+    date_from: dateFrom,
+    date_to: dateTo,
+  });
+  if (reportingCurrency) {
+    params.set("reporting_currency", reportingCurrency);
+  }
+  const response = await fetch(
+    `${apiBaseUrl}/costs/ai/${encodeURIComponent(userId)}/overview?${params.toString()}`
+  );
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.detail ?? "Failed to load AI costs");
+  }
+  return payload as AiCostOverview;
 }
 
 export async function fetchLatestAnalysisRun(userId: string) {
