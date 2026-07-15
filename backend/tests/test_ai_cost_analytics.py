@@ -196,3 +196,23 @@ def test_route_uses_profile_currency_and_rejects_excessive_period(monkeypatch):
         )
     assert exc.value.status_code == 400
 
+
+def test_route_reports_persistence_failure_as_unavailable(monkeypatch):
+    class UnavailableService:
+        def overview(self, **kwargs):
+            raise RuntimeError("agent run persistence is unavailable")
+
+    monkeypatch.setattr(ai_costs, "_service", UnavailableService())
+    monkeypatch.setattr(
+        ai_costs,
+        "get_profile",
+        lambda user_id: UserProfile(user_id=user_id),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        ai_costs.get_ai_cost_overview(
+            "demo", date(2026, 7, 1), date(2026, 7, 31), "CNY"
+        )
+
+    assert exc.value.status_code == 503
+    assert exc.value.detail == "AI cost data is unavailable"
