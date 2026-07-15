@@ -259,7 +259,7 @@ class FinanceRuntime:
                 if response_validation.status == "failed":
                     raise ValueError("FinanceRuntime returned invalid ChatResponse")
                 trace.mark_runtime_used("self_hosted")
-                self._finalize_trace(trace)
+                self._finalize_trace(trace, profile)
                 self._log_trace(trace)
                 self._persist_trace(trace)
                 return response_payload
@@ -495,13 +495,13 @@ class FinanceRuntime:
                 chat_history=chat_history,
             )
             trace.mark_runtime_used("self_hosted")
-            self._finalize_trace(trace)
+            self._finalize_trace(trace, profile)
             self._log_trace(trace)
             self._persist_trace(trace)
             return response_payload
         except Exception as exc:
             trace.fail(exc)
-            self._finalize_trace(trace)
+            self._finalize_trace(trace, profile)
             self._log_trace(trace)
             self._persist_trace(trace)
             raise
@@ -1113,12 +1113,19 @@ class FinanceRuntime:
             return preferred
         return "zh" if any("一" <= ch <= "鿿" for ch in message) else "en"
 
-    def _finalize_trace(self, trace: TraceCollector) -> None:
+    def _finalize_trace(
+        self, trace: TraceCollector, profile: dict[str, Any] | None = None
+    ) -> None:
         stage_entries = trace.policy.get("llm_usage_by_stage") or {}
+        cost_preferences = (profile or {}).get("cost_preferences") or {}
+        reporting_currency = str(
+            cost_preferences.get("reporting_currency")
+            or get_settings().cost.reporting_currency
+        )
         trace.set_cost(
             self.costing_service.cost_stage_entries(
                 stage_entries,
-                reporting_currency=get_settings().cost.reporting_currency,
+                reporting_currency=reporting_currency,
                 accounting_date=date.today(),
             )
         )

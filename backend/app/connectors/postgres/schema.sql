@@ -25,11 +25,13 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     monthly_expenses DOUBLE PRECISION NOT NULL DEFAULT 0,
     notes           TEXT NOT NULL DEFAULT '',
     preferences     JSONB NOT NULL DEFAULT '{}'::jsonb,
+    cost_preferences JSONB NOT NULL DEFAULT '{}'::jsonb,
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Preferences column for databases created before agent-workspace-linkage
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS cost_preferences JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 -- Chat history
 CREATE TABLE IF NOT EXISTS chat_history (

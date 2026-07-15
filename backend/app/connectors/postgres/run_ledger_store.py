@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -140,6 +141,46 @@ def get_agent_run_record_db(request_id: str) -> dict[str, Any] | None:
         except Exception:
             logger.exception("Failed to get agent run record request_id=%s", request_id)
             return None
+
+
+def list_agent_run_cost_records_db(
+    *,
+    user_id: str,
+    date_from: date,
+    date_to: date,
+    limit: int = 5000,
+) -> list[dict[str, Any]]:
+    """Return bounded canonical run records for finance cost analytics."""
+
+    safe_limit = max(1, min(limit, 5000))
+    with get_conn() as conn:
+        if not conn:
+            raise RuntimeError("Agent run persistence is unavailable")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT record, created_at
+                    FROM agent_run_records
+                    WHERE user_id = %s
+                      AND created_at >= %s
+                      AND created_at < %s
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                    """,
+                    (user_id, date_from, date_to + timedelta(days=1), safe_limit),
+                )
+                rows = cur.fetchall()
+            return [
+                {
+                    "record": normalize_agent_run_record(row[0]),
+                    "created_at": row[1],
+                }
+                for row in rows
+            ]
+        except Exception as exc:
+            logger.exception("Failed to read AI cost runs for user=%s", user_id)
+            raise RuntimeError("Failed to read AI cost records") from exc
 
 
 def list_agent_run_records_db(

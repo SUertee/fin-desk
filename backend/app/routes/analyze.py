@@ -18,6 +18,7 @@ from app.runtime.observability.trace_collector import TraceCollector
 from app.services.anomalies import detect_anomalies
 from app.services.categorizer import enrich_transactions
 from app.services.summaries import build_category_summary
+from app.services.user_store import get_profile
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -31,12 +32,12 @@ def _persist_trace(trace: TraceCollector) -> None:
         logger.debug("Agent run record was not persisted request_id=%s", trace.request_id)
 
 
-def _finalize_trace_cost(trace: TraceCollector) -> None:
-    settings = get_settings()
+def _finalize_trace_cost(trace: TraceCollector, user_id: str) -> None:
+    profile = get_profile(user_id)
     trace.set_cost(
         _costing.cost_stage_entries(
             trace.policy.get("llm_usage_by_stage") or {},
-            reporting_currency=settings.cost.reporting_currency,
+            reporting_currency=profile.cost_preferences.reporting_currency,
             accounting_date=date.today(),
         )
     )
@@ -107,13 +108,13 @@ async def analyze(req: AnalyzeRequest):
         trace.record_output_validation(validation)
         if validation.status == "failed":
             raise ValueError("Analysis route returned invalid AnalyzeResponse")
-        _finalize_trace_cost(trace)
+        _finalize_trace_cost(trace, req.user_id)
         logger.info("Analysis runtime trace", extra={"trace": trace.to_log_dict()})
         _persist_trace(trace)
         return response_payload
     except Exception as exc:
         trace.fail(exc)
-        _finalize_trace_cost(trace)
+        _finalize_trace_cost(trace, req.user_id)
         logger.info("Analysis runtime trace", extra={"trace": trace.to_log_dict()})
         _persist_trace(trace)
         logger.exception("Analysis failed for user=%s", req.user_id)

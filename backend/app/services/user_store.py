@@ -4,8 +4,9 @@ User profile management with PostgreSQL persistence and in-memory cache.
 
 import logging
 
+from app.config.settings import get_settings
 from app.connectors.postgres.profile_store import get_profile_db, save_profile_db
-from app.models.user import ProfileUpdateRequest, UserProfile
+from app.models.user import CostReportingPreferences, ProfileUpdateRequest, UserProfile
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +20,12 @@ def get_profile(user_id: str) -> UserProfile:
     if profile:
         _cache[user_id] = profile
         return profile
-    profile = UserProfile(user_id=user_id)
+    profile = UserProfile(
+        user_id=user_id,
+        cost_preferences=CostReportingPreferences(
+            reporting_currency=get_settings().cost.reporting_currency
+        ),
+    )
     _cache[user_id] = profile
     return profile
 
@@ -38,6 +44,7 @@ def update_profile(user_id: str, req: ProfileUpdateRequest) -> UserProfile:
     if req.investments is not None: p.assets.investments = req.investments
     if req.liabilities is not None: p.assets.liabilities = req.liabilities
     if req.preferences is not None: p.preferences = req.preferences
+    if req.cost_preferences is not None: p.cost_preferences = req.cost_preferences
     _cache[user_id] = p
     save_profile_db(p)
     return p
