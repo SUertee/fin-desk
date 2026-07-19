@@ -18,7 +18,10 @@ def run(input: SpecialistInput) -> SpecialistAgentOutput:
 
     warnings: list[str] = []
     limitations: list[str] = []
-    if not input.evidence.get("transactions_sample"):
+    has_investment_evidence = (
+        (input.evidence.get("investment_research") or {}).get("status") == "available"
+    )
+    if not input.evidence.get("transactions_sample") and not has_investment_evidence:
         limitations.append("没有可用的交易样本。" if zh else "No transaction sample was available.")
     if risk_level == "high":
         warnings.append(
@@ -41,8 +44,8 @@ def run(input: SpecialistInput) -> SpecialistAgentOutput:
             SpecialistFinding(
                 title=f"审计状态：{status_label}" if zh else f"Audit status: {status}",
                 evidence=warnings or (
-                    ["结论均有已加载财务数据支撑。"] if zh
-                    else ["Claims are grounded in loaded finance context."]
+                    ["结论均有已加载的结构化证据支撑。"] if zh
+                    else ["Claims are grounded in loaded structured evidence."]
                 ),
                 risk_level="medium" if warnings else "low",
             )

@@ -82,3 +82,18 @@ def test_market_context_gate_on_without_intent_stays_out(monkeypatch):
 
     assert policy.allow_market_context is False
     assert "market_context" not in policy.required_specialists
+
+
+def test_investment_research_is_distinct_from_market_news(monkeypatch):
+    monkeypatch.setenv("MARKET_CONTEXT_ENABLED", "1")
+
+    policy = evaluate_runtime_policy(
+        user_message="请基于有来源的行情分析股票 AAPL",
+        transactions=[],
+        monthly_totals=[],
+    )
+
+    assert "investment_research" in policy.required_specialists
+    assert "market_context" not in policy.required_specialists
+    assert policy.risk_level == "high"
+    assert policy.audit_required is True

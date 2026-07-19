@@ -95,6 +95,15 @@ def build_execution_plan(context: AgentContext, policy: RuntimePolicyResult) -> 
             )
         )
 
+    if "investment_research" in policy.required_specialists:
+        steps.append(
+            PlanStep(
+                step_type="tool",
+                name="get_investment_research_context",
+                reason="investment_research_specialist_required",
+            )
+        )
+
     for specialist in policy.required_specialists:
         steps.append(
             PlanStep(

@@ -164,3 +164,10 @@ class TestHealthTruth:
 
         assert payload["agent_runtime"] == "self_hosted_deterministic"
         assert payload["analysis_runtime"] == "openai_agents_sdk"
+        assert "get_investment_research_context" in payload["controlled_tools"]
+        assert "consult_investment_research" in payload["specialist_agent_tools"]
+        assert payload["capabilities"] == {
+            "investment_research": "read_only",
+            "hypothetical_scenarios": True,
+            "trade_execution": False,
+        }

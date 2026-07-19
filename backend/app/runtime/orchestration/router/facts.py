@@ -186,6 +186,18 @@ _FINANCE_PATTERNS = (
     "shopping",
     "dining",
     "rent",
+    "投资",
+    "股票",
+    "基金",
+    "行情",
+    "标的",
+    "投资组合",
+    "stock",
+    "stocks",
+    "ticker",
+    "portfolio",
+    "etf",
+    "quote",
 )
 
 _QUESTION_PATTERNS = (

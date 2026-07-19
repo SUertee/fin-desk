@@ -79,6 +79,20 @@ def evaluate_investment_risk(
                     account_ids=[position.account_id],
                 )
             )
+        if position.quote and position.quote.timestamp_basis == "retrieval_time":
+            findings.append(
+                InvestmentRiskFinding(
+                    code="retrieval_timed_quote",
+                    severity="info",
+                    title=f"{position.symbol} quote uses retrieval time",
+                    detail=(
+                        "The upstream source did not provide an exchange timestamp; "
+                        "the displayed time records when FinDesk retrieved the quote."
+                    ),
+                    symbols=[position.symbol],
+                    account_ids=[position.account_id],
+                )
+            )
 
     complete_values = [
         position.reporting_market_value.amount

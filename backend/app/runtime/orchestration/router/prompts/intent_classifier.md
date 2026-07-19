@@ -32,7 +32,8 @@ snake_case tag for observability.
 ## Intent semantics
 
 - `finance_question`: the user wants their own money, spending, budget,
-  bills, cash flow, duplicates, categories, or financial situation looked
+  bills, cash flow, duplicates, categories, investment watchlist, sourced
+  stock/ETF research, hypothetical investment scenarios, or financial situation looked
   at — INCLUDING colloquial phrasings with no finance keywords, e.g.
   "感觉这个月有点失控了", "帮我盘一盘最近的情况", "是不是我买东西太随便了",
   "帮我看看情况". Numeric ledger questions belong here too.

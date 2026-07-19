@@ -174,10 +174,19 @@ def get_evidence(request_id: str):
         transaction_count = input_summary.get("transaction_count")
         if transaction_count:
             cited_sources.append(f"账本：{transaction_count} 笔已加载交易")
+        has_sourced_investment_finding = any(
+            finding.agent == "investment_research" and finding.evidence
+            for finding in findings
+        )
         for tool_call in record.get("tool_calls") or []:
             if tool_call.get("name") == "query_transactions" and tool_call.get("status") == "called":
                 cited_sources.append("类型化账本查询（参数化筛选）")
-                break
+            if (
+                tool_call.get("name") == "get_investment_research_context"
+                and tool_call.get("status") == "called"
+                and has_sourced_investment_finding
+            ):
+                cited_sources.append("外部行情研究（来源与时间见团队发现）")
 
         audit_status = record.get("audit_status")
         audit = EvidenceAudit(status=str(audit_status), warnings=[]) if audit_status else None
