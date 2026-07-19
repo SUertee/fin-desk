@@ -33,6 +33,8 @@ def test_trace_collector_records_runtime_and_policy():
             "request_count": 1,
             "model_response_count": 1,
             "input_tokens": 100,
+            "cached_input_tokens": 0,
+            "uncached_input_tokens": 0,
             "output_tokens": 25,
             "total_tokens": 125,
         }
@@ -74,6 +76,8 @@ def test_trace_collector_records_runtime_and_policy():
         "request_count": 1,
         "model_response_count": 1,
         "input_tokens": 100,
+        "cached_input_tokens": 0,
+        "uncached_input_tokens": 0,
         "output_tokens": 25,
         "total_tokens": 125,
     }
@@ -212,7 +216,8 @@ def test_add_usage_accumulates_across_stages():
     trace.add_usage(
         AgentRunUsage(
             request_count=1, model_response_count=1,
-            input_tokens=100, output_tokens=20, total_tokens=120,
+            input_tokens=100, cached_input_tokens=60,
+            uncached_input_tokens=40, output_tokens=20, total_tokens=120,
         )
     )
     trace.add_usage(
@@ -223,6 +228,8 @@ def test_add_usage_accumulates_across_stages():
     assert trace.usage.request_count == 2
     assert trace.usage.model_response_count == 2
     assert trace.usage.input_tokens == 140
+    assert trace.usage.cached_input_tokens == 60
+    assert trace.usage.uncached_input_tokens == 40
     assert trace.usage.output_tokens == 30
     assert trace.usage.total_tokens == 170
 

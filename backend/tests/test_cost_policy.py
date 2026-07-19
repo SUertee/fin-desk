@@ -17,6 +17,7 @@ def _profile(
     currency: str,
     input_rate: str,
     output_rate: str,
+    cached_input_rate: str | None = None,
 ) -> ModelProfile:
     return ModelProfile(
         name=name,
@@ -24,17 +25,28 @@ def _profile(
         model=model,
         billing_currency=currency,
         input_cost_per_1m=Decimal(input_rate),
+        cached_input_cost_per_1m=(
+            Decimal(cached_input_rate) if cached_input_rate is not None else None
+        ),
         output_cost_per_1m=Decimal(output_rate),
         pricing_source="test-price-list",
         pricing_effective_date=TODAY,
     )
 
 
-def _usage(input_tokens: int, output_tokens: int) -> AgentRunUsage:
+def _usage(
+    input_tokens: int,
+    output_tokens: int,
+    *,
+    cached_input_tokens: int = 0,
+    uncached_input_tokens: int = 0,
+) -> AgentRunUsage:
     return AgentRunUsage(
         request_count=1,
         model_response_count=1,
         input_tokens=input_tokens,
+        cached_input_tokens=cached_input_tokens,
+        uncached_input_tokens=uncached_input_tokens,
         output_tokens=output_tokens,
         total_tokens=input_tokens + output_tokens,
     )
@@ -94,6 +106,74 @@ def test_model_override_does_not_inherit_profile_price():
 
     assert stage.issues == ["missing_pricing"]
     assert stage.billing_total is None
+
+
+def test_stage_cost_uses_provider_cache_token_split():
+    service = CostingService(
+        profiles={
+            "chat": _profile(
+                "chat",
+                model="deepseek-v4-flash",
+                currency="USD",
+                input_rate="0.14",
+                cached_input_rate="0.0028",
+                output_rate="0.28",
+            )
+        }
+    )
+
+    stage = service.stage_cost(
+        stage="llm_compose",
+        status="called",
+        profile_name="chat",
+        model_name="deepseek-v4-flash",
+        usage=_usage(
+            1000,
+            100,
+            cached_input_tokens=700,
+            uncached_input_tokens=300,
+        ),
+        reporting_currency="USD",
+        accounting_date=TODAY,
+    )
+
+    assert stage.input_pricing_basis == "cache_split"
+    assert stage.billing_cached_input_cost.amount == Decimal("0.000001960000")
+    assert stage.billing_uncached_input_cost.amount == Decimal("0.000042000000")
+    assert stage.billing_input_cost.amount == Decimal("0.000043960000")
+    assert stage.billing_output_cost.amount == Decimal("0.000028000000")
+    assert stage.billing_total.amount == Decimal("0.000071960000")
+
+
+def test_missing_cache_detail_falls_back_to_standard_input_rate():
+    service = CostingService(
+        profiles={
+            "chat": _profile(
+                "chat",
+                model="deepseek-v4-flash",
+                currency="USD",
+                input_rate="0.14",
+                cached_input_rate="0.0028",
+                output_rate="0.28",
+            )
+        }
+    )
+
+    stage = service.stage_cost(
+        stage="llm_compose",
+        status="called",
+        profile_name="chat",
+        model_name="deepseek-v4-flash",
+        usage=_usage(1000, 100),
+        reporting_currency="USD",
+        accounting_date=TODAY,
+    )
+
+    assert stage.input_pricing_basis == "standard_rate_fallback"
+    assert stage.billing_cached_input_cost is None
+    assert stage.billing_uncached_input_cost is None
+    assert stage.billing_input_cost.amount == Decimal("0.000140000000")
+    assert stage.billing_total.amount == Decimal("0.000168000000")
 
 
 def test_invalid_output_is_still_billed():

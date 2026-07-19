@@ -584,6 +584,8 @@ class FinanceRuntime:
                 request_count=parsed.request_count,
                 model_response_count=parsed.model_response_count,
                 input_tokens=parsed.input_tokens,
+                cached_input_tokens=parsed.cached_input_tokens,
+                uncached_input_tokens=parsed.uncached_input_tokens,
                 output_tokens=parsed.output_tokens,
                 total_tokens=parsed.total_tokens,
             )

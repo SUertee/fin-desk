@@ -46,6 +46,7 @@ class ModelProfile:
     max_tokens: int = 1200
     timeout_seconds: int = 30
     input_cost_per_1m: Decimal | None = None
+    cached_input_cost_per_1m: Decimal | None = None
     output_cost_per_1m: Decimal | None = None
     billing_currency: str = "USD"
     pricing_source: str = "not_configured"
@@ -56,7 +57,11 @@ class ModelProfile:
         if len(currency) != 3 or not currency.isalpha():
             raise ValueError(f"invalid billing currency for profile {self.name}")
         object.__setattr__(self, "billing_currency", currency)
-        for field_name in ("input_cost_per_1m", "output_cost_per_1m"):
+        for field_name in (
+            "input_cost_per_1m",
+            "cached_input_cost_per_1m",
+            "output_cost_per_1m",
+        ):
             raw = getattr(self, field_name)
             if raw is None:
                 continue

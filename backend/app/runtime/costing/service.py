@@ -85,6 +85,7 @@ class CostingService:
             model_name=profile.model,
             billing_currency=profile.billing_currency,
             input_cost_per_1m=profile.input_cost_per_1m,
+            cached_input_cost_per_1m=profile.cached_input_cost_per_1m,
             output_cost_per_1m=profile.output_cost_per_1m,
             pricing_source=profile.pricing_source,
             pricing_effective_date=profile.pricing_effective_date,
@@ -148,7 +149,39 @@ class CostingService:
             return result
 
         divisor = Decimal("1000000")
-        input_cost = Decimal(parsed_usage.input_tokens) * pricing.input_cost_per_1m / divisor
+        cache_detail_complete = (
+            pricing.cached_input_cost_per_1m is not None
+            and parsed_usage.cached_input_tokens + parsed_usage.uncached_input_tokens
+            == parsed_usage.input_tokens
+        )
+        if cache_detail_complete:
+            cached_input_cost = (
+                Decimal(parsed_usage.cached_input_tokens)
+                * pricing.cached_input_cost_per_1m
+                / divisor
+            )
+            uncached_input_cost = (
+                Decimal(parsed_usage.uncached_input_tokens)
+                * pricing.input_cost_per_1m
+                / divisor
+            )
+            input_cost = cached_input_cost + uncached_input_cost
+            result.input_pricing_basis = "cache_split"
+            result.billing_cached_input_cost = _money(
+                cached_input_cost,
+                pricing.billing_currency,
+            )
+            result.billing_uncached_input_cost = _money(
+                uncached_input_cost,
+                pricing.billing_currency,
+            )
+        else:
+            input_cost = (
+                Decimal(parsed_usage.input_tokens)
+                * pricing.input_cost_per_1m
+                / divisor
+            )
+            result.input_pricing_basis = "standard_rate_fallback"
         output_cost = Decimal(parsed_usage.output_tokens) * pricing.output_cost_per_1m / divisor
         total_cost = input_cost + output_cost
         result.pricing = pricing
@@ -250,6 +283,8 @@ class CostingService:
                         "request_count": entry.get("request_count", 0),
                         "model_response_count": entry.get("model_response_count", 0),
                         "input_tokens": entry.get("input_tokens", 0),
+                        "cached_input_tokens": entry.get("cached_input_tokens", 0),
+                        "uncached_input_tokens": entry.get("uncached_input_tokens", 0),
                         "output_tokens": entry.get("output_tokens", 0),
                         "total_tokens": entry.get("total_tokens", 0),
                     },

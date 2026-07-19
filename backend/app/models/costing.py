@@ -46,6 +46,7 @@ class ModelPricing(BaseModel):
     model_name: str
     billing_currency: str
     input_cost_per_1m: Decimal = Field(ge=0)
+    cached_input_cost_per_1m: Decimal | None = Field(default=None, ge=0)
     output_cost_per_1m: Decimal = Field(ge=0)
     pricing_source: str
     pricing_effective_date: date
@@ -81,6 +82,9 @@ class LLMStageCost(BaseModel):
     model_name: str | None = None
     usage: AgentRunUsage = Field(default_factory=AgentRunUsage)
     pricing: ModelPricing | None = None
+    input_pricing_basis: Literal["cache_split", "standard_rate_fallback"] | None = None
+    billing_cached_input_cost: MoneyAmount | None = None
+    billing_uncached_input_cost: MoneyAmount | None = None
     billing_input_cost: MoneyAmount | None = None
     billing_output_cost: MoneyAmount | None = None
     billing_total: MoneyAmount | None = None

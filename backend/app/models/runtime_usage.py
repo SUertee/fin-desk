@@ -9,5 +9,7 @@ class AgentRunUsage(BaseModel):
     request_count: int = Field(default=0, ge=0)
     model_response_count: int = Field(default=0, ge=0)
     input_tokens: int = Field(default=0, ge=0)
+    cached_input_tokens: int = Field(default=0, ge=0)
+    uncached_input_tokens: int = Field(default=0, ge=0)
     output_tokens: int = Field(default=0, ge=0)
     total_tokens: int = Field(default=0, ge=0)
