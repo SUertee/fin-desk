@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Callable
 
 from app.connectors.exchange_rates.errors import ExchangeRateError
+from app.connectors.market_data.errors import MarketDataError
 from app.models.costing import MoneyAmount
 from app.models.investment_research import (
+    BenchmarkComparison,
     InstrumentResearchSnapshot,
     InvestmentScenario,
     InvestmentScenarioDetail,
@@ -22,10 +24,17 @@ from app.models.investment_research import (
     WatchlistItem,
     WatchlistItemRequest,
 )
-from app.models.investments import InvestmentRiskFinding, PositionValuation
+from app.models.investments import (
+    InvestmentRiskFinding,
+    PositionValuation,
+    normalize_symbol,
+)
 from app.models.market_data import MarketAssetType
+from app.models.user import UserProfile
+from app.runtime.policy.investment_readiness import evaluate_investment_readiness
 from app.runtime.policy.investment_policy import evaluate_investment_risk
 from app.services.exchange_rates import ExchangeRateService
+from app.services.investment_metrics import calculate_historical_performance
 from app.services.market_data import MarketDataService
 
 
@@ -37,6 +46,7 @@ ScenarioDetailReader = Callable[[str, str], InvestmentScenarioDetail | None]
 ScenarioWriter = Callable[[InvestmentScenario], bool]
 ScenarioPositionWriter = Callable[[str, str, list[ScenarioPositionRequest]], bool]
 ScenarioDeleter = Callable[[str, str], bool]
+ProfileReader = Callable[[str], UserProfile]
 Clock = Callable[[], datetime]
 
 
@@ -58,6 +68,7 @@ class InvestmentResearchService:
         scenario_writer: ScenarioWriter,
         scenario_position_writer: ScenarioPositionWriter,
         scenario_deleter: ScenarioDeleter,
+        profile_reader: ProfileReader,
         stale_after_days: int = 3,
         concentration_threshold_percent: Decimal = Decimal("35"),
         clock: Clock = _utc_now,
@@ -72,6 +83,7 @@ class InvestmentResearchService:
         self.scenario_writer = scenario_writer
         self.scenario_position_writer = scenario_position_writer
         self.scenario_deleter = scenario_deleter
+        self.profile_reader = profile_reader
         self.stale_after_days = stale_after_days
         self.concentration_threshold_percent = concentration_threshold_percent
         self.clock = clock
@@ -160,6 +172,7 @@ class InvestmentResearchService:
         asset_type: MarketAssetType,
         date_from: date,
         date_to: date,
+        benchmark_symbol: str = "SPY",
     ) -> InstrumentResearchSnapshot:
         budget = self.market_data.new_budget()
         profile = self.market_data.get_profile(
@@ -183,6 +196,13 @@ class InvestmentResearchService:
             (item for item in quote_result.quotes if item.symbol == profile.symbol),
             None,
         )
+        performance = calculate_historical_performance(history)
+        normalized_benchmark = normalize_symbol(benchmark_symbol)
+        benchmark = BenchmarkComparison(
+            status="insufficient_data",
+            benchmark_symbol=normalized_benchmark,
+            limitation="Instrument history is insufficient for a benchmark comparison.",
+        )
         followed = any(
             item.symbol == profile.symbol and item.asset_type == asset_type
             for item in self.list_watchlist(user_id)
@@ -204,6 +224,59 @@ class InvestmentResearchService:
         limitations = [
             "Research is read-only and does not place or simulate brokerage orders."
         ]
+        if performance.status == "available":
+            try:
+                benchmark_history = (
+                    history
+                    if normalized_benchmark == history.symbol
+                    else self.market_data.get_history(
+                        normalized_benchmark,
+                        asset_type="etf",
+                        date_from=date_from,
+                        date_to=date_to,
+                        budget=budget,
+                    )
+                )
+                benchmark_performance = calculate_historical_performance(
+                    benchmark_history
+                )
+                if benchmark_performance.status == "available":
+                    benchmark = BenchmarkComparison(
+                        status="available",
+                        benchmark_symbol=normalized_benchmark,
+                        performance=benchmark_performance,
+                        excess_period_return_percent=(
+                            performance.period_return_percent
+                            - benchmark_performance.period_return_percent
+                        ).quantize(Decimal("0.01")),
+                    )
+                else:
+                    benchmark = BenchmarkComparison(
+                        status="insufficient_data",
+                        benchmark_symbol=normalized_benchmark,
+                        performance=benchmark_performance,
+                        limitation="Benchmark history is insufficient for comparison.",
+                    )
+                evidence.append(
+                    ResearchEvidenceSource(
+                        kind="benchmark_history",
+                        source=benchmark_history.provider,
+                        as_of=benchmark_history.fetched_at,
+                        description=(
+                            f"{normalized_benchmark} benchmark history from "
+                            f"{date_from} to {date_to}"
+                        ),
+                    )
+                )
+            except MarketDataError:
+                benchmark = BenchmarkComparison(
+                    status="unavailable",
+                    benchmark_symbol=normalized_benchmark,
+                    limitation="Benchmark evidence is currently unavailable.",
+                )
+                limitations.append(
+                    f"{normalized_benchmark} benchmark evidence is currently unavailable."
+                )
         if quote is not None:
             evidence.append(
                 ResearchEvidenceSource(
@@ -217,6 +290,12 @@ class InvestmentResearchService:
                 limitations.append(
                     "The quote time records retrieval because the provider did not expose an exchange timestamp."
                 )
+            if self.clock() - quote.quote_as_of > timedelta(
+                days=self.stale_after_days
+            ):
+                limitations.append(
+                    f"The latest quote is older than the {self.stale_after_days}-day freshness threshold."
+                )
         else:
             limitations.append("No current quote was returned for this instrument.")
         return InstrumentResearchSnapshot(
@@ -227,6 +306,9 @@ class InvestmentResearchService:
             profile=profile,
             quote=quote,
             history=history,
+            performance=performance,
+            benchmark=benchmark,
+            readiness=evaluate_investment_readiness(self.profile_reader(user_id)),
             evidence=evidence,
             limitations=limitations,
         )
@@ -241,11 +323,13 @@ class InvestmentResearchService:
         selected_time = as_of or self.clock()
         detail = self.get_scenario(user_id, scenario_id)
         scenario = detail.scenario
+        readiness = evaluate_investment_readiness(self.profile_reader(user_id))
         if not detail.positions:
             return InvestmentScenarioValuation(
                 status="empty",
                 scenario=scenario,
                 as_of=selected_time,
+                readiness=readiness,
                 limitations=[
                     "Add hypothetical positions to calculate a research scenario."
                 ],
@@ -363,6 +447,7 @@ class InvestmentResearchService:
                 quote_sources=sorted(quote_sources),
             ),
             risk=risk,
+            readiness=readiness,
             limitations=limitations,
         )
 

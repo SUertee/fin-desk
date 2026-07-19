@@ -32,10 +32,50 @@ export type MarketPriceBar = {
 };
 
 export type ResearchEvidence = {
-  kind: "profile" | "quote" | "history" | "exchange_rate";
+  kind: "profile" | "quote" | "history" | "benchmark_history" | "exchange_rate";
   source: string;
   as_of: string;
   description: string;
+};
+
+export type HistoricalPerformanceSummary = {
+  status: "available" | "insufficient_data";
+  symbol: string;
+  currency: string;
+  observation_count: number;
+  date_from: string | null;
+  date_to: string | null;
+  period_return_percent: string | null;
+  annualized_volatility_percent: string | null;
+  max_drawdown_percent: string | null;
+};
+
+export type BenchmarkComparison = {
+  status: "available" | "unavailable" | "insufficient_data";
+  benchmark_symbol: string;
+  performance: HistoricalPerformanceSummary | null;
+  excess_period_return_percent: string | null;
+  limitation: string | null;
+};
+
+export type InvestmentReadinessFinding = {
+  code: string;
+  severity: "info" | "medium" | "high";
+  title: string;
+  detail: string;
+};
+
+export type InvestmentReadinessAssessment = {
+  status: "ready" | "caution" | "insufficient_data";
+  reporting_currency: string;
+  monthly_cash_flow: string | null;
+  liquid_reserve: MoneyAmount | null;
+  reserve_months: string | null;
+  liabilities: MoneyAmount | null;
+  risk_tolerance: string;
+  findings: InvestmentReadinessFinding[];
+  limitations: string[];
+  trade_actions_allowed: false;
 };
 
 export type InstrumentResearchSnapshot = {
@@ -63,6 +103,9 @@ export type InstrumentResearchSnapshot = {
     fetched_at: string;
     bars: MarketPriceBar[];
   };
+  performance: HistoricalPerformanceSummary;
+  benchmark: BenchmarkComparison;
+  readiness: InvestmentReadinessAssessment;
   evidence: ResearchEvidence[];
   limitations: string[];
   trade_actions_allowed: false;
@@ -134,6 +177,7 @@ export type ScenarioValuation = {
     }>;
     trade_actions_allowed: false;
   };
+  readiness: InvestmentReadinessAssessment;
   limitations: string[];
   trade_actions_allowed: false;
 };
@@ -178,9 +222,13 @@ export async function unfollowInstrument(
 export function fetchInstrumentResearch(
   userId: string,
   symbol: string,
-  assetType: MarketAssetType
+  assetType: MarketAssetType,
+  benchmarkSymbol = "SPY"
 ): Promise<InstrumentResearchSnapshot> {
-  const params = new URLSearchParams({ asset_type: assetType });
+  const params = new URLSearchParams({
+    asset_type: assetType,
+    benchmark_symbol: benchmarkSymbol,
+  });
   return request(
     `/investment-research/${encodeURIComponent(userId)}/instruments/${encodeURIComponent(symbol)}?${params}`
   );

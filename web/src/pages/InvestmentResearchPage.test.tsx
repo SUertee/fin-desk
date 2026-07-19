@@ -66,12 +66,65 @@ const snapshot = {
       { period: "2026-07-18", close: { amount: "210.5", currency: "USD" } },
     ],
   },
+  performance: {
+    status: "available" as const,
+    symbol: "AAPL",
+    currency: "USD",
+    observation_count: 2,
+    date_from: "2026-07-17",
+    date_to: "2026-07-18",
+    period_return_percent: "5.25",
+    annualized_volatility_percent: "12.34",
+    max_drawdown_percent: "3.20",
+  },
+  benchmark: {
+    status: "available" as const,
+    benchmark_symbol: "SPY",
+    performance: {
+      status: "available" as const,
+      symbol: "SPY",
+      currency: "USD",
+      observation_count: 2,
+      date_from: "2026-07-17",
+      date_to: "2026-07-18",
+      period_return_percent: "3.15",
+      annualized_volatility_percent: "9.20",
+      max_drawdown_percent: "1.40",
+    },
+    excess_period_return_percent: "2.10",
+    limitation: null,
+  },
+  readiness: {
+    status: "caution" as const,
+    reporting_currency: "CNY",
+    monthly_cash_flow: "2500.00",
+    liquid_reserve: { amount: "24000.00", currency: "CNY" },
+    reserve_months: "2.40",
+    liabilities: { amount: "0.00", currency: "CNY" },
+    risk_tolerance: "moderate",
+    findings: [
+      {
+        code: "low_liquid_reserve",
+        severity: "medium" as const,
+        title: "Liquid reserve is below three months",
+        detail: "Configured cash and savings cover 2.40 months of recurring expenses.",
+      },
+    ],
+    limitations: ["Readiness is not investment suitability."],
+    trade_actions_allowed: false as const,
+  },
   evidence: [
     {
       kind: "quote" as const,
       source: "openbb:yfinance",
       as_of: "2026-07-19T10:00:00Z",
       description: "Latest normalized market quote",
+    },
+    {
+      kind: "benchmark_history" as const,
+      source: "openbb:yfinance",
+      as_of: "2026-07-19T10:00:00Z",
+      description: "SPY normalized benchmark history",
     },
   ],
   limitations: ["Research is read-only and does not place brokerage orders."],
@@ -103,10 +156,57 @@ describe("InvestmentResearchPage", () => {
     await screen.findByText("Apple Inc.");
     expect(screen.queryByText("EVIDENCE")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /1 sources/i }));
+    fireEvent.click(screen.getByRole("button", { name: /2 sources/i }));
     await screen.findByText("EVIDENCE");
     expect(screen.getAllByText("openbb:yfinance").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(/not an executable quote/i)).toBeTruthy();
+  });
+
+  it("separates performance, benchmark, and personal readiness", async () => {
+    vi.mocked(fetchWatchlist).mockResolvedValue([watchlistItem]);
+    vi.mocked(fetchInstrumentResearch).mockResolvedValue(snapshot);
+    render(<InvestmentResearchPage userId="demo" onAskCfo={vi.fn()} />);
+
+    fireEvent.click(await screen.findByText("AAPL"));
+    await screen.findByText("Apple Inc.");
+
+    expect(screen.getAllByText("+5.25%")).toHaveLength(2);
+    expect(screen.getByText("12.34%")).toBeTruthy();
+    expect(screen.getByText("3.20%")).toBeTruthy();
+    expect(screen.getByText("AAPL vs SPY")).toBeTruthy();
+    expect(screen.getByText("+2.10%")).toBeTruthy();
+    expect(screen.getByText("Liquid reserve is below three months")).toBeTruthy();
+    expect(screen.getByText(/不是适合度判断/)).toBeTruthy();
+  });
+
+  it("renders insufficient history as unavailable rather than zero", async () => {
+    vi.mocked(fetchWatchlist).mockResolvedValue([watchlistItem]);
+    vi.mocked(fetchInstrumentResearch).mockResolvedValue({
+      ...snapshot,
+      performance: {
+        ...snapshot.performance,
+        status: "insufficient_data",
+        observation_count: 1,
+        period_return_percent: null,
+        annualized_volatility_percent: null,
+        max_drawdown_percent: null,
+      },
+      benchmark: {
+        status: "insufficient_data",
+        benchmark_symbol: "SPY",
+        performance: null,
+        excess_period_return_percent: null,
+        limitation: "Benchmark history is not sufficient for this period.",
+      },
+    });
+    render(<InvestmentResearchPage userId="demo" onAskCfo={vi.fn()} />);
+
+    fireEvent.click(await screen.findByText("AAPL"));
+    await screen.findByText("Apple Inc.");
+
+    expect(screen.getAllByText("Not enough data")).toHaveLength(3);
+    expect(screen.queryByText("0.00%")).toBeNull();
+    expect(screen.getByText("暂时无法进行可靠比较")).toBeTruthy();
   });
 
   it("hands the CFO an explicit investment-research prompt", async () => {

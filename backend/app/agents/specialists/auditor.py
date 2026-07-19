@@ -18,9 +18,8 @@ def run(input: SpecialistInput) -> SpecialistAgentOutput:
 
     warnings: list[str] = []
     limitations: list[str] = []
-    has_investment_evidence = (
-        (input.evidence.get("investment_research") or {}).get("status") == "available"
-    )
+    investment = input.evidence.get("investment_research") or {}
+    has_investment_evidence = investment.get("status") == "available"
     if not input.evidence.get("transactions_sample") and not has_investment_evidence:
         limitations.append("没有可用的交易样本。" if zh else "No transaction sample was available.")
     if risk_level == "high":
@@ -28,6 +27,60 @@ def run(input: SpecialistInput) -> SpecialistAgentOutput:
             "高风险投资类话题需保持审慎、非建议式表述。" if zh
             else "High-risk investment language requires cautious, non-advisory framing."
         )
+    lowered_task = input.task.lower()
+    unsafe_investment_terms = (
+        "guarantee",
+        "guaranteed",
+        "buy",
+        "sell",
+        "trade",
+        "保证",
+        "买入",
+        "卖出",
+        "下单",
+    )
+    if has_investment_evidence and any(
+        token in lowered_task for token in unsafe_investment_terms
+    ):
+        warnings.append(
+            "投资研究不能保证收益或生成可执行交易。"
+            if zh
+            else "Investment research cannot guarantee returns or create an executable trade."
+        )
+    if has_investment_evidence:
+        readiness_status = str(
+            (investment.get("readiness") or {}).get("status") or ""
+        )
+        benchmark_status = str(
+            (investment.get("benchmark") or {}).get("status") or ""
+        )
+        if readiness_status == "caution":
+            warnings.append(
+                "个人财务底座处于谨慎状态，市场研究不应被表述为投资许可。"
+                if zh
+                else "Personal-finance readiness is caution; market research must not be framed as permission to invest."
+            )
+        elif readiness_status == "insufficient_data":
+            limitations.append(
+                "投资准备信息不足。"
+                if zh
+                else "Investment-readiness inputs are incomplete."
+            )
+        if benchmark_status in {"unavailable", "insufficient_data"}:
+            limitations.append(
+                "基准比较证据不完整。"
+                if zh
+                else "Benchmark-comparison evidence is incomplete."
+            )
+        if any(
+            "older than" in str(item).lower() or "stale" in str(item).lower()
+            for item in investment.get("limitations") or []
+        ):
+            warnings.append(
+                "行情证据已超过新鲜度阈值。"
+                if zh
+                else "Market evidence exceeds the freshness threshold."
+            )
     if not input.prior_outputs and required_specialists:
         warnings.append(
             "策略要求专家参与，但没有可用的专家输出。" if zh
