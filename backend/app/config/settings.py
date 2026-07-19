@@ -55,6 +55,44 @@ class InvestmentSettings:
 
 
 @dataclass(frozen=True)
+class MarketDataSettings:
+    provider: str = "yfinance"
+    allowed_providers: tuple[str, ...] = ("yfinance",)
+    timeout_seconds: int = 12
+    quote_ttl_seconds: int = 180
+    history_ttl_seconds: int = 86400
+    profile_ttl_seconds: int = 604800
+    symbol_limit: int = 20
+    history_day_limit: int = 3660
+    outbound_call_budget: int = 3
+
+    def __post_init__(self) -> None:
+        provider = self.provider.strip().lower()
+        allowed = tuple(
+            item.strip().lower() for item in self.allowed_providers if item.strip()
+        )
+        if not provider:
+            raise ValueError("market data provider cannot be empty")
+        if not allowed:
+            raise ValueError("market data provider allowlist cannot be empty")
+        for field_name in (
+            "timeout_seconds",
+            "quote_ttl_seconds",
+            "history_ttl_seconds",
+            "profile_ttl_seconds",
+            "symbol_limit",
+            "history_day_limit",
+            "outbound_call_budget",
+        ):
+            if getattr(self, field_name) < 1:
+                raise ValueError(f"{field_name} must be positive")
+        if self.symbol_limit > 100:
+            raise ValueError("market data symbol limit cannot exceed 100")
+        object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "allowed_providers", allowed)
+
+
+@dataclass(frozen=True)
 class ModelProfile:
     name: str
     provider: str = "deepseek"
@@ -122,6 +160,7 @@ class AppSettings:
     analysis_model_profile: str = "analysis"
     cost: CostSettings = CostSettings()
     investment: InvestmentSettings = InvestmentSettings()
+    market_data: MarketDataSettings = MarketDataSettings()
 
 
 def _split_csv(value: str) -> list[str]:
@@ -220,6 +259,27 @@ def get_settings() -> AppSettings:
             ),
             concentration_threshold_percent=Decimal(
                 os.getenv("INVESTMENT_CONCENTRATION_THRESHOLD_PERCENT", "35")
+            ),
+        ),
+        market_data=MarketDataSettings(
+            provider=os.getenv("MARKET_DATA_PROVIDER", "yfinance"),
+            allowed_providers=tuple(
+                _split_csv(os.getenv("MARKET_DATA_ALLOWED_PROVIDERS", "yfinance"))
+            ),
+            timeout_seconds=int(os.getenv("MARKET_DATA_TIMEOUT_SECONDS", "12")),
+            quote_ttl_seconds=int(os.getenv("MARKET_DATA_QUOTE_TTL_SECONDS", "180")),
+            history_ttl_seconds=int(
+                os.getenv("MARKET_DATA_HISTORY_TTL_SECONDS", "86400")
+            ),
+            profile_ttl_seconds=int(
+                os.getenv("MARKET_DATA_PROFILE_TTL_SECONDS", "604800")
+            ),
+            symbol_limit=int(os.getenv("MARKET_DATA_SYMBOL_LIMIT", "20")),
+            history_day_limit=int(
+                os.getenv("MARKET_DATA_HISTORY_DAY_LIMIT", "3660")
+            ),
+            outbound_call_budget=int(
+                os.getenv("MARKET_DATA_OUTBOUND_CALL_BUDGET", "3")
             ),
         ),
     )
