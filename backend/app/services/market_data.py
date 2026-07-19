@@ -48,7 +48,7 @@ class MarketDataService:
         profile_ttl_seconds: int = 604800,
         symbol_limit: int = 20,
         history_day_limit: int = 3660,
-        outbound_call_budget: int = 3,
+        outbound_call_budget: int = 4,
         clock: Clock = _utc_now,
     ) -> None:
         self.quote_provider = quote_provider

@@ -283,3 +283,75 @@ class TestInvestmentResearchFixture:
         assert output.findings == []
         assert output.confidence <= 0.2
         assert any("explicit" in item.lower() for item in output.limitations)
+
+    def test_performance_and_readiness_remain_typed_specialist_evidence(self):
+        output = investment_research.run(
+            SpecialistInput(
+                evidence={
+                    "investment_research": {
+                        "status": "available",
+                        "symbol": "AAPL",
+                        "profile": {"currency": "USD"},
+                        "quote": {},
+                        "history": {
+                            "date_from": "2026-04-20",
+                            "date_to": "2026-07-19",
+                            "bar_count": 62,
+                            "source": "openbb:yfinance",
+                        },
+                        "performance": {
+                            "status": "available",
+                            "period_return_percent": "4.25",
+                            "annualized_volatility_percent": "21.10",
+                            "max_drawdown_percent": "8.40",
+                        },
+                        "benchmark": {
+                            "status": "available",
+                            "benchmark_symbol": "SPY",
+                            "excess_period_return_percent": "-1.25",
+                        },
+                        "readiness": {
+                            "status": "caution",
+                            "reporting_currency": "CNY",
+                            "monthly_cash_flow": "-1000",
+                            "reserve_months": "1.20",
+                            "findings": [
+                                {"title": "Monthly cash flow is negative"}
+                            ],
+                            "limitations": [],
+                        },
+                        "evidence": [],
+                        "limitations": [],
+                        "trade_actions_allowed": False,
+                    }
+                }
+            )
+        )
+
+        assert len(output.findings) == 2
+        performance_finding = output.findings[0]
+        assert any("volatility" in item.lower() for item in performance_finding.evidence)
+        assert any("drawdown" in item.lower() for item in performance_finding.evidence)
+        assert any("SPY" in item for item in performance_finding.evidence)
+        assert "readiness: caution" in output.findings[1].title.lower()
+        assert "stabilize cash flow" in output.recommendations[0].next_step.lower()
+
+    def test_auditor_flags_trade_guarantee_and_caution_readiness(self):
+        output = auditor.run(
+            SpecialistInput(
+                task="Guarantee a return and buy AAPL for me",
+                evidence={
+                    "investment_research": {
+                        "status": "available",
+                        "readiness": {"status": "caution"},
+                        "benchmark": {"status": "unavailable"},
+                    }
+                },
+                policy={"risk_level": "high"},
+            )
+        )
+
+        evidence = output.findings[0].evidence
+        assert any("cannot guarantee" in item.lower() for item in evidence)
+        assert any("permission to invest" in item.lower() for item in evidence)
+        assert any("benchmark" in item.lower() for item in output.limitations)

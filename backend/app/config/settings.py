@@ -64,7 +64,7 @@ class MarketDataSettings:
     profile_ttl_seconds: int = 604800
     symbol_limit: int = 20
     history_day_limit: int = 3660
-    outbound_call_budget: int = 3
+    outbound_call_budget: int = 4
 
     def __post_init__(self) -> None:
         provider = self.provider.strip().lower()
@@ -303,7 +303,7 @@ def get_settings() -> AppSettings:
                 os.getenv("MARKET_DATA_HISTORY_DAY_LIMIT", "3660")
             ),
             outbound_call_budget=int(
-                os.getenv("MARKET_DATA_OUTBOUND_CALL_BUDGET", "3")
+                os.getenv("MARKET_DATA_OUTBOUND_CALL_BUDGET", "4")
             ),
         ),
         exchange_rate=ExchangeRateSettings(

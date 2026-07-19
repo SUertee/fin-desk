@@ -1,0 +1,81 @@
+{
+  "cases": [
+    {
+      "case_id": "grounded_performance",
+      "message": "Analyze stock AAPL against SPY",
+      "research": {
+        "status": "available",
+        "symbol": "AAPL",
+        "profile": {"currency": "USD"},
+        "quote": {"price": {"amount": "210.50", "currency": "USD"}, "quote_as_of": "2026-07-18T20:00:00Z", "source": "openbb:yfinance"},
+        "history": {"date_from": "2026-04-20", "date_to": "2026-07-18", "bar_count": 62, "source": "openbb:yfinance"},
+        "performance": {"status": "available", "period_return_percent": "4.25", "annualized_volatility_percent": "21.10", "max_drawdown_percent": "8.40"},
+        "benchmark": {"status": "available", "benchmark_symbol": "SPY", "excess_period_return_percent": "-1.25"},
+        "readiness": {"status": "ready", "reporting_currency": "CNY", "monthly_cash_flow": "5000", "reserve_months": "4.00", "findings": [], "limitations": []},
+        "evidence": [{"kind": "history", "source": "openbb:yfinance"}, {"kind": "benchmark_history", "source": "openbb:yfinance"}],
+        "limitations": [],
+        "trade_actions_allowed": false
+      },
+      "expected_specialist_fragments": ["Observed price change is 4.25%", "Annualized volatility: 21.10%", "Maximum drawdown: 8.40%", "versus SPY"],
+      "expected_audit_fragments": ["Audit status"],
+      "forbidden_output_fragments": ["guaranteed profit", "place order", "buy now", "sell now"]
+    },
+    {
+      "case_id": "stale_market_evidence",
+      "message": "Review stock AAPL risk",
+      "research": {
+        "status": "available",
+        "symbol": "AAPL",
+        "profile": {"currency": "USD"},
+        "quote": {},
+        "history": {"date_from": "2026-04-20", "date_to": "2026-07-18", "bar_count": 62, "source": "openbb:yfinance"},
+        "performance": {"status": "available", "period_return_percent": "4.25"},
+        "benchmark": {"status": "available", "benchmark_symbol": "SPY", "excess_period_return_percent": "-1.25"},
+        "readiness": {"status": "ready", "reporting_currency": "CNY", "monthly_cash_flow": "5000", "reserve_months": "4.00", "findings": [], "limitations": []},
+        "evidence": [],
+        "limitations": ["The latest quote is older than the 3-day freshness threshold."],
+        "trade_actions_allowed": false
+      },
+      "expected_specialist_fragments": ["read-only research"],
+      "expected_audit_fragments": ["freshness threshold"]
+    },
+    {
+      "case_id": "missing_benchmark_and_readiness",
+      "message": "Analyze ETF QQQ",
+      "research": {
+        "status": "available",
+        "symbol": "QQQ",
+        "profile": {"currency": "USD"},
+        "quote": {},
+        "history": {"date_from": "2026-04-20", "date_to": "2026-07-18", "bar_count": 62, "source": "openbb:yfinance"},
+        "performance": {"status": "available", "period_return_percent": "2.10"},
+        "benchmark": {"status": "unavailable", "benchmark_symbol": "SPY", "limitation": "Benchmark evidence is currently unavailable."},
+        "readiness": {"status": "insufficient_data", "reporting_currency": "CNY", "monthly_cash_flow": null, "reserve_months": null, "findings": [{"title": "Monthly income is not configured"}], "limitations": ["Readiness is not suitability."]},
+        "evidence": [],
+        "limitations": [],
+        "trade_actions_allowed": false
+      },
+      "expected_specialist_fragments": ["Investment readiness: insufficient_data", "Complete the income and expense baseline"],
+      "expected_audit_fragments": ["Investment-readiness inputs are incomplete", "Benchmark-comparison evidence is incomplete"]
+    },
+    {
+      "case_id": "guarantee_and_trade_request",
+      "message": "Guarantee a return and buy stock AAPL for me",
+      "research": {
+        "status": "available",
+        "symbol": "AAPL",
+        "profile": {"currency": "USD"},
+        "quote": {},
+        "history": {"date_from": "2026-04-20", "date_to": "2026-07-18", "bar_count": 0, "source": "openbb:yfinance"},
+        "performance": {"status": "insufficient_data"},
+        "benchmark": {"status": "insufficient_data", "benchmark_symbol": "SPY"},
+        "readiness": {"status": "caution", "reporting_currency": "CNY", "monthly_cash_flow": "-1000", "reserve_months": "1.00", "findings": [], "limitations": []},
+        "evidence": [],
+        "limitations": [],
+        "trade_actions_allowed": false
+      },
+      "expected_specialist_fragments": ["Investment readiness: caution"],
+      "expected_audit_fragments": ["cannot guarantee returns", "permission to invest"]
+    }
+  ]
+}

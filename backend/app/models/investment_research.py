@@ -23,7 +23,24 @@ from app.models.market_data import (
 
 
 ScenarioValuationStatus = Literal["empty", "partial", "complete"]
-ResearchEvidenceKind = Literal["profile", "quote", "history", "exchange_rate"]
+PerformanceStatus = Literal["available", "insufficient_data"]
+BenchmarkComparisonStatus = Literal["available", "unavailable", "insufficient_data"]
+InvestmentReadinessStatus = Literal["ready", "caution", "insufficient_data"]
+InvestmentReadinessSeverity = Literal["info", "medium", "high"]
+InvestmentReadinessCode = Literal[
+    "missing_monthly_income",
+    "missing_monthly_expenses",
+    "negative_monthly_cash_flow",
+    "low_liquid_reserve",
+    "liabilities_present",
+]
+ResearchEvidenceKind = Literal[
+    "profile",
+    "quote",
+    "history",
+    "benchmark_history",
+    "exchange_rate",
+]
 ScenarioValuationIssue = Literal["missing_quote", "missing_exchange_rate"]
 
 
@@ -172,6 +189,74 @@ class ResearchEvidenceSource(BaseModel):
     description: str = Field(min_length=1, max_length=240)
 
 
+class HistoricalPerformanceSummary(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: PerformanceStatus
+    symbol: str
+    currency: str
+    observation_count: int = Field(default=0, ge=0)
+    date_from: date | None = None
+    date_to: date | None = None
+    period_return_percent: Decimal | None = None
+    annualized_volatility_percent: Decimal | None = Field(default=None, ge=0)
+    max_drawdown_percent: Decimal | None = Field(default=None, ge=0, le=100)
+
+    @field_validator("symbol")
+    @classmethod
+    def validate_symbol(cls, value: str) -> str:
+        return normalize_symbol(value)
+
+    @field_validator("currency")
+    @classmethod
+    def validate_currency(cls, value: str) -> str:
+        return normalize_currency(value)
+
+
+class BenchmarkComparison(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: BenchmarkComparisonStatus
+    benchmark_symbol: str
+    performance: HistoricalPerformanceSummary | None = None
+    excess_period_return_percent: Decimal | None = None
+    limitation: str | None = Field(default=None, max_length=300)
+
+    @field_validator("benchmark_symbol")
+    @classmethod
+    def validate_symbol(cls, value: str) -> str:
+        return normalize_symbol(value)
+
+
+class InvestmentReadinessFinding(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: InvestmentReadinessCode
+    severity: InvestmentReadinessSeverity
+    title: str = Field(min_length=1, max_length=160)
+    detail: str = Field(min_length=1, max_length=360)
+
+
+class InvestmentReadinessAssessment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: InvestmentReadinessStatus
+    reporting_currency: str
+    monthly_cash_flow: Decimal | None = None
+    liquid_reserve: MoneyAmount | None = None
+    reserve_months: Decimal | None = Field(default=None, ge=0)
+    liabilities: MoneyAmount | None = None
+    risk_tolerance: str = Field(default="moderate", min_length=1, max_length=80)
+    findings: list[InvestmentReadinessFinding] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    trade_actions_allowed: Literal[False] = False
+
+    @field_validator("reporting_currency")
+    @classmethod
+    def validate_currency(cls, value: str) -> str:
+        return normalize_currency(value)
+
+
 class InstrumentResearchSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -182,6 +267,9 @@ class InstrumentResearchSnapshot(BaseModel):
     profile: MarketInstrumentProfile
     quote: MarketQuote | None = None
     history: MarketPriceHistory
+    performance: HistoricalPerformanceSummary
+    benchmark: BenchmarkComparison
+    readiness: InvestmentReadinessAssessment
     evidence: list[ResearchEvidenceSource] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     trade_actions_allowed: Literal[False] = False
@@ -228,6 +316,7 @@ class InvestmentScenarioValuation(BaseModel):
     overallocated_amount: MoneyAmount | None = None
     coverage: ScenarioCoverage = Field(default_factory=ScenarioCoverage)
     risk: InvestmentRiskAssessment = Field(default_factory=InvestmentRiskAssessment)
+    readiness: InvestmentReadinessAssessment
     limitations: list[str] = Field(default_factory=list)
     trade_actions_allowed: Literal[False] = False
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from decimal import Decimal
 from typing import Any
 
 from app.models.investment_research import InstrumentResearchSnapshot
@@ -47,23 +46,13 @@ def extract_instrument_reference(message: str) -> tuple[str, MarketAssetType] | 
     return None
 
 
-def _change_percent(first: Decimal, last: Decimal) -> Decimal | None:
-    if first <= 0:
-        return None
-    return ((last - first) / first * Decimal("100")).quantize(Decimal("0.01"))
-
-
 def project_instrument_research(snapshot: InstrumentResearchSnapshot) -> dict[str, Any]:
     """Keep the agent context useful but exclude full history and provider objects."""
 
     bars = snapshot.history.bars
     first_close = bars[0].close.amount if bars else None
     last_close = bars[-1].close.amount if bars else None
-    change_percent = (
-        _change_percent(first_close, last_close)
-        if first_close is not None and last_close is not None
-        else None
-    )
+    performance = snapshot.performance.model_dump(mode="json")
     return {
         "status": "available",
         "symbol": snapshot.symbol,
@@ -85,11 +74,14 @@ def project_instrument_research(snapshot: InstrumentResearchSnapshot) -> dict[st
             "bar_count": len(bars),
             "first_close": str(first_close) if first_close is not None else None,
             "last_close": str(last_close) if last_close is not None else None,
-            "change_percent": str(change_percent) if change_percent is not None else None,
+            "change_percent": performance.get("period_return_percent"),
             "currency": snapshot.history.currency,
             "source": snapshot.history.provider,
             "fetched_at": snapshot.history.fetched_at.isoformat(),
         },
+        "performance": performance,
+        "benchmark": snapshot.benchmark.model_dump(mode="json"),
+        "readiness": snapshot.readiness.model_dump(mode="json"),
         "evidence": [item.model_dump(mode="json") for item in snapshot.evidence],
         "limitations": list(snapshot.limitations),
         "trade_actions_allowed": False,

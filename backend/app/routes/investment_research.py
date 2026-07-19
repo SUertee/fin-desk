@@ -93,6 +93,7 @@ def get_instrument_research(
     asset_type: MarketAssetType = Query(default="equity"),
     date_from: date | None = Query(default=None),
     date_to: date | None = Query(default=None),
+    benchmark_symbol: str = Query(default="SPY", min_length=1, max_length=16),
 ) -> InstrumentResearchSnapshot:
     selected_to = date_to or date.today()
     selected_from = date_from or (selected_to - timedelta(days=90))
@@ -103,6 +104,7 @@ def get_instrument_research(
             asset_type=asset_type,
             date_from=selected_from,
             date_to=selected_to,
+            benchmark_symbol=benchmark_symbol,
         )
     except Exception as exc:
         _raise_research_error(exc)

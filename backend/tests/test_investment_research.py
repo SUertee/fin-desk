@@ -12,10 +12,12 @@ from app.models.market_data import (
     ExternalCallUsage,
     MarketCacheMetadata,
     MarketInstrumentProfile,
+    MarketPriceBar,
     MarketPriceHistory,
     MarketQuoteResult,
 )
 from app.services.investment_research import InvestmentResearchService
+from app.models.user import UserProfile
 
 
 NOW = datetime(2026, 7, 19, 10, 0, tzinfo=timezone.utc)
@@ -47,8 +49,9 @@ def _quote(symbol, amount, *, timestamp_basis="provider_time"):
 
 
 class FakeMarketData:
-    def __init__(self, quotes=None):
+    def __init__(self, quotes=None, histories=None):
         self.quotes = quotes or []
+        self.histories = histories or {}
         self.calls = []
         self.budget = object()
 
@@ -88,6 +91,8 @@ class FakeMarketData:
 
     def get_history(self, symbol, *, asset_type, date_from, date_to, budget):
         self.calls.append(("history", symbol, budget))
+        if symbol in self.histories:
+            return self.histories[symbol]
         return MarketPriceHistory(
             symbol=symbol,
             asset_type=asset_type,
@@ -100,6 +105,36 @@ class FakeMarketData:
             cache=_cache("history"),
             external_calls=_usage(),
         )
+
+
+def _history(symbol, prices, *, asset_type="equity"):
+    bars = []
+    for index, price in enumerate(prices):
+        amount = {"amount": str(price), "currency": "USD"}
+        bars.append(
+            MarketPriceBar(
+                symbol=symbol,
+                asset_type=asset_type,
+                period=date(2026, 6, 1) + timedelta(days=index),
+                open=amount,
+                high=amount,
+                low=amount,
+                close=amount,
+                source="fake",
+            )
+        )
+    return MarketPriceHistory(
+        symbol=symbol,
+        asset_type=asset_type,
+        provider="openbb:yfinance",
+        currency="USD",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 7, 19),
+        fetched_at=NOW,
+        bars=bars,
+        cache=_cache(f"history-{symbol}"),
+        external_calls=_usage(),
+    )
 
 
 class FakeExchangeRates:
@@ -165,6 +200,7 @@ def _service(detail, market, exchange=None):
         scenario_writer=lambda scenario: True,
         scenario_position_writer=lambda *args: True,
         scenario_deleter=lambda *args: True,
+        profile_reader=lambda user_id: UserProfile(user_id=user_id),
         concentration_threshold_percent=Decimal("80"),
         clock=lambda: NOW,
     )
@@ -198,6 +234,33 @@ def test_empty_scenario_is_explicit_and_skips_market_data():
     assert result.status == "empty"
     assert result.reporting_total is None
     assert market.calls == []
+
+
+def test_research_compares_same_range_benchmark_and_keeps_readiness_separate():
+    market = FakeMarketData(
+        [_quote("AAPL", "120")],
+        histories={
+            "AAPL": _history("AAPL", ["100", "110", "120"]),
+            "SPY": _history("SPY", ["100", "102", "105"], asset_type="etf"),
+        },
+    )
+    service = _service(_scenario([]), market)
+
+    result = service.get_instrument_research(
+        "demo",
+        "AAPL",
+        asset_type="equity",
+        date_from=date(2026, 6, 1),
+        date_to=date(2026, 7, 19),
+        benchmark_symbol="SPY",
+    )
+
+    assert result.performance.period_return_percent == Decimal("20.00")
+    assert result.benchmark.status == "available"
+    assert result.benchmark.excess_period_return_percent == Decimal("15.00")
+    assert result.readiness.status == "insufficient_data"
+    assert "benchmark_history" in {item.kind for item in result.evidence}
+    assert result.trade_actions_allowed is False
 
 
 def test_complete_scenario_converts_currency_and_flags_overallocation():

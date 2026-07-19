@@ -31,6 +31,7 @@ from app.connectors.postgres.market_data_cache_store import (
 from app.services.exchange_rates import ExchangeRateService
 from app.services.investment_research import InvestmentResearchService
 from app.services.market_data import MarketDataService
+from app.services.user_store import get_profile
 
 
 @lru_cache(maxsize=1)
@@ -85,6 +86,7 @@ def get_investment_research_service() -> InvestmentResearchService:
         scenario_writer=save_investment_scenario_db,
         scenario_position_writer=replace_scenario_positions_db,
         scenario_deleter=delete_investment_scenario_db,
+        profile_reader=get_profile,
         stale_after_days=settings.quote_stale_after_days,
         concentration_threshold_percent=settings.concentration_threshold_percent,
     )
