@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from time import perf_counter
 from typing import Any
 
 from app.agents.specialists.contracts import SpecialistAgentOutput
 from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
+from app.connectors.postgres.exchange_rate_store import get_exchange_rate_snapshot_db
 from app.connectors.postgres.statement_import_store import list_latest_quality_reports_db
 from app.models.agent_data import AgentAction, AgentAudit, AgentFinding, SummaryCard
 from app.models.chat import ChatResponse
@@ -35,8 +37,9 @@ from app.runtime.orchestration.router import ModelIntentClassifier
 from app.models.routing import route_for_path
 from app.runtime.policy.audit_runner import should_run_audit
 from app.runtime.policy.conversation_policy import compose_short_cfo_reply
-from app.runtime.policy.cost_policy import estimate_run_cost
 from app.runtime.policy.runtime_policy import evaluate_runtime_policy
+from app.runtime.costing import CostingService
+from app.config.settings import get_settings
 from app.runtime.llm.deepseek_client import DeepSeekTextClient
 from app.runtime.response.response_composer import compose_finance_chat_response
 from app.tools.query_tools import extract_query_filters, run_transaction_query
@@ -129,10 +132,14 @@ class FinanceRuntime:
         tool_registry: ToolRegistry | None = None,
         specialist_runner: SpecialistRunner | None = None,
         llm_client: Any | None = None,
+        costing_service: CostingService | None = None,
     ):
         self.tool_registry = tool_registry or self._build_tool_registry()
         self.specialist_runner = specialist_runner or SpecialistRunner()
         self.llm_client = llm_client if llm_client is not None else DeepSeekTextClient()
+        self.costing_service = costing_service or CostingService(
+            exchange_rate_lookup=get_exchange_rate_snapshot_db
+        )
         # Client getter: nulling self.llm_client also disables classification.
         self.entry_router = EntryRouter(
             classifier=ModelIntentClassifier(lambda: self.llm_client)
@@ -252,7 +259,7 @@ class FinanceRuntime:
                 if response_validation.status == "failed":
                     raise ValueError("FinanceRuntime returned invalid ChatResponse")
                 trace.mark_runtime_used("self_hosted")
-                self._finalize_trace(trace)
+                self._finalize_trace(trace, profile)
                 self._log_trace(trace)
                 self._persist_trace(trace)
                 return response_payload
@@ -488,13 +495,13 @@ class FinanceRuntime:
                 chat_history=chat_history,
             )
             trace.mark_runtime_used("self_hosted")
-            self._finalize_trace(trace)
+            self._finalize_trace(trace, profile)
             self._log_trace(trace)
             self._persist_trace(trace)
             return response_payload
         except Exception as exc:
             trace.fail(exc)
-            self._finalize_trace(trace)
+            self._finalize_trace(trace, profile)
             self._log_trace(trace)
             self._persist_trace(trace)
             raise
@@ -559,7 +566,7 @@ class FinanceRuntime:
     ) -> dict[str, Any]:
         """Bounded per-stage LLM accounting for policy.llm_usage_by_stage.
 
-        Metadata only — tokens, estimated cost, model, profile, status.
+        Metadata only — tokens, model, profile, status.
         Never prompts, chat history, or ledger payloads. Usage is included
         whenever the provider reported one, even for invalid output: those
         tokens were billed.
@@ -573,14 +580,14 @@ class FinanceRuntime:
         }
         if usage is not None:
             parsed = AgentRunUsage.model_validate(usage)
-            cost = estimate_run_cost(
-                entrypoint=trace.entrypoint, usage=parsed, model_name=model_name
-            )
             entry.update(
+                request_count=parsed.request_count,
+                model_response_count=parsed.model_response_count,
                 input_tokens=parsed.input_tokens,
+                cached_input_tokens=parsed.cached_input_tokens,
+                uncached_input_tokens=parsed.uncached_input_tokens,
                 output_tokens=parsed.output_tokens,
                 total_tokens=parsed.total_tokens,
-                estimated_cost_usd=cost.estimated_total_cost,
             )
         return entry
 
@@ -1108,12 +1115,20 @@ class FinanceRuntime:
             return preferred
         return "zh" if any("一" <= ch <= "鿿" for ch in message) else "en"
 
-    def _finalize_trace(self, trace: TraceCollector) -> None:
+    def _finalize_trace(
+        self, trace: TraceCollector, profile: dict[str, Any] | None = None
+    ) -> None:
+        stage_entries = trace.policy.get("llm_usage_by_stage") or {}
+        cost_preferences = (profile or {}).get("cost_preferences") or {}
+        reporting_currency = str(
+            cost_preferences.get("reporting_currency")
+            or get_settings().cost.reporting_currency
+        )
         trace.set_cost(
-            estimate_run_cost(
-                entrypoint=trace.entrypoint,
-                usage=trace.usage,
-                model_name=trace.model_name,
+            self.costing_service.cost_stage_entries(
+                stage_entries,
+                reporting_currency=reporting_currency,
+                accounting_date=date.today(),
             )
         )
 

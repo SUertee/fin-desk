@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -24,9 +26,13 @@ class DatabaseSettings:
 
 @dataclass(frozen=True)
 class CostSettings:
-    currency: str = "USD"
-    input_cost_per_1m: float | None = None
-    output_cost_per_1m: float | None = None
+    reporting_currency: str = "USD"
+
+    def __post_init__(self) -> None:
+        currency = self.reporting_currency.strip().upper()
+        if len(currency) != 3 or not currency.isalpha():
+            raise ValueError("reporting currency must be a three-letter code")
+        object.__setattr__(self, "reporting_currency", currency)
 
 
 @dataclass(frozen=True)
@@ -39,8 +45,39 @@ class ModelProfile:
     temperature: float = 0.2
     max_tokens: int = 1200
     timeout_seconds: int = 30
-    input_cost_per_1m: float | None = None
-    output_cost_per_1m: float | None = None
+    input_cost_per_1m: Decimal | None = None
+    cached_input_cost_per_1m: Decimal | None = None
+    output_cost_per_1m: Decimal | None = None
+    billing_currency: str = "USD"
+    pricing_source: str = "not_configured"
+    pricing_effective_date: date | None = None
+
+    def __post_init__(self) -> None:
+        currency = self.billing_currency.strip().upper()
+        if len(currency) != 3 or not currency.isalpha():
+            raise ValueError(f"invalid billing currency for profile {self.name}")
+        object.__setattr__(self, "billing_currency", currency)
+        for field_name in (
+            "input_cost_per_1m",
+            "cached_input_cost_per_1m",
+            "output_cost_per_1m",
+        ):
+            raw = getattr(self, field_name)
+            if raw is None:
+                continue
+            try:
+                parsed = Decimal(str(raw))
+            except InvalidOperation as exc:
+                raise ValueError(f"invalid {field_name} for profile {self.name}") from exc
+            if parsed < 0:
+                raise ValueError(f"negative {field_name} for profile {self.name}")
+            object.__setattr__(self, field_name, parsed)
+        if isinstance(self.pricing_effective_date, str):
+            object.__setattr__(
+                self,
+                "pricing_effective_date",
+                date.fromisoformat(self.pricing_effective_date),
+            )
 
 
 @dataclass(frozen=True)
@@ -65,16 +102,6 @@ class AppSettings:
     audit_model_profile: str = "audit"
     analysis_model_profile: str = "analysis"
     cost: CostSettings = CostSettings()
-
-
-def _optional_float(value: str | None) -> float | None:
-    if value is None or value.strip() == "":
-        return None
-    try:
-        parsed = float(value)
-    except ValueError:
-        return None
-    return parsed if parsed >= 0 else None
 
 
 def _split_csv(value: str) -> list[str]:
@@ -164,12 +191,6 @@ def get_settings() -> AppSettings:
         audit_model_profile=os.getenv("FINANCE_AUDIT_MODEL_PROFILE", "audit"),
         analysis_model_profile=os.getenv("FINANCE_ANALYSIS_MODEL_PROFILE", "analysis"),
         cost=CostSettings(
-            currency=os.getenv("OPENAI_COST_CURRENCY", "USD"),
-            input_cost_per_1m=_optional_float(
-                os.getenv("OPENAI_AGENT_INPUT_COST_PER_1M")
-            ),
-            output_cost_per_1m=_optional_float(
-                os.getenv("OPENAI_AGENT_OUTPUT_COST_PER_1M")
-            ),
+            reporting_currency=os.getenv("FINANCE_REPORTING_CURRENCY", "USD"),
         ),
     )

@@ -4,6 +4,7 @@ import {
   Brain,
   ChevronRight,
   CircleHelp,
+  Coins,
   Database,
   ExternalLink,
   FileText,
@@ -45,6 +46,7 @@ type SettingsPageProps = {
 type SettingsSection =
   | "profile"
   | "dataSources"
+  | "costs"
   | "agent"
   | "memory"
   | "privacy"
@@ -63,12 +65,15 @@ type ProfileForm = {
   responseTone: string;
   language: string;
   evidenceLevel: string;
+  reportingCurrency: string;
+  monthlyAiBudget: string;
   notes: string;
 };
 
 const navItems = [
   { id: "profile", label: "Profile", icon: UserRound },
   { id: "dataSources", label: "Data Sources", icon: Database },
+  { id: "costs", label: "Cost Reporting", icon: Coins },
   { id: "agent", label: "Agent Behavior", icon: Bot },
   { id: "memory", label: "Memory", icon: Brain },
   { id: "privacy", label: "Privacy & Safety", icon: ShieldCheck },
@@ -144,6 +149,10 @@ export function SettingsPage({
         savings: parseMoney(form.savings),
         notes: form.notes.trim(),
         preferences: formToPreferences(form),
+        cost_preferences: {
+          reporting_currency: form.reportingCurrency,
+          monthly_ai_budget: parseOptionalMoney(form.monthlyAiBudget),
+        },
       };
       await updateProfile(userId, payload);
       setSavedForm(form);
@@ -198,6 +207,9 @@ export function SettingsPage({
     }
     if (activeSection === "agent") {
       return <AgentPanel form={form} setForm={setForm} />;
+    }
+    if (activeSection === "costs") {
+      return <CostReportingPanel form={form} setForm={setForm} />;
     }
     if (activeSection === "memory") {
       return <MemoryPanel />;
@@ -521,6 +533,71 @@ function DataSourcesPanel({
   );
 }
 
+function CostReportingPanel({
+  form,
+  setForm,
+}: {
+  form: ProfileForm;
+  setForm: (updater: (prev: ProfileForm) => ProfileForm) => void;
+}) {
+  return (
+    <div className="settings-v2-grid">
+      <SettingsPanelCard icon={<Coins />} title="Reporting currency" wide>
+        <Field label="Display currency">
+          <select
+            value={form.reportingCurrency}
+            onChange={(event) =>
+              setForm((prev) => ({
+                ...prev,
+                reportingCurrency: event.target.value,
+              }))
+            }
+          >
+            <option value="CNY">CNY · Chinese yuan</option>
+            <option value="USD">USD · US dollar</option>
+            <option value="AUD">AUD · Australian dollar</option>
+          </select>
+        </Field>
+        <p className="settings-v2-card-note">
+          FinDesk keeps every provider charge in its native billing currency, then
+          derives this reporting view from immutable historical exchange-rate snapshots.
+        </p>
+      </SettingsPanelCard>
+      <SettingsPanelCard icon={<PiggyBank />} title="AI spending guardrail" wide>
+        <Field label="Monthly AI budget">
+          <div className="settings-v2-money-input">
+            <span>{form.reportingCurrency}</span>
+            <input
+              inputMode="decimal"
+              placeholder="Not configured"
+              value={form.monthlyAiBudget}
+              onChange={(event) =>
+                setForm((prev) => ({
+                  ...prev,
+                  monthlyAiBudget: event.target.value,
+                }))
+              }
+            />
+          </div>
+        </Field>
+        <p className="settings-v2-card-note">
+          The budget applies to complete, auditable API costs only. Missing provider
+          pricing or exchange rates are reported as coverage gaps, never as zero spend.
+        </p>
+      </SettingsPanelCard>
+      <SettingsPanelCard icon={<Database />} title="Cost sources" wide>
+        <StatusLine label="FinDesk Agent Run API usage" value="Connected" tone="good" />
+        <StatusLine label="External project API usage" value="Not connected" />
+        <StatusLine label="AI subscriptions" value="Not connected" />
+        <p className="settings-v2-card-note">
+          Provider exports and subscription connectors will appear here only after an
+          authoritative source is configured.
+        </p>
+      </SettingsPanelCard>
+    </div>
+  );
+}
+
 function AgentPanel({
   form,
   setForm,
@@ -667,6 +744,17 @@ function WorkspaceStatusRail({
           tone={form.responseTone ? "good" : undefined}
         />
         <StatusLine label="Market context" value="Disabled" />
+      </StatusCard>
+      <StatusCard icon={<Coins />} title="AI Costs">
+        <StatusLine
+          label="Reporting currency"
+          value={form.reportingCurrency}
+          tone="good"
+        />
+        <StatusLine
+          label="Monthly budget"
+          value={form.monthlyAiBudget || "Not configured"}
+        />
       </StatusCard>
       <button className="settings-v2-overview" type="button">
         <BarChart3 />
@@ -818,6 +906,11 @@ function buildProfileForm(
     responseTone: TONE_TO_LABEL[profile?.preferences?.response_tone] ?? "Balanced",
     language: LANGUAGE_TO_LABEL[profile?.preferences?.preferred_language] ?? "Auto",
     evidenceLevel: EVIDENCE_TO_LABEL[profile?.preferences?.evidence_level] ?? "Detailed with data",
+    reportingCurrency: profile?.cost_preferences?.reporting_currency ?? "USD",
+    monthlyAiBudget:
+      profile?.cost_preferences?.monthly_ai_budget != null
+        ? formatNumberInput(profile.cost_preferences.monthly_ai_budget)
+        : "",
     notes: profile?.notes || "",
   };
 }
@@ -864,7 +957,12 @@ function parseMoney(value: string): number {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function formatNumberInput(value: number): string {
+function parseOptionalMoney(value: string): number | null {
+  if (!value.trim()) return null;
+  return parseMoney(value);
+}
+
+function formatNumberInput(value: number | string): string {
   return value ? String(value) : "";
 }
 
@@ -876,6 +974,7 @@ function sectionTitle(section: SettingsSection): string {
   return {
     profile: "Profile",
     dataSources: "Data Sources",
+    costs: "Cost Reporting",
     agent: "Agent Behavior",
     memory: "Memory",
     privacy: "Privacy & Safety",
@@ -887,6 +986,7 @@ function sectionSubtitle(section: SettingsSection): string {
   return {
     profile: "Personalize how the CFO evaluates your financial situation.",
     dataSources: "Connect statements and review import health.",
+    costs: "Choose a reporting currency and set an AI spending guardrail.",
     agent: "Control how the CFO communicates and delegates work.",
     memory: "Manage what the CFO remembers across conversations.",
     privacy: "Review data handling and safety controls.",

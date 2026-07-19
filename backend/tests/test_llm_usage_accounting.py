@@ -49,19 +49,19 @@ class ThreeStageFakeLLM:
             return SimpleNamespace(
                 data=self.contextualizer_data,
                 usage=_usage(10, 5),
-                model_name="deepseek-chat",
+                model_name="deepseek-v4-flash",
             )
         return SimpleNamespace(
             data=self.classifier_data,
             usage=_usage(20, 10),
-            model_name="deepseek-chat",
+            model_name="deepseek-v4-flash",
         )
 
     async def generate_text(self, prompt, *, profile="chat", system=""):
         return LLMResponse(
             content="这是 CFO 的回复。",
             usage=_usage(40, 20),
-            model_name="deepseek-chat",
+            model_name="deepseek-v4-flash",
         )
 
 
@@ -105,19 +105,26 @@ async def test_three_stage_usage_accumulates_not_overwrites(monkeypatch):
     assert set(stages) == {"turn_contextualize", "route_classify", "llm_compose"}
     for name, entry in stages.items():
         assert entry["status"] == "called", name
-        assert entry["model_name"] == "deepseek-chat"
+        assert entry["model_name"] == "deepseek-v4-flash"
         assert entry["total_tokens"] > 0
-        assert entry["estimated_cost_usd"] >= 0
         # metadata only — never prompts or histories
         assert set(entry) <= {
             "status", "latency_ms", "model_name", "profile",
-            "input_tokens", "output_tokens", "total_tokens", "estimated_cost_usd",
+            "request_count", "model_response_count",
+            "input_tokens", "cached_input_tokens", "uncached_input_tokens",
+            "output_tokens", "total_tokens",
         }
     assert stages["turn_contextualize"]["profile"] == "router"
     assert stages["llm_compose"]["profile"] == "chat"
     # All three appear in the tool timeline as well.
     tool_names = {c.name for c in record.tool_calls}
     assert {"turn_contextualize", "route_classify", "llm_compose"} <= tool_names
+    assert record.cost.status == "complete"
+    assert {stage.stage for stage in record.cost.stages} == {
+        "turn_contextualize", "route_classify", "llm_compose"
+    }
+    assert record.cost.billing_totals[0].currency == "USD"
+    assert str(record.cost.billing_totals[0].amount) == "0.000019600000"
 
 
 @pytest.mark.asyncio
@@ -128,6 +135,7 @@ async def test_deterministic_run_reports_zero_usage(monkeypatch):
     assert record.usage.total_tokens == 0
     assert record.usage.request_count == 0
     assert "llm_usage_by_stage" not in record.policy
+    assert record.cost.status == "not_applicable"
 
 
 @pytest.mark.asyncio
@@ -151,6 +159,8 @@ async def test_invalid_model_output_still_counts_billed_usage(monkeypatch):
     # Usage accumulated from both rejected responses; no compose (light route).
     assert record.usage.total_tokens == 45
     assert "llm_compose" not in stages
+    assert record.cost.status == "complete"
+    assert {stage.status for stage in record.cost.stages} == {"invalid_output"}
 
 
 @pytest.mark.asyncio
@@ -173,3 +183,4 @@ async def test_provider_failure_adds_no_fake_usage(monkeypatch):
     stages = record.policy["llm_usage_by_stage"]
     assert stages["turn_contextualize"]["status"] == "failed"
     assert "total_tokens" not in stages["turn_contextualize"]
+    assert record.cost.status == "not_applicable"

@@ -10,8 +10,6 @@ from app.runtime.orchestration.finance_runtime import FinanceRuntime
 async def test_runtime_uses_self_hosted_multi_agent_path(monkeypatch, caplog):
     from app.runtime.orchestration import finance_runtime
 
-    monkeypatch.setenv("OPENAI_AGENT_INPUT_COST_PER_1M", "0.25")
-    monkeypatch.setenv("OPENAI_AGENT_OUTPUT_COST_PER_1M", "1.0")
     saved_records = []
     monkeypatch.setattr(
         finance_runtime,
@@ -39,7 +37,8 @@ async def test_runtime_uses_self_hosted_multi_agent_path(monkeypatch, caplog):
     assert trace["runtime_requested"] == "self_hosted"
     assert trace["runtime_used"] == "self_hosted"
     assert trace["model_name"] == "self-hosted-deterministic"
-    assert trace["cost"]["estimated_total_cost"] == 0
+    assert trace["cost"]["status"] == "not_applicable"
+    assert trace["cost"]["billing_totals"] == []
     assert trace["selected_agents"] == ["cfo", "expense_analyst", "auditor"]
 
     tool_calls = {call["name"]: call for call in trace["tool_calls"]}

@@ -193,6 +193,12 @@ class TraceCollector:
                 self.usage.model_response_count + parsed.model_response_count
             ),
             input_tokens=self.usage.input_tokens + parsed.input_tokens,
+            cached_input_tokens=(
+                self.usage.cached_input_tokens + parsed.cached_input_tokens
+            ),
+            uncached_input_tokens=(
+                self.usage.uncached_input_tokens + parsed.uncached_input_tokens
+            ),
             output_tokens=self.usage.output_tokens + parsed.output_tokens,
             total_tokens=self.usage.total_tokens + parsed.total_tokens,
         )
@@ -239,4 +245,4 @@ class TraceCollector:
         )
 
     def to_log_dict(self) -> dict[str, Any]:
-        return self.to_run_record().model_dump()
+        return self.to_run_record().model_dump(mode="json")

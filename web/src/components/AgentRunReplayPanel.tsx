@@ -11,6 +11,7 @@ import { fetchAgentRuns, replayAgentRun } from "../services/financeApi";
 import type {
   AgentHandoff,
   AgentRunPagination,
+  AgentRunCost,
   AgentOutputValidation,
   AgentRunSummary,
   AgentToolCall,
@@ -45,9 +46,24 @@ function formatNumber(value?: number | null) {
   return typeof value === "number" ? value.toLocaleString() : "0";
 }
 
-function formatCost(value?: number | null, currency = "USD") {
-  if (typeof value !== "number") return `0 ${currency}`;
+function formatMoney(amount?: string | null, currency = "USD") {
+  if (!amount) return `Unavailable ${currency}`;
+  const value = Number(amount);
+  if (!Number.isFinite(value)) return `${amount} ${currency}`;
   return `${value.toFixed(value > 0 && value < 0.01 ? 6 : 4)} ${currency}`;
+}
+
+function formatRunCost(cost?: AgentRunCost | null) {
+  if (!cost || cost.status === "not_applicable") return "No LLM cost";
+  if (cost.reporting_total) {
+    return formatMoney(cost.reporting_total.amount, cost.reporting_total.currency);
+  }
+  if (cost.billing_totals.length > 0) {
+    return cost.billing_totals
+      .map((item) => formatMoney(item.amount, item.currency))
+      .join(" + ");
+  }
+  return `Reporting unavailable (${cost.reporting_currency})`;
 }
 
 function statusStyle(status?: string | null) {
@@ -117,7 +133,7 @@ function RunListItem({
         style={{ marginTop: "6px", color: selected ? "#cbd5e1" : "#64748b" }}
       >
         {formatNumber(run.usage?.total_tokens)} tokens ·{" "}
-        {formatCost(run.cost?.estimated_total_cost, run.cost?.currency)}
+        {formatRunCost(run.cost)}
       </div>
     </button>
   );
@@ -477,10 +493,7 @@ export function AgentRunReplayPanel({ userId }: AgentRunReplayPanelProps) {
                     <div className="bg-slate-50 rounded-lg" style={{ padding: "12px" }}>
                       <div className="text-xs text-gray-500">Cost</div>
                       <div className="text-sm text-slate-900">
-                        {formatCost(
-                          summary.cost?.estimated_total_cost,
-                          summary.cost?.currency
-                        )}
+                        {formatRunCost(summary.cost)}
                       </div>
                     </div>
                     <div className="bg-slate-50 rounded-lg" style={{ padding: "12px" }}>

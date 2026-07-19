@@ -16,7 +16,7 @@ from app.runtime.llm.client import LLMResponse
 from app.runtime.llm.usage import usage_from_response
 
 DEFAULT_BASE_URL = "https://api.deepseek.com/v1"
-DEFAULT_MODEL = "deepseek-chat"
+DEFAULT_MODEL = "deepseek-v4-flash"
 
 
 class DeepSeekTextClient:
@@ -56,6 +56,14 @@ class DeepSeekTextClient:
             self._clients[profile_name] = client
         return client
 
+    @staticmethod
+    def _completion_options(model: str) -> dict[str, Any]:
+        # V4 defaults to thinking mode. FinDesk's router and response composer
+        # intentionally use the lower-latency non-thinking path.
+        if model.startswith("deepseek-v4"):
+            return {"extra_body": {"thinking": {"type": "disabled"}}}
+        return {}
+
     async def generate_text(
         self,
         prompt: str,
@@ -74,6 +82,7 @@ class DeepSeekTextClient:
             messages=messages,
             temperature=model_profile.temperature,
             max_tokens=model_profile.max_tokens,
+            **self._completion_options(model_profile.model or DEFAULT_MODEL),
         )
         return LLMResponse(
             content=(response.choices[0].message.content or "").strip(),
@@ -105,6 +114,7 @@ class DeepSeekTextClient:
             max_tokens=model_profile.max_tokens,
             stream=True,
             stream_options={"include_usage": True},
+            **self._completion_options(model_profile.model or DEFAULT_MODEL),
         )
         parts: list[str] = []
         usage = AgentRunUsage(request_count=1)
@@ -147,6 +157,7 @@ class DeepSeekTextClient:
             temperature=model_profile.temperature,
             max_tokens=model_profile.max_tokens,
             response_format={"type": "json_object"},
+            **self._completion_options(model_profile.model or DEFAULT_MODEL),
         )
         content = (response.choices[0].message.content or "{}").strip()
         try:

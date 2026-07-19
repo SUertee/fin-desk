@@ -5,8 +5,14 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
+from app.config.settings import get_settings
 from app.connectors.postgres.connection import get_conn
-from app.models.user import AssetSnapshot, UserPreferences, UserProfile
+from app.models.user import (
+    AssetSnapshot,
+    CostReportingPreferences,
+    UserPreferences,
+    UserProfile,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +27,8 @@ def get_profile_db(user_id: str) -> Optional[UserProfile]:
                     """
                     SELECT user_id, name, occupation, financial_goals, risk_tolerance,
                            cash_balance, savings, investments, liabilities,
-                           monthly_income, monthly_expenses, notes, preferences
+                           monthly_income, monthly_expenses, notes, preferences,
+                           cost_preferences
                     FROM user_profiles
                     WHERE user_id = %s
                     """,
@@ -37,6 +44,13 @@ def get_profile_db(user_id: str) -> Optional[UserProfile]:
             raw_preferences = row[12]
             if isinstance(raw_preferences, str):
                 raw_preferences = json.loads(raw_preferences)
+            raw_cost_preferences = row[13]
+            if isinstance(raw_cost_preferences, str):
+                raw_cost_preferences = json.loads(raw_cost_preferences)
+            if not raw_cost_preferences:
+                raw_cost_preferences = {
+                    "reporting_currency": get_settings().cost.reporting_currency
+                }
 
             return UserProfile(
                 user_id=row[0],
@@ -54,6 +68,9 @@ def get_profile_db(user_id: str) -> Optional[UserProfile]:
                 monthly_expenses=float(row[10] or 0),
                 notes=row[11] or "",
                 preferences=UserPreferences.model_validate(raw_preferences or {}),
+                cost_preferences=CostReportingPreferences.model_validate(
+                    raw_cost_preferences
+                ),
             )
         except Exception:
             logger.exception("Failed to get profile for user=%s", user_id)
@@ -71,9 +88,10 @@ def save_profile_db(profile: UserProfile) -> bool:
                     INSERT INTO user_profiles (
                         user_id, name, occupation, financial_goals, risk_tolerance,
                         cash_balance, savings, investments, liabilities,
-                        monthly_income, monthly_expenses, notes, preferences, updated_at
+                        monthly_income, monthly_expenses, notes, preferences,
+                        cost_preferences, updated_at
                     )
-                    VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+                    VALUES (%s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
                     ON CONFLICT (user_id) DO UPDATE SET
                         name = EXCLUDED.name,
                         occupation = EXCLUDED.occupation,
@@ -87,6 +105,7 @@ def save_profile_db(profile: UserProfile) -> bool:
                         monthly_expenses = EXCLUDED.monthly_expenses,
                         notes = EXCLUDED.notes,
                         preferences = EXCLUDED.preferences,
+                        cost_preferences = EXCLUDED.cost_preferences,
                         updated_at = EXCLUDED.updated_at
                     """,
                     (
@@ -103,6 +122,7 @@ def save_profile_db(profile: UserProfile) -> bool:
                         profile.monthly_expenses,
                         profile.notes,
                         json.dumps(profile.preferences.model_dump()),
+                        json.dumps(profile.cost_preferences.model_dump(mode="json")),
                         datetime.now(timezone.utc),
                     ),
                 )

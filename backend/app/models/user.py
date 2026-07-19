@@ -2,9 +2,12 @@
 User-related Pydantic models: profile, assets, preferences, profile update.
 """
 
+from decimal import Decimal
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.models.costing import normalize_currency
 
 
 class AssetSnapshot(BaseModel):
@@ -26,6 +29,20 @@ class UserPreferences(BaseModel):
     evidence_level: Literal["brief", "detailed", "audit_heavy"] = "detailed"
 
 
+class CostReportingPreferences(BaseModel):
+    """Finance-facing currency and AI budget preferences."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reporting_currency: str = "USD"
+    monthly_ai_budget: Decimal | None = Field(default=None, ge=0)
+
+    @field_validator("reporting_currency")
+    @classmethod
+    def validate_reporting_currency(cls, value: str) -> str:
+        return normalize_currency(value)
+
+
 class UserProfile(BaseModel):
     user_id: str = "demo"
     name: str = ""
@@ -37,6 +54,9 @@ class UserProfile(BaseModel):
     monthly_expenses: float = 0.0
     notes: str = Field("", description="Additional financial notes")
     preferences: UserPreferences = Field(default_factory=UserPreferences)
+    cost_preferences: CostReportingPreferences = Field(
+        default_factory=CostReportingPreferences
+    )
 
 
 class ProfileUpdateRequest(BaseModel):
@@ -52,3 +72,4 @@ class ProfileUpdateRequest(BaseModel):
     monthly_expenses: Optional[float] = None
     notes: Optional[str] = None
     preferences: Optional[UserPreferences] = None
+    cost_preferences: Optional[CostReportingPreferences] = None

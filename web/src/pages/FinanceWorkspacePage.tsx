@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import {
   Bot,
   CheckCircle2,
+  Coins,
   Database,
   FileCheck2,
   GitBranch,
@@ -16,6 +17,7 @@ import { MonthlyTrends } from "../components/MonthlyTrends";
 import { SpendingCalendar } from "../components/SpendingCalendar";
 import { TransactionsTable } from "../components/TransactionsTable";
 import { currencySymbol } from "../components/MetricsCards";
+import { AiCostExplorer } from "../features/cost-explorer/AiCostExplorer";
 import { useI18n } from "../i18n";
 import type { DataSourceStatus } from "../services/financeApi";
 import type { WorkspaceBrief } from "../types/financeAgent";
@@ -114,6 +116,7 @@ export function FinanceWorkspacePage({
 }: FinanceWorkspacePageProps) {
   const { lang, t } = useI18n();
   const [activeTab, setActiveTab] = useState<ExploreTab>("calendar");
+  const [categoryView, setCategoryView] = useState<"spending" | "ai-costs">("spending");
   const [detailDrawer, setDetailDrawer] = useState<DetailDrawer>(null);
   const [selectedActionTitle, setSelectedActionTitle] = useState<string | null>(null);
   const sym = currencySymbol(primaryCurrency);
@@ -428,7 +431,45 @@ export function FinanceWorkspacePage({
               {activeTab === "trends" && (
                 <MonthlyTrends data={monthlyTrendsData} currency={primaryCurrency} />
               )}
-              {activeTab === "categories" && <CategoryPieChart data={categoryData} />}
+              {activeTab === "categories" && categoryView === "spending" && (
+                <div className="category-explorer">
+                  <div className="category-explorer-intro">
+                    <div>
+                      <span>{lang === "zh" ? "支出分类" : "SPENDING CATEGORIES"}</span>
+                      <h3>{lang === "zh" ? "钱花在了哪里" : "Where your money goes"}</h3>
+                      <p>
+                        {lang === "zh"
+                          ? "账单消费和数字服务成本属于同一财务视图，但由不同证据管线生成。"
+                          : "Statement spend and digital-service costs share one finance view while retaining separate evidence pipelines."}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ai-cost-category-card"
+                      onClick={() => setCategoryView("ai-costs")}
+                    >
+                      <span className="ai-cost-category-icon"><Coins /></span>
+                      <span>
+                        <small>{lang === "zh" ? "数字服务" : "DIGITAL SERVICES"}</small>
+                        <strong>{lang === "zh" ? "AI 成本" : "AI Costs"}</strong>
+                        <em>
+                          {lang === "zh"
+                            ? "API 使用、订阅与预算"
+                            : "API usage, subscriptions, and budget"}
+                        </em>
+                      </span>
+                      <span className="ai-cost-category-arrow">→</span>
+                    </button>
+                  </div>
+                  <CategoryPieChart data={categoryData} />
+                </div>
+              )}
+              {activeTab === "categories" && categoryView === "ai-costs" && (
+                <AiCostExplorer
+                  userId={userId}
+                  onBack={() => setCategoryView("spending")}
+                />
+              )}
               {activeTab === "transactions" && (
                 <TransactionsTable transactions={tableTransactions} />
               )}
