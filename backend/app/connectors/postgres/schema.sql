@@ -214,6 +214,52 @@ CREATE TABLE IF NOT EXISTS investment_positions (
 CREATE INDEX IF NOT EXISTS idx_investment_positions_user_account
     ON investment_positions (user_id, account_id, symbol);
 
+-- User-curated research watchlist. These rows are not investment holdings.
+CREATE TABLE IF NOT EXISTS investment_watchlist_items (
+    user_id       TEXT NOT NULL,
+    symbol        TEXT NOT NULL,
+    asset_type    TEXT NOT NULL,
+    note          TEXT NOT NULL DEFAULT '',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, symbol, asset_type)
+);
+
+CREATE INDEX IF NOT EXISTS idx_investment_watchlist_user_updated_at
+    ON investment_watchlist_items (user_id, updated_at DESC);
+
+-- Hypothetical research scenarios. They never represent brokerage holdings.
+CREATE TABLE IF NOT EXISTS investment_scenarios (
+    user_id             TEXT NOT NULL,
+    scenario_id         TEXT NOT NULL,
+    name                TEXT NOT NULL,
+    reporting_currency  TEXT NOT NULL,
+    starting_cash_amount NUMERIC(28, 12) CHECK (starting_cash_amount >= 0),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, scenario_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_investment_scenarios_user_updated_at
+    ON investment_scenarios (user_id, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS investment_scenario_positions (
+    user_id       TEXT NOT NULL,
+    scenario_id   TEXT NOT NULL,
+    symbol        TEXT NOT NULL,
+    asset_type    TEXT NOT NULL,
+    quantity      NUMERIC(28, 12) NOT NULL CHECK (quantity > 0),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, scenario_id, symbol, asset_type),
+    FOREIGN KEY (user_id, scenario_id)
+        REFERENCES investment_scenarios (user_id, scenario_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_investment_scenario_positions_user_scenario
+    ON investment_scenario_positions (user_id, scenario_id, symbol);
+
 -- Immutable, sourced market facts used for reproducible as-of valuation
 CREATE TABLE IF NOT EXISTS market_quote_snapshots (
     symbol        TEXT NOT NULL,

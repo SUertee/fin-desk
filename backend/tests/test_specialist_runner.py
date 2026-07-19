@@ -7,7 +7,14 @@ carry limitations where data is incomplete, and reference expected evidence.
 
 import pytest
 
-from app.agents.specialists import REGISTRY, auditor, budget_coach, expense_analyst, market_context
+from app.agents.specialists import (
+    REGISTRY,
+    auditor,
+    budget_coach,
+    expense_analyst,
+    investment_research,
+    market_context,
+)
 from app.agents.specialists.contracts import (
     SpecialistAgentOutput,
     SpecialistInput,
@@ -36,6 +43,7 @@ class TestRegistry:
             "budget_coach",
             "auditor",
             "market_context",
+            "investment_research",
         }
 
 
@@ -227,3 +235,51 @@ class TestMarketContextFixture:
 
         assert output.findings == []
         assert any("unavailable" in limitation for limitation in output.limitations)
+
+
+class TestInvestmentResearchFixture:
+    def test_sourced_snapshot_becomes_read_only_findings(self):
+        output = investment_research.run(
+            SpecialistInput(
+                evidence={
+                    "investment_research": {
+                        "status": "available",
+                        "symbol": "AAPL",
+                        "profile": {"currency": "USD"},
+                        "quote": {
+                            "price": {"amount": "210.50", "currency": "USD"},
+                            "quote_as_of": "2026-07-19T10:00:00Z",
+                            "source": "openbb:yfinance",
+                        },
+                        "history": {
+                            "date_from": "2026-04-20",
+                            "date_to": "2026-07-19",
+                            "bar_count": 62,
+                            "change_percent": "4.25",
+                            "source": "openbb:yfinance",
+                        },
+                        "evidence": [
+                            {"source": "openbb:yfinance", "kind": "quote"}
+                        ],
+                        "limitations": [],
+                        "trade_actions_allowed": False,
+                    }
+                }
+            )
+        )
+
+        assert output.specialist == "investment_research"
+        assert any("AAPL" in finding.title for finding in output.findings)
+        assert all("buy" not in item.next_step.lower() for item in output.recommendations)
+        assert investment_research.READ_ONLY_LIMITATION in output.limitations
+
+    def test_missing_symbol_never_fabricates_research(self):
+        output = investment_research.run(
+            SpecialistInput(
+                evidence={"investment_research": {"status": "symbol_required"}}
+            )
+        )
+
+        assert output.findings == []
+        assert output.confidence <= 0.2
+        assert any("explicit" in item.lower() for item in output.limitations)

@@ -50,15 +50,29 @@ MARKET_KEYWORDS = {
     "market",
     "macro",
     "economy",
-    "stock",
-    "fund",
     "news",
     "市场",
     "宏观",
     "经济",
+    "新闻",
+}
+
+INVESTMENT_RESEARCH_KEYWORDS = {
+    "stock",
+    "stocks",
+    "ticker",
+    "etf",
+    "portfolio",
+    "watchlist",
+    "scenario",
+    "quote",
     "股票",
     "基金",
-    "新闻",
+    "标的",
+    "行情",
+    "组合",
+    "观察列表",
+    "假设场景",
 }
 
 RISK_KEYWORDS = {
@@ -94,6 +108,9 @@ def evaluate_runtime_policy(
     has_spending_intent = _contains_any(user_message, SPENDING_KEYWORDS)
     has_budget_intent = _contains_any(user_message, BUDGET_KEYWORDS)
     has_market_intent = _contains_any(user_message, MARKET_KEYWORDS)
+    has_investment_research_intent = _contains_any(
+        user_message, INVESTMENT_RESEARCH_KEYWORDS
+    )
     has_risky_intent = _contains_any(user_message, RISK_KEYWORDS)
     has_data = bool(transactions or monthly_totals)
 
@@ -101,6 +118,8 @@ def evaluate_runtime_policy(
         specialists.append("expense_analyst")
     if has_budget_intent:
         specialists.append("budget_coach")
+    if has_investment_research_intent:
+        specialists.append("investment_research")
 
     # A user hint ADDS a hintable specialist; it never removes policy
     # selections and never bypasses audit gating (auditor/market are not
@@ -115,7 +134,16 @@ def evaluate_runtime_policy(
     if allow_market:
         specialists.append("market_context")
 
-    risk_level = "high" if has_risky_intent else "medium" if has_market_intent else "low"
+    # Investment research always carries a high-risk review boundary even when
+    # the user only asks for a quote. The specialist remains read-only, while
+    # the auditor verifies sourcing and blocks trade-like recommendations.
+    risk_level = (
+        "high"
+        if has_risky_intent or has_investment_research_intent
+        else "medium"
+        if has_market_intent
+        else "low"
+    )
     audit_required = risk_level != "low" or bool(specialists) or not has_data
 
     if risk_level == "high" or len(specialists) >= 2 or len(user_message) > 160:

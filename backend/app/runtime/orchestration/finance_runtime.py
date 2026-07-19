@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from time import perf_counter
 from typing import Any
 
@@ -42,6 +42,11 @@ from app.runtime.costing import CostingService
 from app.config.settings import get_settings
 from app.runtime.llm.deepseek_client import DeepSeekTextClient
 from app.runtime.response.response_composer import compose_finance_chat_response
+from app.services.investment_research_runtime import get_investment_research_service
+from app.tools.investment_research_tools import (
+    extract_instrument_reference,
+    project_instrument_research,
+)
 from app.tools.query_tools import extract_query_filters, run_transaction_query
 from app.tools.finance_tools import (
     build_budget_snapshot,
@@ -56,6 +61,7 @@ SPECIALIST_TOOL_BY_AGENT = {
     "budget_coach": "consult_budget_coach",
     "auditor": "consult_auditor",
     "market_context": "consult_market_context",
+    "investment_research": "consult_investment_research",
 }
 
 
@@ -108,6 +114,60 @@ def _summary_cards(context: dict[str, Any]) -> list[SummaryCard]:
             value=BUDGET_STATUS_ZH.get(budget_status, budget_status) if zh else budget_status,
             status=_status_from_budget(budget_status),
             note="支出与设定月收入之比" if zh else "Expense ratio against configured monthly income",
+        ),
+    ]
+
+
+def _response_summary_cards(context: dict[str, Any]) -> list[SummaryCard]:
+    research = context.get("investment_research") or {}
+    status = research.get("status")
+    if status in {"symbol_required", "unavailable"}:
+        return []
+    if status != "available":
+        return _summary_cards(context)
+
+    zh = context.get("reply_language") == "zh"
+    quote = research.get("quote") or {}
+    price = quote.get("price") or {}
+    history = research.get("history") or {}
+    evidence = research.get("evidence") or []
+    quote_value = price.get("amount")
+    quote_currency = str(price.get("currency") or "")
+    change = history.get("change_percent")
+    return [
+        SummaryCard(
+            label="最近行情" if zh else "Latest quote",
+            value=(
+                f"{quote_currency} {quote_value}"
+                if quote_value is not None
+                else ("暂无" if zh else "Unavailable")
+            ),
+            status="neutral",
+            note=(
+                f"来源 {quote.get('source')}; 截至 {quote.get('quote_as_of')}"
+                if zh
+                else f"Source {quote.get('source')}; as of {quote.get('quote_as_of')}"
+            ),
+        ),
+        SummaryCard(
+            label="观察期变化" if zh else "Observed change",
+            value=f"{change}%" if change is not None else ("暂无" if zh else "Unavailable"),
+            status="watch" if change is not None else "neutral",
+            note=(
+                f"{history.get('date_from')} 至 {history.get('date_to')}"
+                if zh
+                else f"{history.get('date_from')} to {history.get('date_to')}"
+            ),
+        ),
+        SummaryCard(
+            label="证据来源" if zh else "Evidence sources",
+            value=str(len(evidence)),
+            status="good" if evidence else "watch",
+            note=(
+                "只读研究，不执行交易"
+                if zh
+                else "Read-only research; no trade execution"
+            ),
         ),
     ]
 
@@ -360,6 +420,12 @@ class FinanceRuntime:
             query_result = artifacts.get("query_transactions")
             if query_result and query_result.get("count"):
                 finance_context = {**finance_context, "transaction_query": query_result}
+            investment_research = artifacts.get("get_investment_research_context")
+            if investment_research:
+                finance_context = {
+                    **finance_context,
+                    "investment_research": investment_research,
+                }
             specialist_outputs: dict[str, SpecialistAgentOutput] = {}
             for specialist in policy.required_specialists:
                 request = HandoffRequest(
@@ -655,7 +721,67 @@ class FinanceRuntime:
                     description="Typed ledger aggregation from extracted filters (nl2filters).",
                     executor=self._tool_query_transactions,
                 ),
+                ToolSpec(
+                    name="get_investment_research_context",
+                    description="Fetch bounded, sourced stock or ETF research evidence.",
+                    executor=self._tool_investment_research_context,
+                    owner="investment_research",
+                ),
             ]
+        )
+
+    async def _tool_investment_research_context(
+        self, payload: dict[str, Any]
+    ) -> ToolObservation:
+        started = perf_counter()
+        context: AgentContext = payload["context"]
+        reference = extract_instrument_reference(context.message)
+        if reference is None:
+            result = {
+                "status": "symbol_required",
+                "reason": "An explicit stock or ETF symbol is required; company names are not inferred.",
+                "trade_actions_allowed": False,
+            }
+            return ToolObservation(
+                tool_name="get_investment_research_context",
+                success=True,
+                agent=str(payload.get("agent") or "cfo"),
+                purpose="sourced_investment_research",
+                result=result,
+                latency_ms=round((perf_counter() - started) * 1000, 2),
+            )
+
+        symbol, asset_type = reference
+        date_to = date.today()
+        try:
+            snapshot = get_investment_research_service().get_instrument_research(
+                context.user_id,
+                symbol,
+                asset_type=asset_type,
+                date_from=date_to - timedelta(days=90),
+                date_to=date_to,
+            )
+            result = project_instrument_research(snapshot)
+        except Exception as exc:
+            logger.warning(
+                "Investment research unavailable symbol=%s error=%s",
+                symbol,
+                type(exc).__name__,
+            )
+            result = {
+                "status": "unavailable",
+                "symbol": symbol,
+                "asset_type": asset_type,
+                "reason": "Sourced market evidence is currently unavailable.",
+                "trade_actions_allowed": False,
+            }
+        return ToolObservation(
+            tool_name="get_investment_research_context",
+            success=True,
+            agent=str(payload.get("agent") or "cfo"),
+            purpose="sourced_investment_research",
+            result=result,
+            latency_ms=round((perf_counter() - started) * 1000, 2),
         )
 
     async def _tool_query_transactions(self, payload: dict[str, Any]) -> ToolObservation:
@@ -918,6 +1044,7 @@ class FinanceRuntime:
         data = response_payload.get("data") or {}
         digest = {
             "typed_query_result": context.get("transaction_query"),
+            "investment_research": context.get("investment_research"),
             "expense_snapshot": {
                 "expense_total": expense.get("expense_total"),
                 "income_total": expense.get("income_total"),
@@ -992,7 +1119,10 @@ class FinanceRuntime:
 
         audit_output = specialist_outputs.get("auditor")
         audit_status = "needs_review" if policy.audit_required or warnings else "verified"
-        if not context.get("transactions_sample"):
+        has_investment_evidence = (
+            (context.get("investment_research") or {}).get("status") == "available"
+        )
+        if not context.get("transactions_sample") and not has_investment_evidence:
             audit_status = "data_limited"
         audit = AgentAudit(
             confidence=audit_output.confidence if audit_output else 0.68,
@@ -1039,7 +1169,38 @@ class FinanceRuntime:
                 kind = "income" if query_filters.get("direction") == "income" else "spend"
                 query_line = f"{scope} {kind} totals {query['total']:,.2f} across {query['count']} transactions. "
 
-        if query_line:
+        investment = context.get("investment_research") or {}
+        if investment.get("status") == "available":
+            symbol = str(investment.get("symbol") or "")
+            quote = investment.get("quote") or {}
+            quote_price = quote.get("price") or {}
+            price = quote_price.get("amount")
+            currency = quote_price.get("currency") or ""
+            if language == "zh":
+                reply = f"我已按只读研究流程核对 {symbol} 的有来源行情证据。"
+                if price is not None:
+                    reply += f"最近行情为 {currency} {price}。"
+                reply += "历史行情不代表未来收益，也不会触发任何交易。"
+            else:
+                reply = f"I reviewed sourced {symbol} market evidence in read-only mode. "
+                if price is not None:
+                    reply += f"The latest quote is {currency} {price}. "
+                reply += (
+                    "Historical prices do not predict future returns, and no trade is executed."
+                )
+            if actions:
+                reply += (
+                    f"下一步：{actions[0].title}。"
+                    if language == "zh"
+                    else f" Next: {actions[0].title}."
+                )
+        elif investment.get("status") in {"symbol_required", "unavailable"}:
+            reply = (
+                "我还不能完成这次投资研究：请提供明确的股票或 ETF 代码，并确认行情数据源可用。"
+                if language == "zh"
+                else "I cannot complete this investment research yet: provide an explicit stock or ETF symbol and ensure the market-data source is available."
+            )
+        elif query_line:
             # The typed query answered the question; skip the generic summary.
             reply = query_line
             if actions and language == "zh":
@@ -1102,7 +1263,7 @@ class FinanceRuntime:
 
         return compose_finance_chat_response(
             reply=reply,
-            summary_cards=_summary_cards(context),
+            summary_cards=_response_summary_cards(context),
             findings=findings,
             actions=actions,
             audit=audit,

@@ -16,6 +16,7 @@ TOOL_LABELS = {
     "get_cashflow_summary": "汇总现金流",
     "get_import_quality_report": "核对数据质量",
     "query_transactions": "查询账本明细",
+    "get_investment_research_context": "获取有来源的行情证据",
 }
 
 SPECIALIST_LABELS = {
@@ -23,6 +24,7 @@ SPECIALIST_LABELS = {
     "budget_coach": "Budget Coach 评估",
     "auditor": "审计复核",
     "market_context": "市场背景检索",
+    "investment_research": "Investment Research 研究",
 }
 
 # Plumbing that would read as noise to a user
@@ -32,6 +34,7 @@ _SPECIALIST_TOOL_NAMES = {
     "consult_budget_coach",
     "consult_auditor",
     "consult_market_context",
+    "consult_investment_research",
 }
 
 

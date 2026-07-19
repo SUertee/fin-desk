@@ -13,7 +13,13 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-SpecialistName = Literal["expense_analyst", "budget_coach", "auditor", "market_context"]
+SpecialistName = Literal[
+    "expense_analyst",
+    "budget_coach",
+    "auditor",
+    "market_context",
+    "investment_research",
+]
 RiskLevel = Literal["low", "medium", "high"]
 
 

@@ -84,7 +84,11 @@ def store(monkeypatch):
     monkeypatch.setattr(chat_route, "get_session_db", fake_get)
     monkeypatch.setattr(chat_route, "update_session_db", fake_update)
     monkeypatch.setattr(memory_service, "save_message_db", fake_save_db)
-    monkeypatch.setattr(memory_service, "get_chat_history_db", lambda u, l, session_id="": [])
+    monkeypatch.setattr(
+        memory_service,
+        "get_chat_history_db",
+        lambda user_id, limit, session_id="": [],
+    )
     return state
 
 
@@ -329,6 +333,37 @@ class TestEvidenceProjection:
         assert projection.audit.status == "verified"
         assert projection.advanced.run_id == "req-1"
         assert "query_transactions" in projection.advanced.tool_names
+
+    def test_investment_source_requires_sourced_specialist_finding(self, monkeypatch):
+        record = self._fake_run()
+        record["tool_calls"].append(
+            {"name": "get_investment_research_context", "status": "called"}
+        )
+        record["handoffs"] = [
+            {
+                "to_agent": "investment_research",
+                "status": "completed",
+                "output": {
+                    "specialist": "investment_research",
+                    "findings": [],
+                },
+            }
+        ]
+        monkeypatch.setattr(office_route, "get_agent_run_record_db", lambda rid: record)
+        monkeypatch.setattr(office_route, "list_latest_quality_reports_db", lambda u: [])
+
+        projection = office_route.get_evidence("req-1")
+
+        assert "外部行情研究（来源与时间见团队发现）" not in projection.cited_sources
+
+        record["handoffs"][0]["output"]["findings"] = [
+            {
+                "title": "AAPL latest quote is USD 210.50",
+                "evidence": ["Source: openbb:yfinance; as of 2026-07-18"],
+            }
+        ]
+        projection = office_route.get_evidence("req-1")
+        assert "外部行情研究（来源与时间见团队发现）" in projection.cited_sources
 
     def test_forbidden_fields_absent(self, monkeypatch):
         monkeypatch.setattr(office_route, "get_agent_run_record_db", lambda rid: self._fake_run())

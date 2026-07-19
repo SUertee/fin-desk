@@ -28,6 +28,8 @@ import type { ChatResponse, FinanceAgentData } from "../types/financeAgent";
 interface MyOfficePageProps {
   userId: string;
   userName?: string;
+  initialPrompt?: string | null;
+  onInitialPromptConsumed?: () => void;
 }
 
 type ThreadMessage = {
@@ -82,7 +84,12 @@ const AUDIT_NOTES: Record<string, string> = {
   data_limited: "当前数据覆盖有限，结论以已导入的账本为准。",
 };
 
-export function MyOfficePage({ userId, userName }: MyOfficePageProps) {
+export function MyOfficePage({
+  userId,
+  userName,
+  initialPrompt,
+  onInitialPromptConsumed,
+}: MyOfficePageProps) {
   const [sessions, setSessions] = useState<OfficeSession[] | null>(null);
   const [sessionsError, setSessionsError] = useState<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -162,6 +169,12 @@ export function MyOfficePage({ userId, userName }: MyOfficePageProps) {
     const node = threadRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [messages, isSending]);
+
+  useEffect(() => {
+    if (!initialPrompt) return;
+    setInput(initialPrompt);
+    onInitialPromptConsumed?.();
+  }, [initialPrompt, onInitialPromptConsumed]);
 
   const activeSession = useMemo(
     () => sessions?.find((session) => session.id === activeSessionId) ?? null,

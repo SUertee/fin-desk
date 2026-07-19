@@ -24,6 +24,7 @@ from app.routes.data_sources import router as data_sources_router
 from app.routes.evals import router as evals_router
 from app.routes.health import router as health_router
 from app.routes.investments import router as investments_router
+from app.routes.investment_research import router as investment_research_router
 from app.routes.market import router as market_router
 from app.routes.profile import router as profile_router
 from app.routes.agent_runs import router as agent_runs_router
@@ -82,3 +83,4 @@ app.include_router(agent_gateway_router)
 app.include_router(ai_costs_router)
 app.include_router(investments_router)
 app.include_router(market_router)
+app.include_router(investment_research_router)

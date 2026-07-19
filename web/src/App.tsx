@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Bell, LayoutDashboard, MessagesSquare, Settings as SettingsIcon } from "lucide-react";
+import { Bell, LayoutDashboard, LineChart, MessagesSquare, Settings as SettingsIcon } from "lucide-react";
 import { getApiBaseUrl } from "./services/financeApi";
 import { useFinanceWorkspaceData } from "./hooks/useFinanceWorkspaceData";
 
 import { AgentTeamPanel } from "./components/AgentTeamPanel";
 import { FinanceWorkspacePage } from "./pages/FinanceWorkspacePage";
 import { MyOfficePage } from "./pages/MyOfficePage";
+import { InvestmentResearchPage } from "./pages/InvestmentResearchPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import type { PageId } from "./pages/pageTypes";
 import { useI18n } from "./i18n";
@@ -18,6 +19,7 @@ export default function App() {
   const [activePage, setActivePage] = useState<PageId>("workspace");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [cfoPrefill, setCfoPrefill] = useState<string | null>(null);
+  const [officePrefill, setOfficePrefill] = useState<string | null>(null);
 
   const {
     profileName,
@@ -42,6 +44,7 @@ export default function App() {
 
   const navItems = [
     { id: "workspace" as const, label: t("nav.workspace"), icon: LayoutDashboard },
+    { id: "investments" as const, label: t("nav.investments"), icon: LineChart },
     { id: "office" as const, label: t("nav.office"), icon: MessagesSquare },
     { id: "settings" as const, label: t("nav.settings"), icon: SettingsIcon },
   ];
@@ -163,8 +166,21 @@ export default function App() {
             }}
             onUploadStatement={handleUploadStatement}
           />
+        ) : activePage === "investments" ? (
+          <InvestmentResearchPage
+            userId={userId}
+            onAskCfo={(question) => {
+              setOfficePrefill(question);
+              setActivePage("office");
+            }}
+          />
         ) : activePage === "office" ? (
-          <MyOfficePage userId={userId} userName={profileName} />
+          <MyOfficePage
+            userId={userId}
+            userName={profileName}
+            initialPrompt={officePrefill}
+            onInitialPromptConsumed={() => setOfficePrefill(null)}
+          />
         ) : (
           <main className="settings-shell">
               {activePage === "settings" && (

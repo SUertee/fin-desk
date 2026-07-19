@@ -10,7 +10,13 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from app.agents.specialists import auditor, budget_coach, expense_analyst, market_context
+from app.agents.specialists import (
+    auditor,
+    budget_coach,
+    expense_analyst,
+    investment_research,
+    market_context,
+)
 from app.agents.specialists.auditor_agent import build_auditor_agent
 from app.agents.specialists.budget_coach_agent import build_budget_coach_agent
 from app.agents.specialists.contracts import SpecialistAgentOutput, SpecialistInput
@@ -23,6 +29,7 @@ REGISTRY: dict[str, SpecialistRun] = {
     "budget_coach": budget_coach.run,
     "auditor": auditor.run,
     "market_context": market_context.run,
+    "investment_research": investment_research.run,
 }
 
 
