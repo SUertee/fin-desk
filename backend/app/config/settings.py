@@ -36,6 +36,25 @@ class CostSettings:
 
 
 @dataclass(frozen=True)
+class InvestmentSettings:
+    reporting_currency: str = "CNY"
+    quote_stale_after_days: int = 3
+    concentration_threshold_percent: Decimal = Decimal("35")
+
+    def __post_init__(self) -> None:
+        currency = self.reporting_currency.strip().upper()
+        if len(currency) != 3 or not currency.isalpha():
+            raise ValueError("investment reporting currency must be a three-letter code")
+        if self.quote_stale_after_days < 1:
+            raise ValueError("investment quote stale days must be positive")
+        threshold = Decimal(str(self.concentration_threshold_percent))
+        if threshold <= 0 or threshold > 100:
+            raise ValueError("investment concentration threshold must be in (0, 100]")
+        object.__setattr__(self, "reporting_currency", currency)
+        object.__setattr__(self, "concentration_threshold_percent", threshold)
+
+
+@dataclass(frozen=True)
 class ModelProfile:
     name: str
     provider: str = "deepseek"
@@ -102,6 +121,7 @@ class AppSettings:
     audit_model_profile: str = "audit"
     analysis_model_profile: str = "analysis"
     cost: CostSettings = CostSettings()
+    investment: InvestmentSettings = InvestmentSettings()
 
 
 def _split_csv(value: str) -> list[str]:
@@ -192,5 +212,14 @@ def get_settings() -> AppSettings:
         analysis_model_profile=os.getenv("FINANCE_ANALYSIS_MODEL_PROFILE", "analysis"),
         cost=CostSettings(
             reporting_currency=os.getenv("FINANCE_REPORTING_CURRENCY", "USD"),
+        ),
+        investment=InvestmentSettings(
+            reporting_currency=os.getenv("INVESTMENT_REPORTING_CURRENCY", "CNY"),
+            quote_stale_after_days=int(
+                os.getenv("INVESTMENT_QUOTE_STALE_AFTER_DAYS", "3")
+            ),
+            concentration_threshold_percent=Decimal(
+                os.getenv("INVESTMENT_CONCENTRATION_THRESHOLD_PERCENT", "35")
+            ),
         ),
     )
