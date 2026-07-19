@@ -22,6 +22,8 @@ InvestmentRiskCode = Literal[
     "stale_quote",
     "missing_exchange_rate",
     "single_position_concentration",
+    "retrieval_timed_quote",
+    "scenario_overallocated",
 ]
 MarketQuoteTimestampBasis = Literal["provider_time", "retrieval_time"]
 PositionValuationIssue = Literal[

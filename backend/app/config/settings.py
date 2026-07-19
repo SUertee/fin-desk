@@ -93,6 +93,29 @@ class MarketDataSettings:
 
 
 @dataclass(frozen=True)
+class ExchangeRateSettings:
+    provider: str = "frankfurter"
+    allowed_providers: tuple[str, ...] = ("frankfurter",)
+    base_url: str = "https://api.frankfurter.dev"
+    timeout_seconds: int = 10
+    max_snapshot_age_days: int = 7
+
+    def __post_init__(self) -> None:
+        provider = self.provider.strip().lower()
+        allowed = tuple(
+            item.strip().lower() for item in self.allowed_providers if item.strip()
+        )
+        if provider not in allowed:
+            raise ValueError("exchange-rate provider is not allowlisted")
+        if self.timeout_seconds < 1:
+            raise ValueError("exchange-rate timeout must be positive")
+        if self.max_snapshot_age_days < 0:
+            raise ValueError("exchange-rate snapshot age cannot be negative")
+        object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "allowed_providers", allowed)
+
+
+@dataclass(frozen=True)
 class ModelProfile:
     name: str
     provider: str = "deepseek"
@@ -161,6 +184,7 @@ class AppSettings:
     cost: CostSettings = CostSettings()
     investment: InvestmentSettings = InvestmentSettings()
     market_data: MarketDataSettings = MarketDataSettings()
+    exchange_rate: ExchangeRateSettings = ExchangeRateSettings()
 
 
 def _split_csv(value: str) -> list[str]:
@@ -280,6 +304,21 @@ def get_settings() -> AppSettings:
             ),
             outbound_call_budget=int(
                 os.getenv("MARKET_DATA_OUTBOUND_CALL_BUDGET", "3")
+            ),
+        ),
+        exchange_rate=ExchangeRateSettings(
+            provider=os.getenv("EXCHANGE_RATE_PROVIDER", "frankfurter"),
+            allowed_providers=tuple(
+                _split_csv(
+                    os.getenv("EXCHANGE_RATE_ALLOWED_PROVIDERS", "frankfurter")
+                )
+            ),
+            base_url=os.getenv(
+                "EXCHANGE_RATE_BASE_URL", "https://api.frankfurter.dev"
+            ),
+            timeout_seconds=int(os.getenv("EXCHANGE_RATE_TIMEOUT_SECONDS", "10")),
+            max_snapshot_age_days=int(
+                os.getenv("EXCHANGE_RATE_MAX_SNAPSHOT_AGE_DAYS", "7")
             ),
         ),
     )

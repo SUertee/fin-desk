@@ -7,17 +7,10 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.config.settings import get_settings
 from app.connectors.market_data.errors import (
     MarketDataBudgetExceeded,
     MarketDataProviderError,
     MarketDataUnavailable,
-)
-from app.connectors.market_data.openbb_provider import OpenBBMarketDataProvider
-from app.connectors.postgres.investment_store import save_market_quote_snapshot_db
-from app.connectors.postgres.market_data_cache_store import (
-    get_market_data_cache_db,
-    save_market_data_cache_db,
 )
 from app.models.market_data import (
     MarketAssetType,
@@ -26,29 +19,11 @@ from app.models.market_data import (
     MarketProviderStatus,
     MarketQuoteResult,
 )
-from app.services.market_data import MarketDataService
+from app.services.investment_research_runtime import get_market_data_service
 
 
 router = APIRouter(prefix="/market", tags=["market"])
-_settings = get_settings().market_data
-_provider = OpenBBMarketDataProvider(
-    provider=_settings.provider,
-    allowed_providers=_settings.allowed_providers,
-    timeout_seconds=_settings.timeout_seconds,
-)
-_service = MarketDataService(
-    quote_provider=_provider,
-    research_provider=_provider,
-    cache_reader=get_market_data_cache_db,
-    cache_writer=save_market_data_cache_db,
-    quote_writer=save_market_quote_snapshot_db,
-    quote_ttl_seconds=_settings.quote_ttl_seconds,
-    history_ttl_seconds=_settings.history_ttl_seconds,
-    profile_ttl_seconds=_settings.profile_ttl_seconds,
-    symbol_limit=_settings.symbol_limit,
-    history_day_limit=_settings.history_day_limit,
-    outbound_call_budget=_settings.outbound_call_budget,
-)
+_service = get_market_data_service()
 
 
 def _raise_market_error(exc: Exception) -> None:
