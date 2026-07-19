@@ -62,6 +62,23 @@ function compactDate(value: string): string {
   return parsed.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
+function formatPercent(value: string | null, signed = false): string {
+  if (value === null) return "Not enough data";
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return "Not enough data";
+  const sign = signed && parsed > 0 ? "+" : "";
+  return `${sign}${parsed.toFixed(2)}%`;
+}
+
+function readinessLabel(
+  status: InstrumentResearchSnapshot["readiness"]["status"],
+  lang: "zh" | "en"
+): string {
+  if (status === "ready") return lang === "zh" ? "基础就绪" : "Foundation ready";
+  if (status === "caution") return lang === "zh" ? "需要谨慎" : "Caution";
+  return lang === "zh" ? "信息不足" : "Insufficient data";
+}
+
 function PriceSparkline({ snapshot }: { snapshot: InstrumentResearchSnapshot }) {
   const values = snapshot.history.bars
     .map((bar) => Number(bar.close.amount))
@@ -460,15 +477,24 @@ export function InvestmentResearchPage({
                         : "No current price was returned"}
                     </small>
                   </article>
-                  <article>
-                    <span>{lang === "zh" ? "行业" : "Sector"}</span>
-                    <strong>{snapshot.profile.sector || "Not reported"}</strong>
-                    <small>{snapshot.profile.industry || "Provider profile"}</small>
+                  <article className={snapshot.performance.status !== "available" ? "unavailable" : ""}>
+                    <span>{lang === "zh" ? "区间收益" : "Period return"}</span>
+                    <strong>{formatPercent(snapshot.performance.period_return_percent, true)}</strong>
+                    <small>
+                      {snapshot.performance.status === "available"
+                        ? `${snapshot.performance.observation_count} observations`
+                        : "History is insufficient; this is not zero return"}
+                    </small>
                   </article>
-                  <article>
-                    <span>{lang === "zh" ? "市场" : "Market"}</span>
-                    <strong>{snapshot.profile.venue || "—"}</strong>
-                    <small>{snapshot.profile.country || "Country unavailable"}</small>
+                  <article className={snapshot.performance.status !== "available" ? "unavailable" : ""}>
+                    <span>{lang === "zh" ? "年化波动率" : "Annualized volatility"}</span>
+                    <strong>{formatPercent(snapshot.performance.annualized_volatility_percent)}</strong>
+                    <small>{lang === "zh" ? "历史波动，不代表未来" : "Historical variability, not a forecast"}</small>
+                  </article>
+                  <article className={snapshot.performance.status !== "available" ? "unavailable" : ""}>
+                    <span>{lang === "zh" ? "最大回撤" : "Maximum drawdown"}</span>
+                    <strong>{formatPercent(snapshot.performance.max_drawdown_percent)}</strong>
+                    <small>{lang === "zh" ? "所选历史区间内" : "Within the selected history window"}</small>
                   </article>
                 </div>
 
@@ -482,6 +508,79 @@ export function InvestmentResearchPage({
                   </header>
                   <PriceSparkline snapshot={snapshot} />
                 </article>
+
+                <div className="research-assessment-grid">
+                  <article className="research-benchmark-card">
+                    <header>
+                      <div>
+                        <span>{lang === "zh" ? "基准比较" : "Benchmark context"}</span>
+                        <h3>{snapshot.symbol} vs {snapshot.benchmark.benchmark_symbol}</h3>
+                      </div>
+                      <small className={`research-status-pill ${snapshot.benchmark.status}`}>
+                        {snapshot.benchmark.status.replace("_", " ")}
+                      </small>
+                    </header>
+                    {snapshot.benchmark.status === "available" && snapshot.benchmark.performance ? (
+                      <>
+                        <strong className="research-benchmark-delta">
+                          {formatPercent(snapshot.benchmark.excess_period_return_percent, true)}
+                        </strong>
+                        <p>{lang === "zh" ? "相对基准的区间差异" : "period difference versus the benchmark"}</p>
+                        <div className="research-comparison-row">
+                          <span><small>{snapshot.symbol}</small>{formatPercent(snapshot.performance.period_return_percent, true)}</span>
+                          <span><small>{snapshot.benchmark.benchmark_symbol}</small>{formatPercent(snapshot.benchmark.performance.period_return_percent, true)}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="research-assessment-empty">
+                        <strong>{lang === "zh" ? "暂时无法进行可靠比较" : "Reliable comparison unavailable"}</strong>
+                        <p>{snapshot.benchmark.limitation || "Benchmark history is not sufficient for this period."}</p>
+                      </div>
+                    )}
+                  </article>
+
+                  <article className={`research-readiness-card ${snapshot.readiness.status}`}>
+                    <header>
+                      <div>
+                        <span>{lang === "zh" ? "个人财务准备度" : "Personal finance readiness"}</span>
+                        <h3>{readinessLabel(snapshot.readiness.status, lang)}</h3>
+                      </div>
+                      <ShieldCheck />
+                    </header>
+                    <div className="research-readiness-metrics">
+                      <span>
+                        <small>{lang === "zh" ? "月度现金流" : "Monthly cash flow"}</small>
+                        <strong>
+                          {snapshot.readiness.monthly_cash_flow === null
+                            ? "Not configured"
+                            : formatMoney(snapshot.readiness.monthly_cash_flow, snapshot.readiness.reporting_currency)}
+                        </strong>
+                      </span>
+                      <span>
+                        <small>{lang === "zh" ? "流动储备" : "Liquid reserve"}</small>
+                        <strong>
+                          {snapshot.readiness.reserve_months === null
+                            ? "Not configured"
+                            : `${Number(snapshot.readiness.reserve_months).toFixed(2)} months`}
+                        </strong>
+                      </span>
+                    </div>
+                    {snapshot.readiness.findings.length > 0 ? (
+                      <div className="research-readiness-findings">
+                        {snapshot.readiness.findings.map((finding) => (
+                          <p key={finding.code} className={finding.severity}>{finding.title}</p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="research-readiness-clear">
+                        {lang === "zh" ? "当前配置未触发基础财务警示。" : "No foundational finance warning was triggered."}
+                      </p>
+                    )}
+                    <small className="research-readiness-boundary">
+                      {lang === "zh" ? "这不是适合度判断或投资建议。" : "This is not a suitability decision or investment advice."}
+                    </small>
+                  </article>
+                </div>
 
                 <div className="research-limitations">
                   <ShieldCheck />
@@ -614,6 +713,11 @@ export function InvestmentResearchPage({
                           : "Partial"}
                     </strong>
                   </article>
+                  <article className={`readiness ${valuation.readiness.status}`}>
+                    <ShieldCheck />
+                    <span>{lang === "zh" ? "财务准备度" : "Readiness"}</span>
+                    <strong>{readinessLabel(valuation.readiness.status, lang)}</strong>
+                  </article>
                 </div>
 
                 <div className="scenario-workbench">
@@ -678,7 +782,7 @@ export function InvestmentResearchPage({
                   </section>
                   <section className="scenario-risk-panel">
                     <header>
-                      <div><span>{lang === "zh" ? "风控检查" : "Risk checks"}</span><small>Deterministic policy</small></div>
+                      <div><span>{lang === "zh" ? "风控与准备度" : "Risk & readiness"}</span><small>Deterministic policy</small></div>
                     </header>
                     {valuation.risk.findings.length === 0 ? (
                       <div className="scenario-risk-clear"><ShieldCheck /> No configured risk rule was triggered.</div>
@@ -693,6 +797,19 @@ export function InvestmentResearchPage({
                         ))}
                       </div>
                     )}
+                    <div className="scenario-readiness-detail">
+                      <div>
+                        <span>{lang === "zh" ? "个人财务基础" : "Personal finance foundation"}</span>
+                        <strong>{readinessLabel(valuation.readiness.status, lang)}</strong>
+                      </div>
+                      {valuation.readiness.findings.length > 0 ? (
+                        valuation.readiness.findings.map((finding) => (
+                          <p key={finding.code} className={finding.severity}>{finding.title}</p>
+                        ))
+                      ) : (
+                        <p>{lang === "zh" ? "未触发基础财务警示。" : "No foundational finance warning was triggered."}</p>
+                      )}
+                    </div>
                   </section>
                 </div>
 
