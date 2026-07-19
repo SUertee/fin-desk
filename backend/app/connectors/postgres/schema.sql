@@ -177,6 +177,59 @@ CREATE INDEX IF NOT EXISTS idx_exchange_rate_lookup
         exchange_rate_date DESC
     );
 
+-- Current investment account state synchronized by future connectors/imports
+CREATE TABLE IF NOT EXISTS investment_accounts (
+    user_id       TEXT NOT NULL,
+    account_id    TEXT NOT NULL,
+    name          TEXT NOT NULL,
+    account_type  TEXT NOT NULL,
+    provider      TEXT NOT NULL DEFAULT 'manual',
+    base_currency TEXT NOT NULL,
+    status        TEXT NOT NULL DEFAULT 'active',
+    as_of         TIMESTAMPTZ NOT NULL,
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, account_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_investment_accounts_user_updated_at
+    ON investment_accounts (user_id, updated_at DESC);
+
+-- Latest aggregate positions per account; replacement is connector-scoped
+CREATE TABLE IF NOT EXISTS investment_positions (
+    user_id            TEXT NOT NULL,
+    account_id         TEXT NOT NULL,
+    symbol             TEXT NOT NULL,
+    asset_type         TEXT NOT NULL,
+    quantity           NUMERIC(28, 12) NOT NULL CHECK (quantity > 0),
+    average_cost_amount NUMERIC(28, 12),
+    average_cost_currency TEXT,
+    as_of              TIMESTAMPTZ NOT NULL,
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, account_id, symbol, asset_type),
+    FOREIGN KEY (user_id, account_id)
+        REFERENCES investment_accounts (user_id, account_id)
+        ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_investment_positions_user_account
+    ON investment_positions (user_id, account_id, symbol);
+
+-- Immutable, sourced market facts used for reproducible as-of valuation
+CREATE TABLE IF NOT EXISTS market_quote_snapshots (
+    symbol        TEXT NOT NULL,
+    asset_type    TEXT NOT NULL,
+    price         NUMERIC(28, 12) NOT NULL CHECK (price > 0),
+    currency      TEXT NOT NULL,
+    quote_as_of   TIMESTAMPTZ NOT NULL,
+    quote_source  TEXT NOT NULL,
+    venue         TEXT NOT NULL DEFAULT '',
+    fetched_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (symbol, asset_type, quote_as_of, quote_source, venue)
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_quote_snapshots_lookup
+    ON market_quote_snapshots (symbol, asset_type, quote_as_of DESC);
+
 -- Agent harness run ledger for audit and replay
 CREATE TABLE IF NOT EXISTS agent_run_records (
     request_id        TEXT PRIMARY KEY,
