@@ -117,6 +117,7 @@ def test_latest_quote_lookup_is_as_of_bounded(monkeypatch):
                 Decimal("200"),
                 "USD",
                 NOW,
+                "provider_time",
                 "recorded-test-feed",
                 "NASDAQ",
             )

@@ -23,6 +23,7 @@ InvestmentRiskCode = Literal[
     "missing_exchange_rate",
     "single_position_concentration",
 ]
+MarketQuoteTimestampBasis = Literal["provider_time", "retrieval_time"]
 PositionValuationIssue = Literal[
     "missing_quote",
     "stale_quote",
@@ -111,6 +112,7 @@ class MarketQuote(BaseModel):
     asset_type: InvestmentAssetType
     price: MoneyAmount
     quote_as_of: datetime
+    timestamp_basis: MarketQuoteTimestampBasis = "provider_time"
     source: str = Field(min_length=1, max_length=120)
     venue: str = Field(default="", max_length=80)
 

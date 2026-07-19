@@ -10,3 +10,5 @@ openpyxl>=3.1.0
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
 python-multipart>=0.0.20
+openbb-equity==1.6.2
+openbb-yfinance==1.6.3

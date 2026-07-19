@@ -204,9 +204,9 @@ def save_market_quote_snapshot_db(quote: MarketQuote | dict) -> bool:
                     """
                     INSERT INTO market_quote_snapshots (
                         symbol, asset_type, price, currency, quote_as_of,
-                        quote_source, venue
+                        timestamp_basis, quote_source, venue
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     ON CONFLICT (
                         symbol, asset_type, quote_as_of, quote_source, venue
                     ) DO NOTHING
@@ -217,6 +217,7 @@ def save_market_quote_snapshot_db(quote: MarketQuote | dict) -> bool:
                         parsed.price.amount,
                         parsed.price.currency,
                         parsed.quote_as_of,
+                        parsed.timestamp_basis,
                         parsed.source,
                         parsed.venue,
                     ),
@@ -253,7 +254,7 @@ def list_latest_market_quotes_db(
                     WITH requested(symbol, asset_type) AS (VALUES {values})
                     SELECT DISTINCT ON (q.symbol, q.asset_type)
                            q.symbol, q.asset_type, q.price, q.currency,
-                           q.quote_as_of, q.quote_source, q.venue
+                           q.quote_as_of, q.timestamp_basis, q.quote_source, q.venue
                     FROM market_quote_snapshots q
                     JOIN requested r
                       ON r.symbol = q.symbol AND r.asset_type = q.asset_type
@@ -269,8 +270,9 @@ def list_latest_market_quotes_db(
                     asset_type=row[1],
                     price=MoneyAmount(amount=row[2], currency=row[3]),
                     quote_as_of=row[4],
-                    source=row[5],
-                    venue=row[6],
+                    timestamp_basis=row[5],
+                    source=row[6],
+                    venue=row[7],
                 )
                 for row in rows
             ]

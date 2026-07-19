@@ -221,6 +221,7 @@ CREATE TABLE IF NOT EXISTS market_quote_snapshots (
     price         NUMERIC(28, 12) NOT NULL CHECK (price > 0),
     currency      TEXT NOT NULL,
     quote_as_of   TIMESTAMPTZ NOT NULL,
+    timestamp_basis TEXT NOT NULL DEFAULT 'provider_time',
     quote_source  TEXT NOT NULL,
     venue         TEXT NOT NULL DEFAULT '',
     fetched_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -229,6 +230,25 @@ CREATE TABLE IF NOT EXISTS market_quote_snapshots (
 
 CREATE INDEX IF NOT EXISTS idx_market_quote_snapshots_lookup
     ON market_quote_snapshots (symbol, asset_type, quote_as_of DESC);
+
+ALTER TABLE market_quote_snapshots
+    ADD COLUMN IF NOT EXISTS timestamp_basis TEXT NOT NULL DEFAULT 'provider_time';
+
+-- Replaceable response cache for normalized external market-data reads.
+-- Immutable quote evidence remains in market_quote_snapshots.
+CREATE TABLE IF NOT EXISTS market_data_cache (
+    cache_key      TEXT PRIMARY KEY,
+    operation      TEXT NOT NULL,
+    provider       TEXT NOT NULL,
+    payload        JSONB NOT NULL,
+    fetched_at     TIMESTAMPTZ NOT NULL,
+    expires_at     TIMESTAMPTZ NOT NULL,
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (expires_at > fetched_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_market_data_cache_expiry
+    ON market_data_cache (expires_at);
 
 -- Agent harness run ledger for audit and replay
 CREATE TABLE IF NOT EXISTS agent_run_records (
