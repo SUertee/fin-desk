@@ -193,45 +193,70 @@ class TestAuditorFixture:
 
 
 class TestMarketContextFixture:
-    def test_unconfigured_news_is_typed_unavailable(self, monkeypatch):
-        monkeypatch.delenv("NEWS_API_KEY", raising=False)
-
+    def test_missing_runtime_evidence_is_typed_unavailable(self):
         output = market_context.run(SpecialistInput(task="interest rates"))
 
         assert output.specialist == "market_context"
         assert output.findings == []
-        assert any("not configured" in limitation for limitation in output.limitations)
+        assert any("No governed" in limitation for limitation in output.limitations)
         assert market_context.NOT_ADVICE_LIMITATION in output.limitations
 
-    def test_sourced_articles_become_findings(self, monkeypatch):
-        articles = [
-            {
-                "title": "Central bank holds rates",
-                "url": "https://news.example/rates",
-                "publishedAt": "2026-07-04T10:00:00Z",
-                "source": {"name": "Example News"},
-            },
-            {"title": "No url or timestamp article"},
-        ]
-        monkeypatch.setattr(market_context, "_fetch_articles", lambda query: articles)
-
-        output = market_context.run(SpecialistInput(task="rates"))
+    def test_sourced_runtime_evidence_becomes_findings(self):
+        output = market_context.run(
+            SpecialistInput(
+                task="rates",
+                evidence={
+                    "web_research": {
+                        "status": "available",
+                        "provider": "tavily",
+                        "query": "rates",
+                        "items": [
+                            {
+                                "result_id": "result_1234567890",
+                                "title": "Central bank holds rates",
+                                "url": "https://news.example/rates",
+                                "domain": "news.example",
+                                "snippet": "The central bank held its policy rate.",
+                                "provider": "tavily",
+                                "published_at": "2026-07-04T10:00:00Z",
+                                "fetched_at": "2026-07-05T10:00:00Z",
+                                "score": 0.9,
+                            }
+                        ],
+                        "excluded_count": 0,
+                        "limitations": [],
+                        "cache": None,
+                        "external_calls": {"budget": 2, "used": 1, "remaining": 1},
+                    }
+                },
+            )
+        )
 
         assert len(output.findings) == 1
         finding = output.findings[0]
         assert finding.source_url == "https://news.example/rates"
-        assert finding.published_at == "2026-07-04T10:00:00Z"
-        assert any("dropped" in limitation for limitation in output.limitations)
+        assert finding.published_at == "2026-07-04T10:00:00+00:00"
         assert market_context.UNCERTAINTY_LIMITATION in output.limitations
         assert market_context.NOT_ADVICE_LIMITATION in output.limitations
 
-    def test_provider_failure_never_fabricates(self, monkeypatch):
-        def boom(query):
-            raise TimeoutError("news timeout")
-
-        monkeypatch.setattr(market_context, "_fetch_articles", boom)
-
-        output = market_context.run(SpecialistInput(task="rates"))
+    def test_provider_unavailable_evidence_never_fabricates(self):
+        output = market_context.run(
+            SpecialistInput(
+                task="rates",
+                evidence={
+                    "web_research": {
+                        "status": "unavailable",
+                        "provider": "tavily",
+                        "query": "rates",
+                        "items": [],
+                        "excluded_count": 0,
+                        "limitations": ["Tavily provider is unavailable."],
+                        "cache": None,
+                        "external_calls": {"budget": 2, "used": 1, "remaining": 1},
+                    }
+                },
+            )
+        )
 
         assert output.findings == []
         assert any("unavailable" in limitation for limitation in output.limitations)

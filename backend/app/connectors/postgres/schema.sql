@@ -296,6 +296,20 @@ CREATE TABLE IF NOT EXISTS market_data_cache (
 CREATE INDEX IF NOT EXISTS idx_market_data_cache_expiry
     ON market_data_cache (expires_at);
 
+-- Replaceable TTL cache for allowlisted external web-research evidence.
+CREATE TABLE IF NOT EXISTS web_research_cache (
+    cache_key   TEXT PRIMARY KEY,
+    provider    TEXT NOT NULL,
+    payload     JSONB NOT NULL,
+    fetched_at  TIMESTAMPTZ NOT NULL,
+    expires_at  TIMESTAMPTZ NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CHECK (expires_at > fetched_at)
+);
+
+CREATE INDEX IF NOT EXISTS idx_web_research_cache_expiry
+    ON web_research_cache (expires_at);
+
 -- Agent harness run ledger for audit and replay
 CREATE TABLE IF NOT EXISTS agent_run_records (
     request_id        TEXT PRIMARY KEY,

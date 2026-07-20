@@ -43,10 +43,12 @@ from app.config.settings import get_settings
 from app.runtime.llm.deepseek_client import DeepSeekTextClient
 from app.runtime.response.response_composer import compose_finance_chat_response
 from app.services.investment_research_runtime import get_investment_research_service
+from app.services.web_research import WebResearchService, build_web_research_service
 from app.tools.investment_research_tools import (
     extract_instrument_reference,
     project_instrument_research,
 )
+from app.tools.web_research import WebResearchTool
 from app.tools.query_tools import extract_query_filters, run_transaction_query
 from app.tools.finance_tools import (
     build_budget_snapshot,
@@ -193,7 +195,12 @@ class FinanceRuntime:
         specialist_runner: SpecialistRunner | None = None,
         llm_client: Any | None = None,
         costing_service: CostingService | None = None,
+        web_research_service: WebResearchService | None = None,
+        web_research_tool: WebResearchTool | None = None,
     ):
+        self.web_research_tool = web_research_tool or WebResearchTool(
+            web_research_service or build_web_research_service()
+        )
         self.tool_registry = tool_registry or self._build_tool_registry()
         self.specialist_runner = specialist_runner or SpecialistRunner()
         self.llm_client = llm_client if llm_client is not None else DeepSeekTextClient()
@@ -355,6 +362,11 @@ class FinanceRuntime:
             state = AgentState()
             artifacts = ArtifactRegistry()
             plan = build_execution_plan(context, policy)
+            web_research_budget = (
+                self.web_research_tool.new_budget()
+                if "search_web_research" in plan.tool_names
+                else None
+            )
             state.selected_agents = plan.selected_agents
             trace.select_agents(plan.selected_agents)
             trace.set_tools_available(
@@ -397,6 +409,7 @@ class FinanceRuntime:
                         "agent": step.agent,
                         "context": context,
                         "artifacts": artifacts.as_dict(),
+                        "web_research_budget": web_research_budget,
                     },
                 )
                 state.record_tool_observation(observation)
@@ -426,6 +439,9 @@ class FinanceRuntime:
                     **finance_context,
                     "investment_research": investment_research,
                 }
+            web_research = artifacts.get("search_web_research")
+            if web_research:
+                finance_context = {**finance_context, "web_research": web_research}
             specialist_outputs: dict[str, SpecialistAgentOutput] = {}
             for specialist in policy.required_specialists:
                 request = HandoffRequest(
@@ -727,6 +743,7 @@ class FinanceRuntime:
                     executor=self._tool_investment_research_context,
                     owner="investment_research",
                 ),
+                self.web_research_tool.spec(),
             ]
         )
 
