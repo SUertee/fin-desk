@@ -18,6 +18,7 @@ import { SpendingCalendar } from "../components/SpendingCalendar";
 import { TransactionsTable } from "../components/TransactionsTable";
 import { currencySymbol } from "../components/MetricsCards";
 import { AiCostExplorer } from "../features/cost-explorer/AiCostExplorer";
+import { FinanceInboxEntry } from "../components/inbox/FinanceInboxEntry";
 import { useI18n } from "../i18n";
 import type { DataSourceStatus } from "../services/financeApi";
 import type { WorkspaceBrief } from "../types/financeAgent";
@@ -70,6 +71,7 @@ type FinanceWorkspacePageProps = {
   categoryData: CategorySpend[];
   tableTransactions: TableTransaction[];
   onReload: () => void;
+  onOpenInbox: () => void;
   onOpenCfo: () => void;
   onAskCfoAbout?: (question: string) => void;
   onUploadStatement: (file: File) => void;
@@ -110,6 +112,7 @@ export function FinanceWorkspacePage({
   categoryData,
   tableTransactions,
   onReload,
+  onOpenInbox,
   onOpenCfo,
   onAskCfoAbout,
   onUploadStatement,
@@ -379,6 +382,8 @@ export function FinanceWorkspacePage({
               </button>
             )}
           </section>
+
+          <FinanceInboxEntry userId={userId} onOpen={onOpenInbox} />
 
           <button
             type="button"

@@ -30,6 +30,7 @@ import {
   type DataSourceStatus,
   type ProfileUpdatePayload,
 } from "../services/financeApi";
+import { SubscriptionManager } from "../components/inbox/SubscriptionManager";
 
 type SettingsPageProps = {
   userId: string;
@@ -41,9 +42,10 @@ type SettingsPageProps = {
   monthlyIncome: number;
   onProfileSaved?: () => Promise<void> | void;
   showDeveloperTools?: boolean;
+  initialSection?: SettingsSection;
 };
 
-type SettingsSection =
+export type SettingsSection =
   | "profile"
   | "dataSources"
   | "costs"
@@ -92,8 +94,9 @@ export function SettingsPage({
   monthlyIncome,
   onProfileSaved,
   showDeveloperTools = false,
+  initialSection = "profile",
 }: SettingsPageProps) {
-  const [activeSection, setActiveSection] = useState<SettingsSection>("profile");
+  const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
   const [form, setForm] = useState<ProfileForm>(() =>
     buildProfileForm(profile, profileName, monthlyIncome)
   );
@@ -110,6 +113,10 @@ export function SettingsPage({
     setForm(next);
     setSavedForm(next);
   }, [profile, profileName, monthlyIncome]);
+
+  useEffect(() => {
+    setActiveSection(initialSection);
+  }, [initialSection]);
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(savedForm);
   const loadedTransactionCount =
@@ -197,6 +204,7 @@ export function SettingsPage({
     if (activeSection === "dataSources") {
       return (
         <DataSourcesPanel
+          userId={userId}
           dataSourceStatus={dataSourceStatus}
           transactionCount={loadedTransactionCount}
           latestImport={latestImport}
@@ -235,6 +243,7 @@ export function SettingsPage({
     latestImport,
     loadedTransactionCount,
     showDeveloperTools,
+    userId,
   ]);
 
   return (
@@ -473,12 +482,14 @@ function ProfilePanel({
 }
 
 function DataSourcesPanel({
+  userId,
   dataSourceStatus,
   transactionCount,
   latestImport,
   isImporting,
   onImport,
 }: {
+  userId: string;
   dataSourceStatus?: DataSourceStatus | null;
   transactionCount: number;
   latestImport: DataSourceStatus["latest_import"] | null;
@@ -528,6 +539,13 @@ function DataSourcesPanel({
             <p>No imports yet. Upload a CSV statement to start.</p>
           )}
         </div>
+      </SettingsPanelCard>
+      <SettingsPanelCard icon={<Database />} title="Finance content subscriptions" wide>
+        <p className="settings-v2-card-note settings-v2-card-note-leading">
+          RSS sources are refreshed only when you request it. Inbox content remains
+          separate from CFO advice and is never added to knowledge automatically.
+        </p>
+        <SubscriptionManager userId={userId} />
       </SettingsPanelCard>
     </div>
   );
