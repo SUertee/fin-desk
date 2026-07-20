@@ -17,6 +17,7 @@ TOOL_LABELS = {
     "get_import_quality_report": "核对数据质量",
     "query_transactions": "查询账本明细",
     "get_investment_research_context": "获取有来源的行情证据",
+    "search_web_research": "检索受治理的外部资料",
 }
 
 SPECIALIST_LABELS = {

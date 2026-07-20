@@ -116,6 +116,60 @@ class ExchangeRateSettings:
 
 
 @dataclass(frozen=True)
+class WebResearchSettings:
+    provider: str = "tavily"
+    allowed_providers: tuple[str, ...] = ("tavily",)
+    base_url: str = "https://api.tavily.com"
+    allowed_domains: tuple[str, ...] = (
+        "bis.org",
+        "chinatax.gov.cn",
+        "csrc.gov.cn",
+        "ecb.europa.eu",
+        "federalreserve.gov",
+        "finra.org",
+        "gov.cn",
+        "imf.org",
+        "investor.gov",
+        "mof.gov.cn",
+        "oecd.org",
+        "pbc.gov.cn",
+        "worldbank.org",
+    )
+    timeout_seconds: int = 10
+    cache_ttl_seconds: int = 3600
+    max_results: int = 5
+    outbound_call_budget: int = 1
+
+    def __post_init__(self) -> None:
+        provider = self.provider.strip().lower()
+        allowed_providers = tuple(
+            item.strip().lower() for item in self.allowed_providers if item.strip()
+        )
+        allowed_domains = tuple(
+            item.strip().lower().removeprefix("www.").rstrip(".")
+            for item in self.allowed_domains
+            if item.strip()
+        )
+        if provider not in allowed_providers:
+            raise ValueError("web-research provider is not allowlisted")
+        if not allowed_domains:
+            raise ValueError("web-research domain allowlist cannot be empty")
+        for field_name in (
+            "timeout_seconds",
+            "cache_ttl_seconds",
+            "max_results",
+            "outbound_call_budget",
+        ):
+            if getattr(self, field_name) < 1:
+                raise ValueError(f"{field_name} must be positive")
+        if self.max_results > 10:
+            raise ValueError("web-research result limit cannot exceed 10")
+        object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "allowed_providers", allowed_providers)
+        object.__setattr__(self, "allowed_domains", allowed_domains)
+
+
+@dataclass(frozen=True)
 class ModelProfile:
     name: str
     provider: str = "deepseek"
@@ -185,6 +239,7 @@ class AppSettings:
     investment: InvestmentSettings = InvestmentSettings()
     market_data: MarketDataSettings = MarketDataSettings()
     exchange_rate: ExchangeRateSettings = ExchangeRateSettings()
+    web_research: WebResearchSettings = WebResearchSettings()
 
 
 def _split_csv(value: str) -> list[str]:
@@ -319,6 +374,31 @@ def get_settings() -> AppSettings:
             timeout_seconds=int(os.getenv("EXCHANGE_RATE_TIMEOUT_SECONDS", "10")),
             max_snapshot_age_days=int(
                 os.getenv("EXCHANGE_RATE_MAX_SNAPSHOT_AGE_DAYS", "7")
+            ),
+        ),
+        web_research=WebResearchSettings(
+            provider=os.getenv("WEB_RESEARCH_PROVIDER", "tavily"),
+            allowed_providers=tuple(
+                _split_csv(os.getenv("WEB_RESEARCH_ALLOWED_PROVIDERS", "tavily"))
+            ),
+            base_url=os.getenv("WEB_RESEARCH_BASE_URL", "https://api.tavily.com"),
+            allowed_domains=tuple(
+                _split_csv(
+                    os.getenv(
+                        "WEB_RESEARCH_ALLOWED_DOMAINS",
+                        "bis.org,chinatax.gov.cn,csrc.gov.cn,ecb.europa.eu,"
+                        "federalreserve.gov,finra.org,gov.cn,imf.org,investor.gov,"
+                        "mof.gov.cn,oecd.org,pbc.gov.cn,worldbank.org",
+                    )
+                )
+            ),
+            timeout_seconds=int(os.getenv("WEB_RESEARCH_TIMEOUT_SECONDS", "10")),
+            cache_ttl_seconds=int(
+                os.getenv("WEB_RESEARCH_CACHE_TTL_SECONDS", "3600")
+            ),
+            max_results=int(os.getenv("WEB_RESEARCH_MAX_RESULTS", "5")),
+            outbound_call_budget=int(
+                os.getenv("WEB_RESEARCH_OUTBOUND_CALL_BUDGET", "1")
             ),
         ),
     )
