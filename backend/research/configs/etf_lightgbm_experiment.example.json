@@ -1,0 +1,48 @@
+{
+  "benchmark": "SPY",
+  "experiment_name": "liquid-etf-ranking-v0",
+  "horizon_days": 5,
+  "momentum_lookback_days": 20,
+  "seed": 42,
+  "slippage_bps": "5",
+  "split": {
+    "test": {
+      "end": "2025-12-31",
+      "start": "2025-01-01"
+    },
+    "train": {
+      "end": "2022-12-31",
+      "start": "2015-01-01"
+    },
+    "validation": {
+      "end": "2024-12-31",
+      "start": "2023-01-01"
+    }
+  },
+  "split_method": "chronological",
+  "target": "next_5d_relative_return_rank",
+  "top_k": 5,
+  "transaction_cost_bps": "5",
+  "universe": [
+    "SPY",
+    "QQQ",
+    "IWM",
+    "DIA",
+    "VTI",
+    "VEA",
+    "VWO",
+    "TLT",
+    "IEF",
+    "SHY",
+    "LQD",
+    "HYG",
+    "GLD",
+    "SLV",
+    "VNQ",
+    "XLF",
+    "XLK",
+    "XLE",
+    "XLV",
+    "XLP"
+  ]
+}
