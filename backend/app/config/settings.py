@@ -170,6 +170,30 @@ class WebResearchSettings:
 
 
 @dataclass(frozen=True)
+class FinanceInboxSettings:
+    timeout_seconds: int = 10
+    max_response_bytes: int = 2_000_000
+    max_entries_per_feed: int = 200
+    max_redirects: int = 3
+    max_opml_bytes: int = 1_000_000
+    max_opml_outlines: int = 200
+    allow_proxy_fake_ips: bool = False
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "timeout_seconds",
+            "max_response_bytes",
+            "max_entries_per_feed",
+            "max_opml_bytes",
+            "max_opml_outlines",
+        ):
+            if getattr(self, field_name) < 1:
+                raise ValueError(f"{field_name} must be positive")
+        if self.max_redirects < 0 or self.max_redirects > 10:
+            raise ValueError("max_redirects must be between 0 and 10")
+
+
+@dataclass(frozen=True)
 class ModelProfile:
     name: str
     provider: str = "deepseek"
@@ -240,10 +264,18 @@ class AppSettings:
     market_data: MarketDataSettings = MarketDataSettings()
     exchange_rate: ExchangeRateSettings = ExchangeRateSettings()
     web_research: WebResearchSettings = WebResearchSettings()
+    finance_inbox: FinanceInboxSettings = FinanceInboxSettings()
 
 
 def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _coerce_scalar(value: str) -> Any:
@@ -399,6 +431,26 @@ def get_settings() -> AppSettings:
             max_results=int(os.getenv("WEB_RESEARCH_MAX_RESULTS", "5")),
             outbound_call_budget=int(
                 os.getenv("WEB_RESEARCH_OUTBOUND_CALL_BUDGET", "1")
+            ),
+        ),
+        finance_inbox=FinanceInboxSettings(
+            timeout_seconds=int(os.getenv("FINANCE_INBOX_TIMEOUT_SECONDS", "10")),
+            max_response_bytes=int(
+                os.getenv("FINANCE_INBOX_MAX_RESPONSE_BYTES", "2000000")
+            ),
+            max_entries_per_feed=int(
+                os.getenv("FINANCE_INBOX_MAX_ENTRIES_PER_FEED", "200")
+            ),
+            max_redirects=int(os.getenv("FINANCE_INBOX_MAX_REDIRECTS", "3")),
+            max_opml_bytes=int(
+                os.getenv("FINANCE_INBOX_MAX_OPML_BYTES", "1000000")
+            ),
+            max_opml_outlines=int(
+                os.getenv("FINANCE_INBOX_MAX_OPML_OUTLINES", "200")
+            ),
+            allow_proxy_fake_ips=_env_bool(
+                "FINANCE_INBOX_ALLOW_PROXY_FAKE_IPS",
+                False,
             ),
         ),
     )

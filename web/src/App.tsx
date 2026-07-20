@@ -7,7 +7,8 @@ import { AgentTeamPanel } from "./components/AgentTeamPanel";
 import { FinanceWorkspacePage } from "./pages/FinanceWorkspacePage";
 import { MyOfficePage } from "./pages/MyOfficePage";
 import { InvestmentResearchPage } from "./pages/InvestmentResearchPage";
-import { SettingsPage } from "./pages/SettingsPage";
+import { FinanceInboxPage } from "./pages/FinanceInboxPage";
+import { SettingsPage, type SettingsSection } from "./pages/SettingsPage";
 import type { PageId } from "./pages/pageTypes";
 import { useI18n } from "./i18n";
 
@@ -20,6 +21,7 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [cfoPrefill, setCfoPrefill] = useState<string | null>(null);
   const [officePrefill, setOfficePrefill] = useState<string | null>(null);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>("profile");
 
   const {
     profileName,
@@ -120,7 +122,13 @@ export default function App() {
               <button
                 key={item.id}
                 type="button"
-                onClick={() => setActivePage(item.id)}
+                aria-label={item.label}
+                aria-current={active ? "page" : undefined}
+                title={item.label}
+                onClick={() => {
+                  if (item.id === "settings") setSettingsSection("profile");
+                  setActivePage(item.id);
+                }}
                 className={`product-tab ${active ? "product-tab-active" : ""}`}
               >
                 <Icon className="h-4 w-4" />
@@ -159,6 +167,7 @@ export default function App() {
             categoryData={categoryData}
             tableTransactions={tableTransactions}
             onReload={load}
+            onOpenInbox={() => setActivePage("inbox")}
             onOpenCfo={() => setIsSidebarOpen(true)}
             onAskCfoAbout={(question) => {
               setCfoPrefill(question);
@@ -181,6 +190,15 @@ export default function App() {
             initialPrompt={officePrefill}
             onInitialPromptConsumed={() => setOfficePrefill(null)}
           />
+        ) : activePage === "inbox" ? (
+          <FinanceInboxPage
+            userId={userId}
+            onBack={() => setActivePage("workspace")}
+            onManageSources={() => {
+              setSettingsSection("dataSources");
+              setActivePage("settings");
+            }}
+          />
         ) : (
           <main className="settings-shell">
               {activePage === "settings" && (
@@ -194,6 +212,7 @@ export default function App() {
                 monthlyIncome={monthlyIncome}
                 onProfileSaved={load}
                 showDeveloperTools={false}
+                initialSection={settingsSection}
               />
               )}
             </main>
