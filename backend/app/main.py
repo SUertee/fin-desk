@@ -28,6 +28,8 @@ from app.routes.investment_research import router as investment_research_router
 from app.routes.market import router as market_router
 from app.routes.profile import router as profile_router
 from app.routes.research import router as research_router
+from app.routes.subscriptions import router as subscriptions_router
+from app.routes.inbox import router as inbox_router
 from app.routes.agent_runs import router as agent_runs_router
 from app.routes.statement_import import router as statement_import_router
 from app.routes.transactions import router as transactions_router
@@ -86,3 +88,5 @@ app.include_router(investments_router)
 app.include_router(market_router)
 app.include_router(investment_research_router)
 app.include_router(research_router)
+app.include_router(subscriptions_router)
+app.include_router(inbox_router)

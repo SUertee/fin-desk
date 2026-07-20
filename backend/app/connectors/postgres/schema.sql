@@ -310,6 +310,71 @@ CREATE TABLE IF NOT EXISTS web_research_cache (
 CREATE INDEX IF NOT EXISTS idx_web_research_cache_expiry
     ON web_research_cache (expires_at);
 
+-- User-owned RSS subscriptions for the manually refreshed Finance Inbox.
+CREATE TABLE IF NOT EXISTS content_subscriptions (
+    id                  TEXT PRIMARY KEY,
+    user_id             TEXT NOT NULL,
+    name                TEXT NOT NULL,
+    source_type         TEXT NOT NULL DEFAULT 'rss' CHECK (source_type = 'rss'),
+    feed_url            TEXT NOT NULL,
+    normalized_feed_url TEXT NOT NULL,
+    enabled             BOOLEAN NOT NULL DEFAULT TRUE,
+    last_refresh_status TEXT NOT NULL DEFAULT 'never'
+        CHECK (last_refresh_status IN ('never', 'success', 'partial', 'failed')),
+    last_refresh_at     TIMESTAMPTZ,
+    last_success_at     TIMESTAMPTZ,
+    last_error_code     TEXT,
+    etag                TEXT,
+    last_modified       TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, normalized_feed_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_content_subscriptions_user_updated_at
+    ON content_subscriptions (user_id, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_content_subscriptions_refresh
+    ON content_subscriptions (user_id, enabled, last_refresh_at DESC);
+
+-- One logical article per user. Full article bodies are intentionally absent.
+CREATE TABLE IF NOT EXISTS inbox_items (
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT NOT NULL,
+    item_key       TEXT NOT NULL,
+    canonical_url  TEXT,
+    title          TEXT NOT NULL,
+    excerpt        TEXT NOT NULL DEFAULT '',
+    author         TEXT,
+    published_at   TIMESTAMPTZ,
+    fetched_at     TIMESTAMPTZ NOT NULL,
+    content_hash   TEXT NOT NULL,
+    status         TEXT NOT NULL DEFAULT 'unread'
+        CHECK (status IN ('unread', 'read', 'saved', 'dismissed')),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, item_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_inbox_items_user_status_created_at
+    ON inbox_items (user_id, status, created_at DESC, id DESC);
+
+CREATE INDEX IF NOT EXISTS idx_inbox_items_user_content_hash
+    ON inbox_items (user_id, content_hash);
+
+-- Preserve every feed that discovered an item after cross-feed deduplication.
+CREATE TABLE IF NOT EXISTS inbox_item_sources (
+    item_id          TEXT NOT NULL REFERENCES inbox_items(id) ON DELETE CASCADE,
+    subscription_id  TEXT NOT NULL REFERENCES content_subscriptions(id),
+    source_name      TEXT NOT NULL,
+    feed_entry_id    TEXT,
+    discovered_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (item_id, subscription_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_inbox_item_sources_subscription
+    ON inbox_item_sources (subscription_id, discovered_at DESC);
+
 -- Agent harness run ledger for audit and replay
 CREATE TABLE IF NOT EXISTS agent_run_records (
     request_id        TEXT PRIMARY KEY,

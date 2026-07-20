@@ -36,3 +36,6 @@ def test_ensure_schema_executes_checked_in_schema_file():
     assert len(conn.cursor_obj.executed) == 1
     assert "statement_import_records" in conn.cursor_obj.executed[0]
     assert "session_memory" in conn.cursor_obj.executed[0]
+    assert "content_subscriptions" in conn.cursor_obj.executed[0]
+    assert "inbox_items" in conn.cursor_obj.executed[0]
+    assert "inbox_item_sources" in conn.cursor_obj.executed[0]
