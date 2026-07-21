@@ -7,27 +7,38 @@ from fastapi.routing import APIRoute
 from pydantic import ValidationError
 
 from app.agents.specialists import REGISTRY
+from app.models.runtime import RuntimePolicyResult
 from app.routes import capabilities as capabilities_route
 from app.runtime.capabilities import (
+    CapabilityBindingError,
     CapabilityCatalog,
     CapabilityDescriptor,
     CapabilityEntry,
     CapabilityImplementationReference,
     CapabilityResolver,
     CapabilityRuntimeStatus,
+    bind_execution_plan,
 )
 from app.runtime.capabilities.definitions import (
     SPECIALIST_CAPABILITY_DEFINITIONS,
     TOOL_CAPABILITY_DEFINITIONS,
 )
-from app.runtime.execution import ToolObservation, ToolRegistry, ToolSpec
+from app.runtime.execution import (
+    AgentContext,
+    ExecutionPlan,
+    PlanStep,
+    ToolObservation,
+    ToolRegistry,
+    ToolSpec,
+    build_execution_plan,
+)
 from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
 
-def _descriptor(capability_id: str) -> CapabilityDescriptor:
+def _descriptor(capability_id: str, *, kind: str = "tool") -> CapabilityDescriptor:
     return CapabilityDescriptor(
         capability_id=capability_id,
-        kind="tool",
+        kind=kind,
         title="Test capability",
         description="Bounded test capability.",
         owner="tests",
@@ -43,9 +54,11 @@ def _entry(
     *,
     enabled: bool = True,
     available: bool = True,
+    kind: str = "tool",
+    registry_name: str = "test_tool",
 ) -> CapabilityEntry:
     return CapabilityEntry(
-        descriptor=_descriptor(capability_id),
+        descriptor=_descriptor(capability_id, kind=kind),
         status=CapabilityRuntimeStatus(
             enabled=enabled,
             available=available,
@@ -53,8 +66,8 @@ def _entry(
         ),
         implementation=CapabilityImplementationReference(
             capability_id=capability_id,
-            kind="tool",
-            registry_name="test_tool",
+            kind=kind,
+            registry_name=registry_name,
         ),
     )
 
@@ -183,6 +196,106 @@ def test_resolver_returns_typed_results(capability_id, entry, grants, expected_s
 
     assert result.status == expected_status
     assert (result.reference is not None) is (expected_status == "resolved")
+
+
+def test_plan_binding_resolves_semantic_ids_to_existing_registry_names():
+    plan = ExecutionPlan(
+        steps=[
+            PlanStep(step_type="tool", capability_id="test.query"),
+            PlanStep(step_type="handoff", capability_id="test.review"),
+            PlanStep(step_type="compose"),
+        ],
+    )
+    catalog = CapabilityCatalog(
+        [
+            _entry("test.query", registry_name="query_transactions"),
+            _entry(
+                "test.review",
+                kind="agent",
+                registry_name="expense_analyst",
+            ),
+        ]
+    )
+
+    bound = bind_execution_plan(
+        plan,
+        CapabilityResolver(catalog),
+        granted_capabilities={"test.query", "test.review"},
+    )
+
+    assert bound.tool_names == ["query_transactions"]
+    assert bound.handoff_names == ["expense_analyst"]
+    assert bound.selected_agents == ("cfo", "expense_analyst")
+
+
+def test_planner_emits_semantic_capability_ids_only():
+    plan = build_execution_plan(
+        AgentContext(
+            request_id="req-plan",
+            user_id="demo",
+            entrypoint="chat",
+            message="Analyze my spending",
+            transactions=[{"amount": -20, "category": "shopping"}],
+        ),
+        RuntimePolicyResult(
+            complexity="moderate",
+            risk_level="medium",
+            required_specialists=["expense_analyst"],
+            audit_required=True,
+            max_tool_calls=6,
+        ),
+    )
+
+    assert "finance.expense_snapshot" in plan.tool_capability_ids
+    assert plan.handoff_capability_ids == [
+        "finance.expense_review",
+        "finance.audit_review",
+    ]
+    assert all("." in capability_id for capability_id in plan.capability_ids)
+    assert all(
+        implementation_name not in plan.capability_ids
+        for implementation_name in (
+            "get_expense_snapshot",
+            "expense_analyst",
+            "auditor",
+        )
+    )
+    assert plan.steps[-1].step_type == "compose"
+    assert plan.steps[-1].capability_id is None
+
+
+@pytest.mark.parametrize(
+    ("entry", "grants", "expected_status"),
+    [
+        (None, {"test.blocked"}, "unknown"),
+        (_entry("test.blocked", enabled=False), {"test.blocked"}, "disabled"),
+        (
+            _entry("test.blocked", available=False),
+            {"test.blocked"},
+            "unavailable",
+        ),
+        (_entry("test.blocked"), set(), "disallowed"),
+        (
+            _entry("test.blocked", kind="agent", registry_name="expense_analyst"),
+            {"test.blocked"},
+            "disallowed",
+        ),
+    ],
+)
+def test_plan_binding_fails_closed(entry, grants, expected_status):
+    plan = ExecutionPlan(
+        steps=[PlanStep(step_type="tool", capability_id="test.blocked")],
+    )
+    catalog = CapabilityCatalog([entry] if entry is not None else [])
+
+    with pytest.raises(CapabilityBindingError) as caught:
+        bind_execution_plan(
+            plan,
+            CapabilityResolver(catalog),
+            granted_capabilities=grants,
+        )
+
+    assert caught.value.status == expected_status
 
 
 def test_developer_route_is_read_only_and_secret_free(monkeypatch):

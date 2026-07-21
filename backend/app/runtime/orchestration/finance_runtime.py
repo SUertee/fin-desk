@@ -14,6 +14,11 @@ from app.connectors.postgres.statement_import_store import list_latest_quality_r
 from app.models.agent_data import AgentAction, AgentAudit, AgentFinding, SummaryCard
 from app.models.chat import ChatResponse
 from app.models.runtime import AgentRunUsage, RuntimePolicyResult
+from app.runtime.capabilities import (
+    CapabilityCatalog,
+    CapabilityResolver,
+    bind_execution_plan,
+)
 from app.runtime.contracts.output_validation import validate_output_contract
 from app.runtime.execution import (
     AgentContext,
@@ -197,12 +202,25 @@ class FinanceRuntime:
         costing_service: CostingService | None = None,
         web_research_service: WebResearchService | None = None,
         web_research_tool: WebResearchTool | None = None,
+        granted_capabilities: set[str] | None = None,
     ):
         self.web_research_tool = web_research_tool or WebResearchTool(
             web_research_service or build_web_research_service()
         )
         self.tool_registry = tool_registry or self._build_tool_registry()
         self.specialist_runner = specialist_runner or SpecialistRunner()
+        self.capability_catalog = CapabilityCatalog.from_registries(
+            self.tool_registry,
+            self.specialist_runner.registry,
+        )
+        self.capability_resolver = CapabilityResolver(self.capability_catalog)
+        self.granted_capabilities = frozenset(
+            granted_capabilities
+            if granted_capabilities is not None
+            else {
+                item.descriptor.capability_id for item in self.capability_catalog.list()
+            }
+        )
         self.llm_client = llm_client if llm_client is not None else DeepSeekTextClient()
         self.costing_service = costing_service or CostingService(
             exchange_rate_lookup=get_exchange_rate_snapshot_db
@@ -362,13 +380,18 @@ class FinanceRuntime:
             state = AgentState()
             artifacts = ArtifactRegistry()
             plan = build_execution_plan(context, policy)
+            bound_plan = bind_execution_plan(
+                plan,
+                self.capability_resolver,
+                granted_capabilities=self.granted_capabilities,
+            )
             web_research_budget = (
                 self.web_research_tool.new_budget()
-                if "search_web_research" in plan.tool_names
+                if "search_web_research" in bound_plan.tool_names
                 else None
             )
-            state.selected_agents = plan.selected_agents
-            trace.select_agents(plan.selected_agents)
+            state.selected_agents = list(bound_plan.selected_agents)
+            trace.select_agents(list(bound_plan.selected_agents))
             trace.set_tools_available(
                 [
                     *[spec.name for spec in self.tool_registry.available()],
@@ -397,14 +420,14 @@ class FinanceRuntime:
 
             executor = BoundedToolExecutor(
                 self.tool_registry,
-                allowed_tools=plan.tool_names,
+                allowed_tools=bound_plan.tool_names,
                 max_tool_calls=policy.max_tool_calls,
             )
-            for step in plan.steps:
+            for step in bound_plan.steps:
                 if step.step_type != "tool":
                     continue
                 observation = await executor.execute(
-                    step.name,
+                    step.registry_name,
                     {
                         "agent": step.agent,
                         "context": context,
@@ -414,7 +437,7 @@ class FinanceRuntime:
                 )
                 state.record_tool_observation(observation)
                 if observation.success:
-                    artifacts.put(step.name, observation.result)
+                    artifacts.put(step.registry_name, observation.result)
                 trace.record_tool_call(
                     observation.tool_name,
                     status="called" if observation.success else "failed",
@@ -443,7 +466,8 @@ class FinanceRuntime:
             if web_research:
                 finance_context = {**finance_context, "web_research": web_research}
             specialist_outputs: dict[str, SpecialistAgentOutput] = {}
-            for specialist in policy.required_specialists:
+            handoff_names = bound_plan.handoff_names
+            for specialist in [name for name in handoff_names if name != "auditor"]:
                 request = HandoffRequest(
                     from_agent="cfo",
                     to_agent=specialist,
@@ -479,7 +503,9 @@ class FinanceRuntime:
                         result.output
                     )
 
-            if should_run_audit(policy, specialists_used=list(specialist_outputs)):
+            if "auditor" in handoff_names and should_run_audit(
+                policy, specialists_used=list(specialist_outputs)
+            ):
                 audit_request = HandoffRequest(
                     from_agent="cfo",
                     to_agent="auditor",

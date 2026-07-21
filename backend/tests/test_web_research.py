@@ -152,12 +152,12 @@ def test_market_plan_searches_before_specialist_handoff():
     tool_index = next(
         index
         for index, step in enumerate(plan.steps)
-        if step.name == "search_web_research"
+        if step.capability_id == "market.web_research"
     )
     handoff_index = next(
         index
         for index, step in enumerate(plan.steps)
-        if step.step_type == "handoff" and step.name == "market_context"
+        if step.step_type == "handoff" and step.capability_id == "market.context_review"
     )
 
     assert tool_index < handoff_index

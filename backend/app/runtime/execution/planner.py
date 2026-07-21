@@ -12,42 +12,60 @@ from app.tools.query_tools import has_query_intent
 
 PlanStepType = Literal["tool", "handoff", "compose"]
 
+SPECIALIST_CAPABILITY_BY_NAME = {
+    "expense_analyst": "finance.expense_review",
+    "budget_coach": "finance.budget_coaching",
+    "auditor": "finance.audit_review",
+    "market_context": "market.context_review",
+    "investment_research": "investment.research_review",
+}
+
 
 @dataclass(frozen=True)
 class PlanStep:
     step_type: PlanStepType
-    name: str
+    capability_id: str | None = None
     agent: str = "cfo"
     reason: str = ""
 
 
 @dataclass(frozen=True)
 class ExecutionPlan:
-    selected_agents: list[str]
     steps: list[PlanStep] = field(default_factory=list)
 
     @property
-    def tool_names(self) -> list[str]:
-        return [step.name for step in self.steps if step.step_type == "tool"]
+    def tool_capability_ids(self) -> list[str]:
+        return [
+            step.capability_id
+            for step in self.steps
+            if step.step_type == "tool" and step.capability_id is not None
+        ]
+
+    @property
+    def handoff_capability_ids(self) -> list[str]:
+        return [
+            step.capability_id
+            for step in self.steps
+            if step.step_type == "handoff" and step.capability_id is not None
+        ]
+
+    @property
+    def capability_ids(self) -> frozenset[str]:
+        return frozenset([*self.tool_capability_ids, *self.handoff_capability_ids])
 
 
-def _selected_agents(policy: RuntimePolicyResult) -> list[str]:
-    agents = ["cfo", *policy.required_specialists]
-    if policy.audit_required:
-        agents.append("auditor")
-    return list(dict.fromkeys(agents))
-
-
-def build_execution_plan(context: AgentContext, policy: RuntimePolicyResult) -> ExecutionPlan:
+def build_execution_plan(
+    context: AgentContext, policy: RuntimePolicyResult
+) -> ExecutionPlan:
     steps = [
         PlanStep(
             step_type="tool",
-            name="get_finance_context",
+            capability_id="finance.context",
             reason="baseline_finance_context",
         ),
         PlanStep(
             step_type="tool",
-            name="get_import_quality_report",
+            capability_id="finance.import_quality",
             reason="data_quality_evidence",
         ),
     ]
@@ -56,7 +74,7 @@ def build_execution_plan(context: AgentContext, policy: RuntimePolicyResult) -> 
         steps.append(
             PlanStep(
                 step_type="tool",
-                name="query_transactions",
+                capability_id="finance.query_transactions",
                 reason="typed_query_intent",
             )
         )
@@ -66,12 +84,12 @@ def build_execution_plan(context: AgentContext, policy: RuntimePolicyResult) -> 
             [
                 PlanStep(
                     step_type="tool",
-                    name="get_expense_snapshot",
+                    capability_id="finance.expense_snapshot",
                     reason="transaction_data_available",
                 ),
                 PlanStep(
                     step_type="tool",
-                    name="get_anomaly_summary",
+                    capability_id="finance.anomaly_summary",
                     reason="transaction_data_available",
                 ),
             ]
@@ -81,7 +99,7 @@ def build_execution_plan(context: AgentContext, policy: RuntimePolicyResult) -> 
         steps.append(
             PlanStep(
                 step_type="tool",
-                name="get_cashflow_summary",
+                capability_id="finance.cashflow_summary",
                 reason="monthly_totals_available",
             )
         )
@@ -90,7 +108,7 @@ def build_execution_plan(context: AgentContext, policy: RuntimePolicyResult) -> 
         steps.append(
             PlanStep(
                 step_type="tool",
-                name="get_budget_snapshot",
+                capability_id="finance.budget_snapshot",
                 reason="budget_specialist_required",
             )
         )
@@ -99,7 +117,7 @@ def build_execution_plan(context: AgentContext, policy: RuntimePolicyResult) -> 
         steps.append(
             PlanStep(
                 step_type="tool",
-                name="get_investment_research_context",
+                capability_id="investment.research_context",
                 reason="investment_research_specialist_required",
             )
         )
@@ -108,16 +126,19 @@ def build_execution_plan(context: AgentContext, policy: RuntimePolicyResult) -> 
         steps.append(
             PlanStep(
                 step_type="tool",
-                name="search_web_research",
+                capability_id="market.web_research",
                 reason="market_context_specialist_required",
             )
         )
 
     for specialist in policy.required_specialists:
+        capability_id = SPECIALIST_CAPABILITY_BY_NAME.get(specialist)
+        if capability_id is None:
+            raise ValueError(f"Unknown specialist capability: {specialist}")
         steps.append(
             PlanStep(
                 step_type="handoff",
-                name=specialist,
+                capability_id=capability_id,
                 reason="runtime_policy_required_specialist",
             )
         )
@@ -126,10 +147,10 @@ def build_execution_plan(context: AgentContext, policy: RuntimePolicyResult) -> 
         steps.append(
             PlanStep(
                 step_type="handoff",
-                name="auditor",
+                capability_id=SPECIALIST_CAPABILITY_BY_NAME["auditor"],
                 reason="runtime_policy_audit_required",
             )
         )
 
-    steps.append(PlanStep(step_type="compose", name="final_response"))
-    return ExecutionPlan(selected_agents=_selected_agents(policy), steps=steps)
+    steps.append(PlanStep(step_type="compose"))
+    return ExecutionPlan(steps=steps)
