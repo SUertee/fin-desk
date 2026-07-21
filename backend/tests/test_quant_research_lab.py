@@ -191,6 +191,8 @@ def test_dataset_rejects_duplicate_history_and_writes_immutable_snapshot(tmp_pat
     snapshot = build_dataset_snapshot([spy], created_at=NOW)
     target = write_dataset_snapshot(snapshot, tmp_path)
     assert write_dataset_snapshot(snapshot, tmp_path) == target
+    rebuilt = build_dataset_snapshot([spy], created_at=NOW + timedelta(hours=1))
+    assert write_dataset_snapshot(rebuilt, tmp_path) == target
     assert (target / "raw" / "spy.csv").exists()
     assert (target / "instruments" / "all.txt").read_text().startswith("SPY\t")
     assert json.loads((target / "manifest.json").read_text())["content_sha256"] == (
@@ -219,11 +221,14 @@ def test_equal_weight_and_momentum_baselines_are_deterministic_and_causal():
         else row
         for row in snapshot.rows
     ]
-    assert momentum_signals(
-        future_changed,
-        as_of=as_of,
-        lookback_observations=5,
-    ) == original
+    assert (
+        momentum_signals(
+            future_changed,
+            as_of=as_of,
+            lookback_observations=5,
+        )
+        == original
+    )
     top = momentum_top_k_allocations(
         snapshot.rows,
         as_of=as_of,

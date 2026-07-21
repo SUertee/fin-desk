@@ -32,6 +32,22 @@ The output contains per-symbol CSV files, an instrument list, and a manifest
 with provenance and a SHA-256 content hash. Convert the raw CSVs into a Qlib
 provider directory with Qlib's data-dump tooling before running a workflow.
 
+To retrieve the initial ETF research universe through FinDesk's governed
+`MarketDataService` boundary, run:
+
+```bash
+python -m research.cli.export_etf_dataset \
+  --symbols SPY,QQQ,TLT,GLD,VNQ \
+  --date-from 2020-01-01 \
+  --date-to 2025-12-31 \
+  --output reports/quant_research/datasets
+```
+
+The MVP command is strict: failed chunks, inconsistent currencies, duplicate
+dates, or invalid provider ranges prevent snapshot creation and return a
+non-zero exit. Trading-calendar validation and partial recovery are deliberately
+deferred until the first experiment demonstrates a concrete need.
+
 ## Workflow
 
 Prepare a workflow from a strict experiment spec:
