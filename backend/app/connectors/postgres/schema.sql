@@ -122,6 +122,24 @@ ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS search_vector TSVECTOR
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_search_vector
     ON knowledge_chunks USING GIN (search_vector);
 
+-- Optional provider-neutral embeddings for reviewed knowledge. The unbounded
+-- vector column keeps model dimensions out of the domain schema; V1 uses exact
+-- cosine search because the reviewed corpus is intentionally small.
+CREATE TABLE IF NOT EXISTS knowledge_chunk_embeddings (
+    chunk_id      TEXT NOT NULL REFERENCES knowledge_chunks(chunk_id) ON DELETE CASCADE,
+    provider_id   TEXT NOT NULL,
+    model_id      TEXT NOT NULL,
+    dimension     INTEGER NOT NULL CHECK (dimension BETWEEN 1 AND 4096),
+    embedding     VECTOR NOT NULL,
+    content_hash  TEXT NOT NULL CHECK (length(content_hash) = 64),
+    embedded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (chunk_id, provider_id, model_id),
+    CHECK (vector_dims(embedding) = dimension)
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_provider
+    ON knowledge_chunk_embeddings (provider_id, model_id, dimension, chunk_id);
+
 -- Transactions imported from statement processors or future bank connectors
 CREATE TABLE IF NOT EXISTS transactions (
     id               BIGSERIAL PRIMARY KEY,
