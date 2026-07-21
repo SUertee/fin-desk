@@ -9,6 +9,7 @@ from app.runtime.capabilities.contracts import (
     CapabilityExecutionMode,
     CapabilityKind,
     CapabilityRiskLevel,
+    CapabilitySource,
 )
 
 
@@ -23,6 +24,7 @@ class CapabilityDefinition:
     input_contract: str
     output_contract: str
     description: str = ""
+    source: CapabilitySource = "internal"
 
     def descriptor(self, *, fallback_description: str = "") -> CapabilityDescriptor:
         return CapabilityDescriptor(
@@ -35,6 +37,7 @@ class CapabilityDefinition:
             execution_mode=self.execution_mode,
             input_contract=self.input_contract,
             output_contract=self.output_contract,
+            source=self.source,
         )
 
 
@@ -44,6 +47,8 @@ def _tool(
     *,
     owner: str = "finance",
     risk_level: CapabilityRiskLevel = "low",
+    source: CapabilitySource = "internal",
+    output_contract: str = "ToolObservation",
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         capability_id=capability_id,
@@ -53,7 +58,8 @@ def _tool(
         risk_level=risk_level,
         execution_mode="read_only",
         input_contract="AgentContextPayload",
-        output_contract="ToolObservation",
+        output_contract=output_contract,
+        source=source,
     )
 
 
@@ -80,6 +86,14 @@ TOOL_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
         "Governed web research",
         owner="market_context",
         risk_level="medium",
+    ),
+    "get_vibe_market_data": _tool(
+        "investment.external_market_history",
+        "External market history",
+        owner="investment_research",
+        risk_level="medium",
+        source="mcp",
+        output_contract="ExternalMarketHistoryArtifact",
     ),
 }
 

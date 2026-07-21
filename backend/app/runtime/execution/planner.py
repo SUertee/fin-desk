@@ -8,6 +8,10 @@ from typing import Literal
 from app.models.runtime import RuntimePolicyResult
 from app.runtime.execution.context import AgentContext
 from app.tools.query_tools import has_query_intent
+from app.tools.mcp_market_data import (
+    EXTERNAL_MARKET_HISTORY_CAPABILITY,
+    has_external_market_data_intent,
+)
 
 
 PlanStepType = Literal["tool", "handoff", "compose"]
@@ -55,7 +59,10 @@ class ExecutionPlan:
 
 
 def build_execution_plan(
-    context: AgentContext, policy: RuntimePolicyResult
+    context: AgentContext,
+    policy: RuntimePolicyResult,
+    *,
+    available_capabilities: frozenset[str] | set[str] | None = None,
 ) -> ExecutionPlan:
     steps = [
         PlanStep(
@@ -114,13 +121,27 @@ def build_execution_plan(
         )
 
     if "investment_research" in policy.required_specialists:
-        steps.append(
-            PlanStep(
-                step_type="tool",
-                capability_id="investment.research_context",
-                reason="investment_research_specialist_required",
-            )
+        external_requested = has_external_market_data_intent(context.message)
+        external_available = (
+            available_capabilities is not None
+            and EXTERNAL_MARKET_HISTORY_CAPABILITY in available_capabilities
         )
+        if external_requested and external_available:
+            steps.append(
+                PlanStep(
+                    step_type="tool",
+                    capability_id=EXTERNAL_MARKET_HISTORY_CAPABILITY,
+                    reason="explicit_external_market_data_request",
+                )
+            )
+        elif not external_requested:
+            steps.append(
+                PlanStep(
+                    step_type="tool",
+                    capability_id="investment.research_context",
+                    reason="investment_research_specialist_required",
+                )
+            )
 
     if "market_context" in policy.required_specialists:
         steps.append(

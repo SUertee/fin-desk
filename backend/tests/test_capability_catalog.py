@@ -155,7 +155,10 @@ def test_current_registry_definitions_have_exact_coverage():
         spec.name for spec in FinanceRuntime().tool_registry.available()
     }
 
-    assert set(TOOL_CAPABILITY_DEFINITIONS) == runtime_tool_names
+    assert runtime_tool_names <= set(TOOL_CAPABILITY_DEFINITIONS)
+    assert set(TOOL_CAPABILITY_DEFINITIONS) - runtime_tool_names == {
+        "get_vibe_market_data"
+    }
     assert set(SPECIALIST_CAPABILITY_DEFINITIONS) == set(REGISTRY)
 
 
@@ -317,5 +320,12 @@ def test_developer_route_is_read_only_and_secret_free(monkeypatch):
     assert [route.methods for route in api_routes] == [{"GET"}]
     assert set(payload) == {"capabilities"}
     assert set(payload["capabilities"][0]) == {"descriptor", "status"}
-    for forbidden in ("credential", "api_key", "endpoint", "executor", "prompt"):
+    for forbidden in (
+        "credential",
+        "api_key",
+        "command",
+        "endpoint",
+        "executor",
+        "prompt",
+    ):
         assert forbidden not in encoded

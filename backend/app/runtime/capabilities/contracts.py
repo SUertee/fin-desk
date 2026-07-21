@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 CapabilityKind = Literal["tool", "agent", "skill"]
+CapabilitySource = Literal["internal", "mcp"]
 CapabilityRiskLevel = Literal["low", "medium", "high"]
 CapabilityExecutionMode = Literal["read_only", "analysis"]
 CapabilityResolutionStatus = Literal[
@@ -32,7 +33,7 @@ class CapabilityDescriptor(BaseModel):
     kind: CapabilityKind
     title: str = Field(min_length=1, max_length=80)
     description: str = Field(min_length=1, max_length=240)
-    source: Literal["internal"] = "internal"
+    source: CapabilitySource = "internal"
     owner: str = Field(min_length=1, max_length=80)
     risk_level: CapabilityRiskLevel
     execution_mode: CapabilityExecutionMode
