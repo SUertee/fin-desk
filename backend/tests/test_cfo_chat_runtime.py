@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.runtime.capabilities import CapabilityBindingError
 from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
 
@@ -48,7 +49,10 @@ async def test_runtime_uses_self_hosted_multi_agent_path(monkeypatch, caplog):
     assert tool_calls["consult_expense_analyst"]["status"] == "called"
     assert tool_calls["consult_auditor"]["status"] == "called"
 
-    assert [(h["from_agent"], h["to_agent"], h["status"], h["reason"]) for h in trace["handoffs"]] == [
+    assert [
+        (h["from_agent"], h["to_agent"], h["status"], h["reason"])
+        for h in trace["handoffs"]
+    ] == [
         ("cfo", "expense_analyst", "completed", "typed_internal_handoff"),
         ("cfo", "auditor", "completed", "typed_internal_handoff"),
     ]
@@ -80,6 +84,41 @@ async def test_runtime_uses_self_hosted_multi_agent_path(monkeypatch, caplog):
     assert saved_records[0].entrypoint == "chat"
     assert saved_records[0].runtime_used == "self_hosted"
     assert saved_records[0].selected_agents == ["cfo", "expense_analyst", "auditor"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_binds_all_capabilities_before_execution(monkeypatch):
+    from app.runtime.orchestration import finance_runtime
+
+    saved_records = []
+    monkeypatch.setattr(
+        finance_runtime,
+        "save_agent_run_record_db",
+        lambda record: saved_records.append(record) or True,
+    )
+    # The first planned capability is granted and the second is denied. The
+    # first tool must still not run because binding is an all-or-nothing phase.
+    runtime = FinanceRuntime(granted_capabilities={"finance.context"})
+    runtime.llm_client = None
+
+    with pytest.raises(CapabilityBindingError) as caught:
+        await runtime.handle(
+            user_id="demo",
+            message="Please analyze my spending",
+            profile={"name": "Demo"},
+            transactions=[{"amount": -100, "category": "shopping"}],
+            monthly_totals=[],
+            chat_history=[],
+        )
+
+    assert caught.value.status == "disallowed"
+    assert saved_records[0].error_type == "CapabilityBindingError"
+    assert not {
+        "get_finance_context",
+        "get_import_quality_report",
+        "get_expense_snapshot",
+        "consult_expense_analyst",
+    }.intersection(call.name for call in saved_records[0].tool_calls)
 
 
 @pytest.mark.asyncio
@@ -133,7 +172,9 @@ async def test_runtime_runs_sourced_read_only_investment_team(monkeypatch):
             "trade_actions_allowed": False,
         },
     )
-    monkeypatch.setattr(finance_runtime, "list_latest_quality_reports_db", lambda user_id: [])
+    monkeypatch.setattr(
+        finance_runtime, "list_latest_quality_reports_db", lambda user_id: []
+    )
     monkeypatch.setattr(finance_runtime, "write_session_context", lambda **kwargs: None)
     monkeypatch.setattr(
         finance_runtime,

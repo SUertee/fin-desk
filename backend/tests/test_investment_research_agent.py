@@ -28,16 +28,20 @@ def test_investment_specialist_plan_fetches_bounded_research_before_handoff():
 
     plan = build_execution_plan(context, policy)
 
-    assert "get_investment_research_context" in plan.tool_names
-    assert plan.selected_agents == ["cfo", "investment_research", "auditor"]
+    assert "investment.research_context" in plan.tool_capability_ids
+    assert plan.handoff_capability_ids == [
+        "investment.research_review",
+        "finance.audit_review",
+    ]
     tool_index = next(
         index
         for index, step in enumerate(plan.steps)
-        if step.name == "get_investment_research_context"
+        if step.capability_id == "investment.research_context"
     )
     handoff_index = next(
         index
         for index, step in enumerate(plan.steps)
-        if step.step_type == "handoff" and step.name == "investment_research"
+        if step.step_type == "handoff"
+        and step.capability_id == "investment.research_review"
     )
     assert tool_index < handoff_index

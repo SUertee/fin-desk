@@ -6,6 +6,7 @@ from collections.abc import Set
 
 from app.runtime.capabilities.catalog import CapabilityCatalog
 from app.runtime.capabilities.contracts import (
+    CapabilityKind,
     CapabilityResolution,
     CapabilityResolutionStatus,
 )
@@ -20,6 +21,7 @@ class CapabilityResolver:
         capability_id: str,
         *,
         granted_capabilities: Set[str],
+        expected_kind: CapabilityKind | None = None,
     ) -> CapabilityResolution:
         entry = self.catalog.get(capability_id)
         if entry is None:
@@ -41,6 +43,15 @@ class CapabilityResolver:
                 capability_id,
                 "disallowed",
                 "Capability is not granted by current policy",
+            )
+        if expected_kind is not None and (
+            entry.descriptor.kind != expected_kind
+            or entry.implementation.kind != expected_kind
+        ):
+            return _rejected(
+                capability_id,
+                "disallowed",
+                f"Capability kind must be {expected_kind}",
             )
         return CapabilityResolution(
             capability_id=capability_id,
