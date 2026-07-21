@@ -1,0 +1,196 @@
+{
+  "schema_version": "memory-eval/v1",
+  "cases": [
+    {
+      "case_id": "recent_under_limit",
+      "category": "recent_window",
+      "chat_history": [
+        {"role": "user", "content": "first question"},
+        {"role": "assistant", "content": "first answer"},
+        {"role": "user", "content": "second question"},
+        {"role": "assistant", "content": "second answer"}
+      ],
+      "expected": {
+        "recent_contents": ["first question", "first answer", "second question", "second answer"],
+        "truncated": false,
+        "summary_used": false,
+        "usage_reason": "recent_turns_only"
+      }
+    },
+    {
+      "case_id": "recent_over_limit",
+      "category": "recent_window",
+      "chat_history": [
+        {"role": "user", "content": "q1"}, {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"},
+        {"role": "user", "content": "q3"}, {"role": "assistant", "content": "a3"},
+        {"role": "user", "content": "q4"}, {"role": "assistant", "content": "a4"},
+        {"role": "user", "content": "q5"}, {"role": "assistant", "content": "a5"},
+        {"role": "user", "content": "q6"}, {"role": "assistant", "content": "a6"},
+        {"role": "user", "content": "q7"}, {"role": "assistant", "content": "a7"}
+      ],
+      "expected": {
+        "recent_contents": ["q3", "a3", "q4", "a4", "q5", "a5", "q6", "a6", "q7", "a7"],
+        "truncated": true
+      }
+    },
+    {
+      "case_id": "invalid_history_is_ignored",
+      "category": "recent_window",
+      "chat_history": [
+        {"role": "system", "content": "hidden"},
+        {"role": "user", "content": "  valid   question  "},
+        {"role": "assistant", "content": ""},
+        {"role": "assistant", "content": "valid answer"}
+      ],
+      "expected": {
+        "recent_contents": ["valid question", "valid answer"]
+      }
+    },
+    {
+      "case_id": "summary_at_threshold_not_used",
+      "category": "summary_policy",
+      "chat_history": [
+        {"role": "user", "content": "q1"}, {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"},
+        {"role": "user", "content": "q3"}, {"role": "assistant", "content": "a3"},
+        {"role": "user", "content": "q4"}, {"role": "assistant", "content": "a4"},
+        {"role": "user", "content": "q5"}, {"role": "assistant", "content": "a5"}
+      ],
+      "session_memory": {"conversation_summary": "older discussion"},
+      "expected": {"summary_used": false, "usage_reason": "recent_turns_only"}
+    },
+    {
+      "case_id": "summary_above_threshold_used",
+      "category": "summary_policy",
+      "chat_history": [
+        {"role": "user", "content": "q1"}, {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"},
+        {"role": "user", "content": "q3"}, {"role": "assistant", "content": "a3"},
+        {"role": "user", "content": "q4"}, {"role": "assistant", "content": "a4"},
+        {"role": "user", "content": "q5"}, {"role": "assistant", "content": "a5"},
+        {"role": "user", "content": "q6"}, {"role": "assistant", "content": "a6"}
+      ],
+      "session_memory": {"conversation_summary": "older discussion"},
+      "expected": {"summary_used": true, "usage_reason": "recent_turns_with_session_summary", "truncated": true}
+    },
+    {
+      "case_id": "no_summary_above_threshold",
+      "category": "summary_policy",
+      "chat_history": [
+        {"role": "user", "content": "q1"}, {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "q2"}, {"role": "assistant", "content": "a2"},
+        {"role": "user", "content": "q3"}, {"role": "assistant", "content": "a3"},
+        {"role": "user", "content": "q4"}, {"role": "assistant", "content": "a4"},
+        {"role": "user", "content": "q5"}, {"role": "assistant", "content": "a5"},
+        {"role": "user", "content": "q6"}, {"role": "assistant", "content": "a6"}
+      ],
+      "expected": {"summary_used": false, "usage_reason": "recent_turns_only"}
+    },
+    {
+      "case_id": "trusted_category_substitution",
+      "category": "reference_resolution",
+      "session_memory": {"last_query": {"date_from": "2026-06-01", "date_to": "2026-06-30", "category": "shopping", "direction": "expense", "metric": "expense_share"}},
+      "message": "那餐饮呢？",
+      "expected": {
+        "resolution_status": "resolved", "rewrite_applied": true,
+        "effective_contains": ["2026年6月", "餐饮", "占比"],
+        "slot_values": {"category": "dining", "date_range": "2026-06-01..2026-06-30", "metric": "expense_share"}
+      }
+    },
+    {
+      "case_id": "trusted_time_substitution",
+      "category": "reference_resolution",
+      "session_memory": {"last_query": {"date_from": "2026-06-01", "date_to": "2026-06-30", "category": "dining", "direction": "expense", "metric": "total"}},
+      "message": "那上个月呢？",
+      "expected": {
+        "resolution_status": "resolved", "rewrite_applied": true,
+        "effective_contains": ["2026年6月", "餐饮", "花了多少"],
+        "slot_values": {"category": "dining", "date_range": "2026-06-01..2026-06-30"}
+      }
+    },
+    {
+      "case_id": "trusted_day_pronoun",
+      "category": "reference_resolution",
+      "session_memory": {"last_time_range": {"start": "2026-06-10", "end": "2026-06-10"}},
+      "message": "这一天为什么花这么多？",
+      "expected": {
+        "resolution_status": "resolved", "rewrite_applied": true,
+        "effective_contains": ["2026-06-10"],
+        "slot_values": {"date": "2026-06-10"}
+      }
+    },
+    {
+      "case_id": "trusted_transaction_pronoun",
+      "category": "reference_resolution",
+      "session_memory": {"last_entities": [{"type": "transaction", "name": "ACME 订阅 ¥99"}]},
+      "message": "这笔是不是重复扣费？",
+      "expected": {
+        "resolution_status": "resolved", "rewrite_applied": true,
+        "effective_contains": ["ACME 订阅 ¥99"],
+        "slot_values": {"transaction": "ACME 订阅 ¥99"}
+      }
+    },
+    {
+      "case_id": "missing_date_for_category",
+      "category": "clarification",
+      "session_memory": {"conversation_summary": "discussed finances"},
+      "message": "那餐饮呢？",
+      "expected": {
+        "resolution_status": "needs_clarification", "rewrite_applied": false,
+        "effective_excludes": ["2026年", "2025年"]
+      }
+    },
+    {
+      "case_id": "missing_category_for_time",
+      "category": "clarification",
+      "session_memory": {"last_query": {"date_from": "2026-06-01", "date_to": "2026-06-30", "metric": "total"}},
+      "message": "那上个月呢？",
+      "expected": {
+        "resolution_status": "needs_clarification", "rewrite_applied": false,
+        "effective_excludes": ["餐饮", "购物"]
+      }
+    },
+    {
+      "case_id": "generic_reference_without_memory",
+      "category": "clarification",
+      "message": "那个呢？",
+      "expected": {"resolution_status": "needs_clarification", "rewrite_applied": false}
+    },
+    {
+      "case_id": "evidence_request_preserves_intent",
+      "category": "session_safety",
+      "session_memory": {"last_topic": {"focus": "shopping"}, "last_query": {"date_from": "2026-06-01", "date_to": "2026-06-30", "category": "shopping"}},
+      "message": "为什么这样建议？",
+      "expected": {
+        "resolution_status": "unchanged", "rewrite_applied": false,
+        "effective_contains": ["为什么这样建议？"],
+        "slot_values": {"topic": "shopping"}
+      }
+    },
+    {
+      "case_id": "greeting_not_rewritten",
+      "category": "social_safety",
+      "session_memory": {"last_query": {"date_from": "2026-06-01", "date_to": "2026-06-30", "category": "shopping"}},
+      "message": "你好",
+      "expected": {"resolution_status": "unchanged", "rewrite_applied": false, "effective_contains": ["你好"]}
+    },
+    {
+      "case_id": "acknowledgement_not_rewritten",
+      "category": "social_safety",
+      "session_memory": {"last_query": {"date_from": "2026-06-01", "date_to": "2026-06-30", "category": "shopping"}},
+      "message": "好的",
+      "expected": {"resolution_status": "unchanged", "rewrite_applied": false, "effective_contains": ["好的"]}
+    },
+    {
+      "case_id": "complete_query_not_rewritten",
+      "category": "session_safety",
+      "session_memory": {"last_query": {"date_from": "2026-05-01", "date_to": "2026-05-31", "category": "shopping"}},
+      "message": "6月餐饮花了多少？",
+      "expected": {
+        "resolution_status": "unchanged", "rewrite_applied": false,
+        "slot_values": {"category": "dining", "date_range": "2026-06-01..2026-06-30"}
+      }
+    }
+  ]
+}

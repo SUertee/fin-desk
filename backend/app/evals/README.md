@@ -15,6 +15,13 @@ facts required for debugging, audit, and regression review.
 | `replay.py` | Loader and matcher for `AgentRunRecord` replay checks |
 | `replay_run.py` | CLI/admin helper for replaying persisted run records by request ID |
 | `trace_export.py` | Typed JSON/JSONL trace export reader and CI regression report CLI |
+| `memory_eval.py` | Deterministic multi-turn memory-window and reference-resolution eval |
+
+Run the memory regression set without a model or infrastructure dependency:
+
+```bash
+python -m app.evals.memory_eval
+```
 
 ## What The Harness Verifies
 

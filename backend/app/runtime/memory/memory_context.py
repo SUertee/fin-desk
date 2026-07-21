@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from app.runtime.memory.memory_policy import (
@@ -54,6 +54,24 @@ def build_memory_context(
     max_user_turns: int = DEFAULT_MAX_USER_TURNS,
     max_messages: int = DEFAULT_MAX_MESSAGES,
 ) -> MemoryContext:
+    session_memory = read_session_context(user_id=user_id, session_id=session_id)
+    return assemble_memory_context(
+        chat_history=chat_history,
+        session_memory=session_memory,
+        max_user_turns=max_user_turns,
+        max_messages=max_messages,
+    )
+
+
+def assemble_memory_context(
+    *,
+    chat_history: list[dict[str, Any]],
+    session_memory: dict[str, Any] | None = None,
+    max_user_turns: int = DEFAULT_MAX_USER_TURNS,
+    max_messages: int = DEFAULT_MAX_MESSAGES,
+) -> MemoryContext:
+    """Apply memory-window and summary policy without persistence I/O."""
+
     cleaned = _clean_messages(chat_history)
     recent_turns = tuple(
         _last_complete_turns(
@@ -64,7 +82,6 @@ def build_memory_context(
     )
     user_turn_count = sum(1 for message in cleaned if message.get("role") == "user")
     truncated = len(cleaned) > len(recent_turns)
-    session_memory = read_session_context(user_id=user_id, session_id=session_id)
     summary = str((session_memory or {}).get("conversation_summary") or "").strip()
     summary_used = bool(summary and user_turn_count > SUMMARY_THRESHOLD_USER_TURNS)
 
