@@ -38,6 +38,7 @@ from app.routes.transactions import router as transactions_router
 from app.routes.office import router as office_router
 from app.routes.workspace import router as workspace_router
 from app.config.settings import get_settings
+from app.connectors.cache.redis_cache import close_redis_cache, redis_cache_status
 from app.connectors.postgres.connection import close_pool, init_pool
 
 logging.basicConfig(
@@ -49,7 +50,10 @@ logging.basicConfig(
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_pool()
+    cache_status = redis_cache_status()
+    logging.getLogger(__name__).info("Redis cache status: %s", cache_status)
     yield
+    close_redis_cache()
     close_pool()
 
 

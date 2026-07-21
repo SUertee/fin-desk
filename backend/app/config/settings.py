@@ -25,6 +25,34 @@ class DatabaseSettings:
 
 
 @dataclass(frozen=True)
+class RedisSettings:
+    url: str = ""
+    key_prefix: str = "findesk:v1"
+    chat_history_ttl_seconds: int = 3600
+    session_memory_ttl_seconds: int = 86400
+    socket_timeout_seconds: float = 1.0
+
+    def __post_init__(self) -> None:
+        prefix = self.key_prefix.strip().strip(":")
+        if not prefix:
+            raise ValueError("Redis key prefix cannot be empty")
+        for field_name in (
+            "chat_history_ttl_seconds",
+            "session_memory_ttl_seconds",
+        ):
+            if getattr(self, field_name) < 1:
+                raise ValueError(f"{field_name} must be positive")
+        if self.socket_timeout_seconds <= 0:
+            raise ValueError("Redis socket timeout must be positive")
+        object.__setattr__(self, "url", self.url.strip())
+        object.__setattr__(self, "key_prefix", prefix)
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.url)
+
+
+@dataclass(frozen=True)
 class CostSettings:
     reporting_currency: str = "USD"
 
@@ -316,6 +344,7 @@ class AppSettings:
     environment: str
     allowed_origins: list[str]
     database: DatabaseSettings
+    redis: RedisSettings = RedisSettings()
     default_user_id: str = "demo"
     runtime_profile: str = "default"
     chat_model_profile: str = "chat"
@@ -414,6 +443,19 @@ def get_settings() -> AppSettings:
         allowed_origins=_split_csv(origins),
         database=DatabaseSettings(
             dsn=os.getenv("POSTGRES_DSN") or os.getenv("DATABASE_URL", "")
+        ),
+        redis=RedisSettings(
+            url=os.getenv("REDIS_URL", ""),
+            key_prefix=os.getenv("REDIS_KEY_PREFIX", "findesk:v1"),
+            chat_history_ttl_seconds=int(
+                os.getenv("REDIS_CHAT_HISTORY_TTL_SECONDS", "3600")
+            ),
+            session_memory_ttl_seconds=int(
+                os.getenv("REDIS_SESSION_MEMORY_TTL_SECONDS", "86400")
+            ),
+            socket_timeout_seconds=float(
+                os.getenv("REDIS_SOCKET_TIMEOUT_SECONDS", "1")
+            ),
         ),
         default_user_id=os.getenv("DEFAULT_USER_ID", "demo"),
         runtime_profile=os.getenv("FINANCE_RUNTIME_PROFILE", "default"),
