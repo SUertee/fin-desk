@@ -76,6 +76,14 @@ INVESTMENT_RESEARCH_KEYWORDS = {
     "假设场景",
 }
 
+EMERGENCY_FUND_PHRASES = {
+    "emergency fund",
+    "emergency savings",
+    "应急基金",
+    "应急资金",
+    "备用金",
+}
+
 RISK_KEYWORDS = {
     "invest",
     "investment",
@@ -108,10 +116,12 @@ def evaluate_runtime_policy(
     specialists: list[str] = []
     has_spending_intent = _contains_any(user_message, SPENDING_KEYWORDS)
     has_budget_intent = _contains_any(user_message, BUDGET_KEYWORDS)
+    has_emergency_fund_intent = _contains_any(user_message, EMERGENCY_FUND_PHRASES)
+    has_budget_intent = has_budget_intent or has_emergency_fund_intent
     has_market_intent = _contains_any(user_message, MARKET_KEYWORDS)
     has_investment_research_intent = _contains_any(
         user_message, INVESTMENT_RESEARCH_KEYWORDS
-    )
+    ) and not has_emergency_fund_intent
     has_risky_intent = _contains_any(user_message, RISK_KEYWORDS)
     has_data = bool(transactions or monthly_totals)
 

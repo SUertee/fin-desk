@@ -16,6 +16,7 @@ TOOL_LABELS = {
     "get_cashflow_summary": "汇总现金流",
     "get_import_quality_report": "核对数据质量",
     "query_transactions": "查询账本明细",
+    "search_knowledge": "检索审核知识",
     "get_investment_research_context": "获取有来源的行情证据",
     "search_web_research": "检索受治理的外部资料",
 }

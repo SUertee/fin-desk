@@ -187,6 +187,14 @@ def get_evidence(request_id: str):
                 and has_sourced_investment_finding
             ):
                 cited_sources.append("外部行情研究（来源与时间见团队发现）")
+        for source in (record.get("policy") or {}).get("knowledge_evidence") or []:
+            title = str(source.get("title") or "已审核知识")
+            authority = str(source.get("source_authority") or "")
+            url = str(source.get("source_url") or "")
+            freshness = "已过复核日期" if source.get("freshness") == "stale" else "已审核"
+            cited_sources.append(
+                " · ".join(part for part in (title, authority, freshness, url) if part)
+            )
 
         audit_status = record.get("audit_status")
         audit = EvidenceAudit(status=str(audit_status), warnings=[]) if audit_status else None
