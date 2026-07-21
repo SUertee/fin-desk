@@ -26,7 +26,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import {
   importStatement,
+  fetchCapabilities,
   updateProfile,
+  type CapabilityCatalogItem,
   type DataSourceStatus,
   type ProfileUpdatePayload,
 } from "../services/financeApi";
@@ -117,6 +119,12 @@ export function SettingsPage({
   useEffect(() => {
     setActiveSection(initialSection);
   }, [initialSection]);
+
+  useEffect(() => {
+    if (!showDeveloperTools && activeSection === "developer") {
+      setActiveSection("profile");
+    }
+  }, [activeSection, showDeveloperTools]);
 
   const isDirty = JSON.stringify(form) !== JSON.stringify(savedForm);
   const loadedTransactionCount =
@@ -256,7 +264,9 @@ export function SettingsPage({
           <div className="settings-v2-layout">
             <aside className="settings-v2-nav-card">
               <nav className="settings-v2-nav">
-                {navItems.map((item) => {
+                {navItems
+                  .filter((item) => item.id !== "developer" || showDeveloperTools)
+                  .map((item) => {
                   const Icon = item.icon;
                   const active = activeSection === item.id;
                   return (
@@ -273,7 +283,7 @@ export function SettingsPage({
                       <ChevronRight />
                     </button>
                   );
-                })}
+                  })}
               </nav>
 
               <div className="settings-v2-help">
@@ -717,17 +727,94 @@ function DeveloperPanel({
   apiBaseUrl: string;
   showDeveloperTools: boolean;
 }) {
+  const [capabilities, setCapabilities] = useState<CapabilityCatalogItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setIsLoading(true);
+    setError(null);
+    fetchCapabilities()
+      .then((items) => {
+        if (!cancelled) setCapabilities(items);
+      })
+      .catch((caught: Error) => {
+        if (!cancelled) setError(caught.message);
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="settings-v2-grid">
       <SettingsPanelCard icon={<FileText />} title="Developer controls" wide>
         <StatusLine label="Developer pages" value={showDeveloperTools ? "Visible" : "Hidden"} />
         <StatusLine label="API base URL" value={apiBaseUrl} />
-        <StatusLine label="Agent runs" value="Available" />
-        <StatusLine label="Eval harness" value="Available" />
-        <StatusLine label="Replay" value="Available" />
+        <p className="settings-v2-card-note">
+          Capability inspection is read-only. Connection commands, URLs, and
+          credentials are never returned by this endpoint.
+        </p>
+      </SettingsPanelCard>
+      <SettingsPanelCard icon={<Database />} title="Capability catalog" wide>
+        {isLoading ? (
+          <p className="settings-v2-capability-state">Loading capabilities...</p>
+        ) : error ? (
+          <p className="settings-v2-capability-state settings-v2-capability-error">
+            {error}
+          </p>
+        ) : capabilities.length === 0 ? (
+          <p className="settings-v2-capability-state">No capabilities registered.</p>
+        ) : (
+          <div className="settings-v2-capability-list">
+            {capabilities.map((item) => {
+              const state = capabilityState(item);
+              return (
+                <article
+                  className="settings-v2-capability-row"
+                  key={item.descriptor.capability_id}
+                >
+                  <div>
+                    <strong>{item.descriptor.title}</strong>
+                    <code>{item.descriptor.capability_id}</code>
+                    <span>{item.descriptor.description}</span>
+                  </div>
+                  <div className="settings-v2-capability-meta">
+                    <span>{item.descriptor.kind}</span>
+                    <span>{item.descriptor.source}</span>
+                    <span>{item.descriptor.risk_level} risk</span>
+                    <span>{item.descriptor.execution_mode}</span>
+                    <strong className={`settings-v2-capability-${state}`}>
+                      {state}
+                    </strong>
+                  </div>
+                  {item.status.reason && <p>{item.status.reason}</p>}
+                  {item.status.checked_at && (
+                    <p>Checked {formatCapabilityCheckedAt(item.status.checked_at)}</p>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        )}
       </SettingsPanelCard>
     </div>
   );
+}
+
+function capabilityState(item: CapabilityCatalogItem) {
+  if (!item.status.enabled) return "disabled";
+  if (!item.status.available) return "unhealthy";
+  return "available";
+}
+
+function formatCapabilityCheckedAt(value: string) {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
 }
 
 function WorkspaceStatusRail({

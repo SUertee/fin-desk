@@ -17,6 +17,38 @@ export function getApiBaseUrl() {
   return apiBaseUrl;
 }
 
+export type CapabilityRuntimeStatus = {
+  enabled: boolean;
+  available: boolean;
+  reason: string;
+  checked_at: string | null;
+};
+
+export type CapabilityCatalogItem = {
+  descriptor: {
+    capability_id: string;
+    kind: "tool" | "agent" | "skill";
+    title: string;
+    description: string;
+    source: "internal" | "mcp";
+    owner: string;
+    risk_level: "low" | "medium" | "high";
+    execution_mode: "read_only" | "analysis";
+    input_contract: string;
+    output_contract: string;
+  };
+  status: CapabilityRuntimeStatus;
+};
+
+export async function fetchCapabilities(): Promise<CapabilityCatalogItem[]> {
+  const response = await fetch(`${apiBaseUrl}/developer/capabilities`);
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.detail ?? "Failed to load capabilities");
+  }
+  return (payload.capabilities ?? []) as CapabilityCatalogItem[];
+}
+
 export type StatementImportRecord = {
   import_id: string;
   user_id: string;

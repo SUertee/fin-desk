@@ -211,7 +211,9 @@ export default function App() {
                 dataSourceStatus={dataSourceStatus}
                 monthlyIncome={monthlyIncome}
                 onProfileSaved={load}
-                showDeveloperTools={false}
+                showDeveloperTools={
+                  import.meta.env.VITE_SHOW_DEVELOPER_TOOLS === "true"
+                }
                 initialSection={settingsSection}
               />
               )}
