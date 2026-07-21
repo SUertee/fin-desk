@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { updateProfile } from "../services/financeApi";
+import { fetchCapabilities, updateProfile } from "../services/financeApi";
 import { SettingsPage } from "./SettingsPage";
 
 vi.mock("../services/financeApi", async () => {
@@ -10,6 +10,7 @@ vi.mock("../services/financeApi", async () => {
   );
   return {
     ...actual,
+    fetchCapabilities: vi.fn(async () => []),
     importStatement: vi.fn(),
     updateProfile: vi.fn(async () => ({})),
   };
@@ -34,7 +35,7 @@ const profile = {
   },
 };
 
-function renderSettings() {
+function renderSettings(showDeveloperTools = false) {
   return render(
     <SettingsPage
       userId="demo"
@@ -43,6 +44,7 @@ function renderSettings() {
       apiBaseUrl="http://localhost:18000"
       transactionCount={0}
       monthlyIncome={25000}
+      showDeveloperTools={showDeveloperTools}
     />
   );
 }
@@ -86,5 +88,52 @@ describe("SettingsPage cost reporting preferences", () => {
       reporting_currency: "USD",
       monthly_ai_budget: null,
     });
+  });
+});
+
+describe("SettingsPage developer capabilities", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("hides developer controls unless explicitly enabled", () => {
+    renderSettings();
+
+    expect(
+      screen.queryByRole("button", { name: /^Developer$/ })
+    ).toBeNull();
+    expect(fetchCapabilities).not.toHaveBeenCalled();
+  });
+
+  it("renders the read-only capability state from the backend catalog", async () => {
+    vi.mocked(fetchCapabilities).mockResolvedValueOnce([
+      {
+        descriptor: {
+          capability_id: "investment.external_market_history",
+          kind: "tool",
+          title: "External market history",
+          description: "Bounded external market evidence.",
+          source: "mcp",
+          owner: "investment_research",
+          risk_level: "medium",
+          execution_mode: "read_only",
+          input_contract: "AgentContextPayload",
+          output_contract: "ExternalMarketHistoryArtifact",
+        },
+        status: {
+          enabled: true,
+          available: false,
+          reason: "MCP discovery failed: McpInvocationError",
+          checked_at: "2026-07-21T12:00:00Z",
+        },
+      },
+    ]);
+    renderSettings(true);
+
+    fireEvent.click(screen.getByRole("button", { name: /^Developer$/ }));
+
+    expect(await screen.findByText("Local runtime capabilities")).toBeTruthy();
+    expect(await screen.findByText("External market history")).toBeTruthy();
+    expect(screen.getByText("unhealthy")).toBeTruthy();
+    expect(screen.getByText("investment.external_market_history")).toBeTruthy();
+    expect(fetchCapabilities).toHaveBeenCalledTimes(1);
   });
 });

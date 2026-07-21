@@ -1758,6 +1758,80 @@ body {
   color: #4f8a3b !important;
 }
 
+.settings-v2-capability-state {
+  margin: 0;
+  color: var(--finance-muted);
+  font-size: 14px;
+}
+
+.settings-v2-capability-error {
+  color: #b54d42;
+}
+
+.settings-v2-capability-list {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-v2-capability-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 20px;
+  border-top: 1px solid #e7ebdf;
+  padding: 14px 0;
+}
+
+.settings-v2-capability-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.settings-v2-capability-row > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.settings-v2-capability-row code,
+.settings-v2-capability-row span,
+.settings-v2-capability-row p {
+  color: var(--finance-muted);
+  font-size: 12px;
+}
+
+.settings-v2-capability-row p {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.settings-v2-capability-meta {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.settings-v2-capability-meta > * {
+  border-radius: 999px;
+  background: #f1f4ed;
+  padding: 4px 8px;
+  text-transform: capitalize;
+}
+
+.settings-v2-capability-available {
+  background: #e8f3dc !important;
+  color: #4f8a3b !important;
+}
+
+.settings-v2-capability-disabled {
+  color: #6d7873 !important;
+}
+
+.settings-v2-capability-unhealthy {
+  background: #fff0e4 !important;
+  color: #bd6c2c !important;
+}
+
 .settings-v2-tone-warn {
   color: #ca7c25 !important;
 }

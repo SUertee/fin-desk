@@ -44,6 +44,12 @@ class CapabilityResolver:
                 "disallowed",
                 "Capability is not granted by current policy",
             )
+        if entry.implementation is None:
+            return _rejected(
+                capability_id,
+                "unavailable",
+                "Capability implementation is unavailable",
+            )
         if expected_kind is not None and (
             entry.descriptor.kind != expected_kind
             or entry.implementation.kind != expected_kind

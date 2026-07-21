@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -47,6 +48,7 @@ class CapabilityRuntimeStatus(BaseModel):
     enabled: bool = True
     available: bool = True
     reason: str = Field(default="", max_length=160)
+    checked_at: datetime | None = None
 
 
 class CapabilityCatalogItem(BaseModel):

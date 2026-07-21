@@ -17,9 +17,12 @@ from app.models.external_market_data import ExternalMarketHistoryArtifact
 from app.models.runtime import AgentRunUsage, RuntimePolicyResult
 from app.runtime.capabilities import (
     CapabilityCatalog,
+    CapabilityHealthService,
     CapabilityResolver,
     bind_execution_plan,
+    get_capability_health_service,
 )
+from app.runtime.capabilities.contracts import CapabilityRuntimeStatus
 from app.runtime.contracts.output_validation import validate_output_contract
 from app.runtime.execution import (
     AgentContext,
@@ -210,24 +213,45 @@ class FinanceRuntime:
         web_research_service: WebResearchService | None = None,
         web_research_tool: WebResearchTool | None = None,
         mcp_market_data_tool: VibeMarketDataTool | None = None,
+        capability_health_service: CapabilityHealthService | None = None,
         granted_capabilities: set[str] | None = None,
     ):
         self.web_research_tool = web_research_tool or WebResearchTool(
             web_research_service or build_web_research_service()
         )
         mcp_settings = get_settings().mcp
+        injected_mcp_tool = mcp_market_data_tool is not None
         self.mcp_market_data_tool = mcp_market_data_tool
         if self.mcp_market_data_tool is None and mcp_settings.enabled:
             self.mcp_market_data_tool = build_vibe_market_data_tool(mcp_settings)
+        self.capability_health_service = capability_health_service
+        if (
+            self.capability_health_service is None
+            and self.mcp_market_data_tool is not None
+            and not injected_mcp_tool
+        ):
+            self.capability_health_service = get_capability_health_service()
         self.tool_registry = tool_registry or self._build_tool_registry()
         self.specialist_runner = specialist_runner or SpecialistRunner()
+        optional_statuses = None
+        if self.mcp_market_data_tool is None and not injected_mcp_tool:
+            optional_statuses = {
+                "get_vibe_market_data": CapabilityRuntimeStatus(
+                    enabled=False,
+                    available=False,
+                    reason="Disabled by configuration",
+                )
+            }
         self.capability_catalog = CapabilityCatalog.from_registries(
             self.tool_registry,
             self.specialist_runner.registry,
+            optional_tool_statuses=optional_statuses,
         )
         self.capability_resolver = CapabilityResolver(self.capability_catalog)
         self.available_capabilities = frozenset(
-            item.descriptor.capability_id for item in self.capability_catalog.list()
+            item.descriptor.capability_id
+            for item in self.capability_catalog.list()
+            if item.status.enabled and item.status.available
         )
         self.granted_capabilities = frozenset(
             granted_capabilities
@@ -392,12 +416,24 @@ class FinanceRuntime:
             )
             state = AgentState()
             artifacts = ArtifactRegistry()
+            available_capabilities = set(
+                self.available_capabilities & self.granted_capabilities
+            )
+            if (
+                has_external_market_data_intent(effective_message)
+                and self.capability_health_service is not None
+            ):
+                mcp_status = (
+                    await self.capability_health_service.vibe_market_data_status()
+                )
+                if not mcp_status.available:
+                    available_capabilities.discard(
+                        "investment.external_market_history"
+                    )
             plan = build_execution_plan(
                 context,
                 policy,
-                available_capabilities=(
-                    self.available_capabilities & self.granted_capabilities
-                ),
+                available_capabilities=available_capabilities,
             )
             bound_plan = bind_execution_plan(
                 plan,

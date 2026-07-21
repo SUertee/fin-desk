@@ -8,13 +8,13 @@ from decimal import Decimal, InvalidOperation
 from time import perf_counter
 from typing import Any, Callable
 
-from app.config.settings import McpStdioSettings
+from app.config.settings import McpSettings
 from app.connectors.mcp import (
     McpClientError,
     McpResponseContractError,
     McpToolClient,
     McpToolResponse,
-    StdioMcpToolClient,
+    build_mcp_client,
 )
 from app.models.external_market_data import ExternalMarketHistoryArtifact
 from app.runtime.execution.context import AgentContext
@@ -259,7 +259,7 @@ class VibeMarketDataTool:
     def __init__(
         self,
         client: McpToolClient,
-        settings: McpStdioSettings,
+        settings: McpSettings,
         *,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
@@ -339,12 +339,5 @@ class VibeMarketDataTool:
         )
 
 
-def build_vibe_market_data_tool(settings: McpStdioSettings) -> VibeMarketDataTool:
-    client = StdioMcpToolClient(
-        command=settings.command,
-        allowed_commands=settings.allowed_commands,
-        allowed_tools=settings.allowed_tools,
-        timeout_seconds=settings.timeout_seconds,
-        max_response_bytes=settings.max_response_bytes,
-    )
-    return VibeMarketDataTool(client, settings)
+def build_vibe_market_data_tool(settings: McpSettings) -> VibeMarketDataTool:
+    return VibeMarketDataTool(build_mcp_client(settings), settings)

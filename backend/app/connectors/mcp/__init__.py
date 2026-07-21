@@ -11,6 +11,8 @@ from app.connectors.mcp.contracts import (
     McpToolUnavailableError,
 )
 from app.connectors.mcp.stdio_client import StdioMcpToolClient
+from app.connectors.mcp.sse_client import SseMcpToolClient
+from app.connectors.mcp.factory import build_mcp_client
 
 __all__ = [
     "McpClientError",
@@ -22,4 +24,6 @@ __all__ = [
     "McpToolResponse",
     "McpToolUnavailableError",
     "StdioMcpToolClient",
+    "SseMcpToolClient",
+    "build_mcp_client",
 ]
