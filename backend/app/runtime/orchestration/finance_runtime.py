@@ -13,6 +13,7 @@ from app.connectors.postgres.exchange_rate_store import get_exchange_rate_snapsh
 from app.connectors.postgres.statement_import_store import list_latest_quality_reports_db
 from app.models.agent_data import AgentAction, AgentAudit, AgentFinding, SummaryCard
 from app.models.chat import ChatResponse
+from app.models.external_market_data import ExternalMarketHistoryArtifact
 from app.models.runtime import AgentRunUsage, RuntimePolicyResult
 from app.runtime.capabilities import (
     CapabilityCatalog,
@@ -54,6 +55,12 @@ from app.tools.investment_research_tools import (
     project_instrument_research,
 )
 from app.tools.web_research import WebResearchTool
+from app.tools.mcp_market_data import (
+    VibeMarketDataTool,
+    build_vibe_market_data_tool,
+    has_external_market_data_intent,
+    project_external_history_for_specialist,
+)
 from app.tools.query_tools import extract_query_filters, run_transaction_query
 from app.tools.finance_tools import (
     build_budget_snapshot,
@@ -202,11 +209,16 @@ class FinanceRuntime:
         costing_service: CostingService | None = None,
         web_research_service: WebResearchService | None = None,
         web_research_tool: WebResearchTool | None = None,
+        mcp_market_data_tool: VibeMarketDataTool | None = None,
         granted_capabilities: set[str] | None = None,
     ):
         self.web_research_tool = web_research_tool or WebResearchTool(
             web_research_service or build_web_research_service()
         )
+        mcp_settings = get_settings().mcp
+        self.mcp_market_data_tool = mcp_market_data_tool
+        if self.mcp_market_data_tool is None and mcp_settings.enabled:
+            self.mcp_market_data_tool = build_vibe_market_data_tool(mcp_settings)
         self.tool_registry = tool_registry or self._build_tool_registry()
         self.specialist_runner = specialist_runner or SpecialistRunner()
         self.capability_catalog = CapabilityCatalog.from_registries(
@@ -214,12 +226,13 @@ class FinanceRuntime:
             self.specialist_runner.registry,
         )
         self.capability_resolver = CapabilityResolver(self.capability_catalog)
+        self.available_capabilities = frozenset(
+            item.descriptor.capability_id for item in self.capability_catalog.list()
+        )
         self.granted_capabilities = frozenset(
             granted_capabilities
             if granted_capabilities is not None
-            else {
-                item.descriptor.capability_id for item in self.capability_catalog.list()
-            }
+            else self.available_capabilities
         )
         self.llm_client = llm_client if llm_client is not None else DeepSeekTextClient()
         self.costing_service = costing_service or CostingService(
@@ -379,7 +392,13 @@ class FinanceRuntime:
             )
             state = AgentState()
             artifacts = ArtifactRegistry()
-            plan = build_execution_plan(context, policy)
+            plan = build_execution_plan(
+                context,
+                policy,
+                available_capabilities=(
+                    self.available_capabilities & self.granted_capabilities
+                ),
+            )
             bound_plan = bind_execution_plan(
                 plan,
                 self.capability_resolver,
@@ -461,6 +480,27 @@ class FinanceRuntime:
                 finance_context = {
                     **finance_context,
                     "investment_research": investment_research,
+                }
+            external_market_history = artifacts.get("get_vibe_market_data")
+            if external_market_history:
+                artifact = ExternalMarketHistoryArtifact.model_validate(
+                    external_market_history
+                )
+                finance_context = {
+                    **finance_context,
+                    "external_market_history": external_market_history,
+                    "investment_research": project_external_history_for_specialist(
+                        artifact
+                    ),
+                }
+            elif has_external_market_data_intent(context.message):
+                finance_context = {
+                    **finance_context,
+                    "investment_research": {
+                        "status": "unavailable",
+                        "reason": "The requested external MCP market-data capability is disabled or unavailable.",
+                        "trade_actions_allowed": False,
+                    },
                 }
             web_research = artifacts.get("search_web_research")
             if web_research:
@@ -726,52 +766,53 @@ class FinanceRuntime:
         }
 
     def _build_tool_registry(self) -> ToolRegistry:
-        return ToolRegistry(
-            [
-                ToolSpec(
-                    name="get_finance_context",
-                    description="Build a complete finance context payload.",
-                    executor=self._tool_finance_context,
-                ),
-                ToolSpec(
-                    name="get_expense_snapshot",
-                    description="Summarize transactions, categories, and anomalies.",
-                    executor=self._tool_expense_snapshot,
-                ),
-                ToolSpec(
-                    name="get_budget_snapshot",
-                    description="Summarize income, expense ratio, and budget status.",
-                    executor=self._tool_budget_snapshot,
-                ),
-                ToolSpec(
-                    name="get_anomaly_summary",
-                    description="Return anomaly summary from the expense snapshot.",
-                    executor=self._tool_anomaly_summary,
-                ),
-                ToolSpec(
-                    name="get_cashflow_summary",
-                    description="Summarize monthly cash flow totals.",
-                    executor=self._tool_cashflow_summary,
-                ),
-                ToolSpec(
-                    name="get_import_quality_report",
-                    description="Latest statement-import quality report per source.",
-                    executor=self._tool_import_quality,
-                ),
-                ToolSpec(
-                    name="query_transactions",
-                    description="Typed ledger aggregation from extracted filters (nl2filters).",
-                    executor=self._tool_query_transactions,
-                ),
-                ToolSpec(
-                    name="get_investment_research_context",
-                    description="Fetch bounded, sourced stock or ETF research evidence.",
-                    executor=self._tool_investment_research_context,
-                    owner="investment_research",
-                ),
-                self.web_research_tool.spec(),
-            ]
-        )
+        specs = [
+            ToolSpec(
+                name="get_finance_context",
+                description="Build a complete finance context payload.",
+                executor=self._tool_finance_context,
+            ),
+            ToolSpec(
+                name="get_expense_snapshot",
+                description="Summarize transactions, categories, and anomalies.",
+                executor=self._tool_expense_snapshot,
+            ),
+            ToolSpec(
+                name="get_budget_snapshot",
+                description="Summarize income, expense ratio, and budget status.",
+                executor=self._tool_budget_snapshot,
+            ),
+            ToolSpec(
+                name="get_anomaly_summary",
+                description="Return anomaly summary from the expense snapshot.",
+                executor=self._tool_anomaly_summary,
+            ),
+            ToolSpec(
+                name="get_cashflow_summary",
+                description="Summarize monthly cash flow totals.",
+                executor=self._tool_cashflow_summary,
+            ),
+            ToolSpec(
+                name="get_import_quality_report",
+                description="Latest statement-import quality report per source.",
+                executor=self._tool_import_quality,
+            ),
+            ToolSpec(
+                name="query_transactions",
+                description="Typed ledger aggregation from extracted filters (nl2filters).",
+                executor=self._tool_query_transactions,
+            ),
+            ToolSpec(
+                name="get_investment_research_context",
+                description="Fetch bounded, sourced stock or ETF research evidence.",
+                executor=self._tool_investment_research_context,
+                owner="investment_research",
+            ),
+            self.web_research_tool.spec(),
+        ]
+        if self.mcp_market_data_tool is not None:
+            specs.append(self.mcp_market_data_tool.spec())
+        return ToolRegistry(specs)
 
     async def _tool_investment_research_context(
         self, payload: dict[str, Any]
@@ -1088,6 +1129,7 @@ class FinanceRuntime:
         digest = {
             "typed_query_result": context.get("transaction_query"),
             "investment_research": context.get("investment_research"),
+            "external_market_history": context.get("external_market_history"),
             "expense_snapshot": {
                 "expense_total": expense.get("expense_total"),
                 "income_total": expense.get("income_total"),

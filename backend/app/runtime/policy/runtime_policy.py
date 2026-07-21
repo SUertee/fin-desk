@@ -66,6 +66,7 @@ INVESTMENT_RESEARCH_KEYWORDS = {
     "watchlist",
     "scenario",
     "quote",
+    "vibe",
     "股票",
     "基金",
     "标的",

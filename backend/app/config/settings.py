@@ -194,6 +194,53 @@ class FinanceInboxSettings:
 
 
 @dataclass(frozen=True)
+class McpStdioSettings:
+    enabled: bool = False
+    command: str = "vibe-trading-mcp"
+    allowed_commands: tuple[str, ...] = ("vibe-trading-mcp",)
+    allowed_tools: tuple[str, ...] = ("get_market_data",)
+    timeout_seconds: int = 20
+    max_response_bytes: int = 200_000
+    market_source: str = "yfinance"
+    lookback_days: int = 90
+    max_rows: int = 90
+
+    def __post_init__(self) -> None:
+        command = self.command.strip()
+        allowed_commands = tuple(
+            item.strip() for item in self.allowed_commands if item.strip()
+        )
+        allowed_tools = tuple(item.strip() for item in self.allowed_tools if item.strip())
+        if not command or command not in allowed_commands:
+            raise ValueError("MCP stdio command is not allowlisted")
+        if "get_market_data" not in allowed_tools:
+            raise ValueError("MCP Vibe market-data tool is not allowlisted")
+        if self.timeout_seconds < 1 or self.timeout_seconds > 120:
+            raise ValueError("MCP timeout must be between 1 and 120 seconds")
+        if self.max_response_bytes < 1 or self.max_response_bytes > 1_000_000:
+            raise ValueError("MCP response bound must be between 1 and 1000000 bytes")
+        if self.lookback_days < 1 or self.lookback_days > 366:
+            raise ValueError("MCP market lookback must be between 1 and 366 days")
+        if self.max_rows < 1 or self.max_rows > 250:
+            raise ValueError("MCP market row limit must be between 1 and 250")
+        if self.market_source.strip().lower() not in {
+            "yfinance",
+            "okx",
+            "tushare",
+            "baostock",
+            "tencent",
+            "akshare",
+            "ccxt",
+            "auto",
+        }:
+            raise ValueError("MCP market source is not supported")
+        object.__setattr__(self, "command", command)
+        object.__setattr__(self, "allowed_commands", allowed_commands)
+        object.__setattr__(self, "allowed_tools", allowed_tools)
+        object.__setattr__(self, "market_source", self.market_source.strip().lower())
+
+
+@dataclass(frozen=True)
 class ModelProfile:
     name: str
     provider: str = "deepseek"
@@ -265,6 +312,7 @@ class AppSettings:
     exchange_rate: ExchangeRateSettings = ExchangeRateSettings()
     web_research: WebResearchSettings = WebResearchSettings()
     finance_inbox: FinanceInboxSettings = FinanceInboxSettings()
+    mcp: McpStdioSettings = McpStdioSettings()
 
 
 def _split_csv(value: str) -> list[str]:
@@ -452,5 +500,24 @@ def get_settings() -> AppSettings:
                 "FINANCE_INBOX_ALLOW_PROXY_FAKE_IPS",
                 False,
             ),
+        ),
+        mcp=McpStdioSettings(
+            enabled=_env_bool("MCP_VIBE_ENABLED", False),
+            command=os.getenv("MCP_VIBE_COMMAND", "vibe-trading-mcp"),
+            allowed_commands=tuple(
+                _split_csv(
+                    os.getenv("MCP_STDIO_ALLOWED_COMMANDS", "vibe-trading-mcp")
+                )
+            ),
+            allowed_tools=tuple(
+                _split_csv(os.getenv("MCP_VIBE_ALLOWED_TOOLS", "get_market_data"))
+            ),
+            timeout_seconds=int(os.getenv("MCP_VIBE_TIMEOUT_SECONDS", "20")),
+            max_response_bytes=int(
+                os.getenv("MCP_VIBE_MAX_RESPONSE_BYTES", "200000")
+            ),
+            market_source=os.getenv("MCP_VIBE_MARKET_SOURCE", "yfinance"),
+            lookback_days=int(os.getenv("MCP_VIBE_LOOKBACK_DAYS", "90")),
+            max_rows=int(os.getenv("MCP_VIBE_MAX_ROWS", "90")),
         ),
     )
