@@ -1,0 +1,4 @@
+# Install only in a dedicated research virtual environment.
+pyqlib==0.9.7
+lightgbm>=4.5.0,<5.0.0
+pyarrow>=17.0.0,<21.0.0
