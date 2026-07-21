@@ -301,15 +301,48 @@ def test_plan_binding_fails_closed(entry, grants, expected_status):
     assert caught.value.status == expected_status
 
 
-def test_developer_route_is_read_only_and_secret_free(monkeypatch):
-    catalog = CapabilityCatalog([_entry("test.visible")])
-    monkeypatch.setattr(
-        capabilities_route,
-        "get_capability_catalog",
-        lambda: catalog,
+def test_known_disabled_tool_is_projected_without_implementation():
+    status = CapabilityRuntimeStatus(
+        enabled=False,
+        available=False,
+        reason="Disabled by configuration",
+    )
+    catalog = CapabilityCatalog.from_registries(
+        ToolRegistry([]),
+        {},
+        optional_tool_statuses={"get_vibe_market_data": status},
     )
 
-    payload = capabilities_route.list_capabilities().model_dump(mode="json")
+    item = catalog.list()[0]
+    resolution = CapabilityResolver(catalog).resolve(
+        item.descriptor.capability_id,
+        granted_capabilities={item.descriptor.capability_id},
+    )
+
+    assert item.descriptor.source == "mcp"
+    assert item.status.enabled is False
+    assert catalog.get(item.descriptor.capability_id).implementation is None
+    assert resolution.status == "disabled"
+
+
+@pytest.mark.asyncio
+async def test_developer_route_is_read_only_and_secret_free(monkeypatch):
+    class FakeHealth:
+        async def vibe_market_data_status(self):
+            return CapabilityRuntimeStatus(enabled=False, available=False)
+
+    monkeypatch.setattr(
+        capabilities_route,
+        "get_capability_runtime",
+        lambda: FinanceRuntime(),
+    )
+    monkeypatch.setattr(
+        capabilities_route,
+        "get_capability_health_service",
+        lambda: FakeHealth(),
+    )
+
+    payload = (await capabilities_route.list_capabilities()).model_dump(mode="json")
     encoded = json.dumps(payload).lower()
     api_routes = [
         route

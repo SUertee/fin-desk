@@ -16,6 +16,10 @@ from app.runtime.capabilities.contracts import (
     CapabilityRuntimeStatus,
 )
 from app.runtime.capabilities.resolver import CapabilityResolver
+from app.runtime.capabilities.health import (
+    CapabilityHealthService,
+    get_capability_health_service,
+)
 
 __all__ = [
     "BoundCapabilityStep",
@@ -30,5 +34,7 @@ __all__ = [
     "CapabilityResolution",
     "CapabilityResolver",
     "CapabilityRuntimeStatus",
+    "CapabilityHealthService",
+    "get_capability_health_service",
     "bind_execution_plan",
 ]

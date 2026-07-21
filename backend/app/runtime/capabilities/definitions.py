@@ -45,6 +45,7 @@ def _tool(
     capability_id: str,
     title: str,
     *,
+    description: str = "",
     owner: str = "finance",
     risk_level: CapabilityRiskLevel = "low",
     source: CapabilitySource = "internal",
@@ -54,6 +55,7 @@ def _tool(
         capability_id=capability_id,
         kind="tool",
         title=title,
+        description=description,
         owner=owner,
         risk_level=risk_level,
         execution_mode="read_only",
@@ -90,6 +92,7 @@ TOOL_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
     "get_vibe_market_data": _tool(
         "investment.external_market_history",
         "External market history",
+        description="Fetch bounded read-only market history through Vibe-Trading MCP.",
         owner="investment_research",
         risk_level="medium",
         source="mcp",

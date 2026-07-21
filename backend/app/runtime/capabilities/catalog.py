@@ -24,7 +24,7 @@ from app.runtime.execution import ToolRegistry
 class CapabilityEntry:
     descriptor: CapabilityDescriptor
     status: CapabilityRuntimeStatus
-    implementation: CapabilityImplementationReference
+    implementation: CapabilityImplementationReference | None
 
 
 class CapabilityCatalog:
@@ -47,6 +47,7 @@ class CapabilityCatalog:
         *,
         tool_definitions: Mapping[str, CapabilityDefinition] | None = None,
         specialist_definitions: Mapping[str, CapabilityDefinition] | None = None,
+        optional_tool_statuses: Mapping[str, CapabilityRuntimeStatus] | None = None,
     ) -> "CapabilityCatalog":
         tools = (
             tool_definitions
@@ -59,20 +60,36 @@ class CapabilityCatalog:
             else SPECIALIST_CAPABILITY_DEFINITIONS
         )
         entries: list[CapabilityEntry] = []
+        registered_tools: set[str] = set()
 
         for spec in tool_registry.available():
+            registered_tools.add(spec.name)
             definition = _required_definition(spec.name, tools, "tool")
             entries.append(
                 CapabilityEntry(
                     descriptor=definition.descriptor(
                         fallback_description=spec.description
                     ),
-                    status=CapabilityRuntimeStatus(),
+                    status=(optional_tool_statuses or {}).get(
+                        spec.name, CapabilityRuntimeStatus()
+                    ),
                     implementation=CapabilityImplementationReference(
                         capability_id=definition.capability_id,
                         kind="tool",
                         registry_name=spec.name,
                     ),
+                )
+            )
+
+        for name, status in (optional_tool_statuses or {}).items():
+            if name in registered_tools:
+                continue
+            definition = _required_definition(name, tools, "tool")
+            entries.append(
+                CapabilityEntry(
+                    descriptor=definition.descriptor(),
+                    status=status,
+                    implementation=None,
                 )
             )
 

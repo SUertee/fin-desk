@@ -13,7 +13,7 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 
 CONFIG_DIR = Path(__file__).resolve().parent
@@ -194,31 +194,44 @@ class FinanceInboxSettings:
 
 
 @dataclass(frozen=True)
-class McpStdioSettings:
+class McpSettings:
     enabled: bool = False
+    transport: Literal["stdio", "sse"] = "stdio"
     command: str = "vibe-trading-mcp"
     allowed_commands: tuple[str, ...] = ("vibe-trading-mcp",)
+    url: str = "http://127.0.0.1:8900/sse"
+    allowed_urls: tuple[str, ...] = ("http://127.0.0.1:8900/sse",)
     allowed_tools: tuple[str, ...] = ("get_market_data",)
     timeout_seconds: int = 20
     max_response_bytes: int = 200_000
+    health_ttl_seconds: int = 30
     market_source: str = "yfinance"
     lookback_days: int = 90
     max_rows: int = 90
 
     def __post_init__(self) -> None:
+        transport = self.transport.strip().lower()
         command = self.command.strip()
         allowed_commands = tuple(
             item.strip() for item in self.allowed_commands if item.strip()
         )
+        url = self.url.strip()
+        allowed_urls = tuple(item.strip() for item in self.allowed_urls if item.strip())
         allowed_tools = tuple(item.strip() for item in self.allowed_tools if item.strip())
-        if not command or command not in allowed_commands:
+        if transport not in {"stdio", "sse"}:
+            raise ValueError("MCP transport must be stdio or sse")
+        if transport == "stdio" and (not command or command not in allowed_commands):
             raise ValueError("MCP stdio command is not allowlisted")
+        if transport == "sse" and (not url or url not in allowed_urls):
+            raise ValueError("MCP SSE URL is not allowlisted")
         if "get_market_data" not in allowed_tools:
             raise ValueError("MCP Vibe market-data tool is not allowlisted")
         if self.timeout_seconds < 1 or self.timeout_seconds > 120:
             raise ValueError("MCP timeout must be between 1 and 120 seconds")
         if self.max_response_bytes < 1 or self.max_response_bytes > 1_000_000:
             raise ValueError("MCP response bound must be between 1 and 1000000 bytes")
+        if self.health_ttl_seconds < 1 or self.health_ttl_seconds > 300:
+            raise ValueError("MCP health TTL must be between 1 and 300 seconds")
         if self.lookback_days < 1 or self.lookback_days > 366:
             raise ValueError("MCP market lookback must be between 1 and 366 days")
         if self.max_rows < 1 or self.max_rows > 250:
@@ -234,8 +247,11 @@ class McpStdioSettings:
             "auto",
         }:
             raise ValueError("MCP market source is not supported")
+        object.__setattr__(self, "transport", transport)
         object.__setattr__(self, "command", command)
         object.__setattr__(self, "allowed_commands", allowed_commands)
+        object.__setattr__(self, "url", url)
+        object.__setattr__(self, "allowed_urls", allowed_urls)
         object.__setattr__(self, "allowed_tools", allowed_tools)
         object.__setattr__(self, "market_source", self.market_source.strip().lower())
 
@@ -312,7 +328,7 @@ class AppSettings:
     exchange_rate: ExchangeRateSettings = ExchangeRateSettings()
     web_research: WebResearchSettings = WebResearchSettings()
     finance_inbox: FinanceInboxSettings = FinanceInboxSettings()
-    mcp: McpStdioSettings = McpStdioSettings()
+    mcp: McpSettings = McpSettings()
 
 
 def _split_csv(value: str) -> list[str]:
@@ -501,8 +517,9 @@ def get_settings() -> AppSettings:
                 False,
             ),
         ),
-        mcp=McpStdioSettings(
+        mcp=McpSettings(
             enabled=_env_bool("MCP_VIBE_ENABLED", False),
+            transport=os.getenv("MCP_VIBE_TRANSPORT", "stdio"),
             command=os.getenv("MCP_VIBE_COMMAND", "vibe-trading-mcp"),
             allowed_commands=tuple(
                 _split_csv(
@@ -512,9 +529,21 @@ def get_settings() -> AppSettings:
             allowed_tools=tuple(
                 _split_csv(os.getenv("MCP_VIBE_ALLOWED_TOOLS", "get_market_data"))
             ),
+            url=os.getenv("MCP_VIBE_URL", "http://127.0.0.1:8900/sse"),
+            allowed_urls=tuple(
+                _split_csv(
+                    os.getenv(
+                        "MCP_SSE_ALLOWED_URLS",
+                        "http://127.0.0.1:8900/sse",
+                    )
+                )
+            ),
             timeout_seconds=int(os.getenv("MCP_VIBE_TIMEOUT_SECONDS", "20")),
             max_response_bytes=int(
                 os.getenv("MCP_VIBE_MAX_RESPONSE_BYTES", "200000")
+            ),
+            health_ttl_seconds=int(
+                os.getenv("MCP_VIBE_HEALTH_TTL_SECONDS", "30")
             ),
             market_source=os.getenv("MCP_VIBE_MARKET_SOURCE", "yfinance"),
             lookback_days=int(os.getenv("MCP_VIBE_LOOKBACK_DAYS", "90")),

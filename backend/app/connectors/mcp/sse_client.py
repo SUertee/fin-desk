@@ -1,12 +1,12 @@
-"""Allowlisted stdio client for the stable MCP Python SDK."""
+"""Allowlisted SSE client for a separately deployed MCP server."""
 
 from __future__ import annotations
 
 import asyncio
 from typing import Any
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from mcp import ClientSession
+from mcp.client.sse import sse_client
 
 from app.connectors.mcp.contracts import (
     McpInvocationError,
@@ -17,19 +17,19 @@ from app.connectors.mcp.contracts import (
 from app.connectors.mcp.result import project_tool_result
 
 
-class StdioMcpToolClient:
+class SseMcpToolClient:
     def __init__(
         self,
         *,
-        command: str,
-        allowed_commands: tuple[str, ...],
+        url: str,
+        allowed_urls: tuple[str, ...],
         allowed_tools: tuple[str, ...],
         timeout_seconds: int,
         max_response_bytes: int,
     ) -> None:
-        if command not in allowed_commands:
-            raise McpPolicyError("MCP stdio command is not allowlisted")
-        self.command = command
+        if url not in allowed_urls:
+            raise McpPolicyError("MCP SSE URL is not allowlisted")
+        self.url = url
         self.allowed_tools = frozenset(allowed_tools)
         self.timeout_seconds = timeout_seconds
         self.max_response_bytes = max_response_bytes
@@ -52,7 +52,6 @@ class StdioMcpToolClient:
     ) -> McpToolResponse:
         if name not in self.allowed_tools:
             raise McpPolicyError(f"MCP tool is not allowlisted: {name}")
-
         try:
             async with asyncio.timeout(self.timeout_seconds):
                 async with self._session() as session:
@@ -71,22 +70,20 @@ class StdioMcpToolClient:
             raise McpInvocationError(
                 f"MCP tool call failed: {type(exc).__name__}"
             ) from exc
-
         return project_tool_result(result, max_response_bytes=self.max_response_bytes)
 
     def _session(self):
-        params = StdioServerParameters(command=self.command, args=[])
-        return _StdioSession(params)
+        return _SseSession(self.url)
 
 
-class _StdioSession:
-    def __init__(self, params: StdioServerParameters) -> None:
-        self.params = params
+class _SseSession:
+    def __init__(self, url: str) -> None:
+        self.url = url
         self._transport = None
         self._session = None
 
     async def __aenter__(self):
-        self._transport = stdio_client(self.params)
+        self._transport = sse_client(self.url)
         read_stream, write_stream = await self._transport.__aenter__()
         self._session = ClientSession(read_stream, write_stream)
         session = await self._session.__aenter__()
