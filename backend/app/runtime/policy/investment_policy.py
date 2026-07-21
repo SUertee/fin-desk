@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
@@ -14,6 +15,35 @@ from app.models.investments import (
 
 
 PERCENT_QUANTUM = Decimal("0.01")
+
+_TRADE_INSTRUCTION_PATTERNS = (
+    re.compile(
+        r"\b(?:buy|sell|short)\s+(?:shares?\s+(?:of\s+)?|the\s+)?[A-Z][A-Z0-9.-]{0,9}\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\b(?:you should|i recommend|recommend|consider)\s+(?:buying|selling|shorting)\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"(?:买入|卖出|下单|建仓|加仓|减仓|清仓|做多|做空)"),
+)
+_RETURN_GUARANTEE_PATTERNS = (
+    re.compile(r"\bguaranteed?\s+(?:profit|return)\b", re.IGNORECASE),
+    re.compile(r"\brisk[- ]?free\s+(?:profit|return)\b", re.IGNORECASE),
+    re.compile(r"(?:保证收益|保证回报|保本保收益|稳赚|无风险收益)"),
+)
+
+
+def investment_output_violations(text: str) -> tuple[str, ...]:
+    """Return bounded policy codes for unsafe investment-facing text."""
+
+    content = str(text or "")
+    violations: list[str] = []
+    if any(pattern.search(content) for pattern in _TRADE_INSTRUCTION_PATTERNS):
+        violations.append("trade_instruction")
+    if any(pattern.search(content) for pattern in _RETURN_GUARANTEE_PATTERNS):
+        violations.append("return_guarantee")
+    return tuple(violations)
 
 
 def evaluate_investment_risk(

@@ -46,6 +46,7 @@ from app.runtime.orchestration.router import ModelIntentClassifier
 from app.models.routing import route_for_path
 from app.runtime.policy.audit_runner import should_run_audit
 from app.runtime.policy.conversation_policy import compose_short_cfo_reply
+from app.runtime.policy.investment_policy import investment_output_violations
 from app.runtime.policy.runtime_policy import evaluate_runtime_policy
 from app.runtime.costing import CostingService
 from app.config.settings import get_settings
@@ -1114,7 +1115,12 @@ class FinanceRuntime:
                 + (f"Recent conversation:\n{recent}\n\n" if recent else "")
                 + "Compose the CFO reply."
             )
-            if on_reply_delta is not None and hasattr(self.llm_client, "generate_text_stream"):
+            investment_guard_enabled = bool(context.get("investment_research"))
+            if (
+                on_reply_delta is not None
+                and hasattr(self.llm_client, "generate_text_stream")
+                and not investment_guard_enabled
+            ):
                 result = await self.llm_client.generate_text_stream(
                     prompt, profile="chat", system=system, on_delta=on_reply_delta
                 )
@@ -1127,12 +1133,28 @@ class FinanceRuntime:
             trace.record_tool_call(
                 "llm_compose", status="called", agent="cfo", latency_ms=latency_ms
             )
-            if result.content:
+            stage_status = "called" if result.content else "empty_content"
+            if result.content and investment_guard_enabled:
+                violations = investment_output_violations(result.content)
+                trace.policy["investment_output_guard"] = {
+                    "status": "blocked" if violations else "passed",
+                    "violations": list(violations),
+                }
+                if violations:
+                    stage_status = "policy_blocked"
+                else:
+                    response_payload["reply"] = result.content
+                if on_reply_delta is not None:
+                    emitted = on_reply_delta(response_payload["reply"])
+                    if hasattr(emitted, "__await__"):
+                        await emitted
+            elif result.content:
                 response_payload["reply"] = result.content
-                trace.set_model_name(result.model_name or "deepseek-chat")
+            if result.model_name:
+                trace.set_model_name(result.model_name)
             return self._llm_stage_entry(
                 trace,
-                status="called" if result.content else "empty_content",
+                status=stage_status,
                 usage=result.usage,
                 model_name=result.model_name or "deepseek-chat",
                 profile="chat",

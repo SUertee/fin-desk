@@ -38,6 +38,20 @@ class UnavailableClient:
         return False
 
 
+class StreamingFakeDeepSeek(FakeDeepSeek):
+    def __init__(self, reply):
+        super().__init__(reply=reply)
+        self.stream_calls = 0
+
+    async def generate_text_stream(
+        self, prompt, *, profile="chat", system="", on_delta=None
+    ):
+        self.stream_calls += 1
+        if on_delta is not None:
+            await on_delta(self.reply)
+        return await self.generate_text(prompt, profile=profile, system=system)
+
+
 async def _run(client, message="帮我分析这个月消费"):
     runtime = FinanceRuntime(llm_client=client)
     return await runtime.handle(
@@ -48,6 +62,67 @@ async def _run(client, message="帮我分析这个月消费"):
         monthly_totals=MONTHLY_TOTALS,
         chat_history=[{"role": "user", "content": "之前的问题"}],
         memory_context={},
+    )
+
+
+def _patch_investment_research(monkeypatch, saved_records):
+    from app.runtime.orchestration import finance_runtime
+
+    class FakeResearchService:
+        def get_instrument_research(self, *args, **kwargs):
+            return object()
+
+    monkeypatch.setattr(
+        finance_runtime,
+        "get_investment_research_service",
+        lambda: FakeResearchService(),
+    )
+    monkeypatch.setattr(
+        finance_runtime,
+        "project_instrument_research",
+        lambda snapshot: {
+            "status": "available",
+            "symbol": "AAPL",
+            "asset_type": "equity",
+            "profile": {"currency": "USD", "source": "openbb:yfinance"},
+            "quote": {
+                "price": {"amount": "210.50", "currency": "USD"},
+                "quote_as_of": "2026-07-18T20:00:00Z",
+                "source": "openbb:yfinance",
+            },
+            "history": {
+                "date_from": "2026-04-20",
+                "date_to": "2026-07-18",
+                "bar_count": 62,
+                "change_percent": "4.25",
+                "source": "openbb:yfinance",
+            },
+            "performance": {"status": "available", "period_return_percent": "4.25"},
+            "benchmark": {"status": "available", "benchmark_symbol": "SPY"},
+            "readiness": {
+                "status": "ready",
+                "reporting_currency": "CNY",
+                "findings": [],
+                "limitations": [],
+            },
+            "evidence": [
+                {
+                    "kind": "quote",
+                    "source": "openbb:yfinance",
+                    "as_of": "2026-07-18T20:00:00Z",
+                    "description": "End-of-day market quote",
+                }
+            ],
+            "limitations": [],
+            "trade_actions_allowed": False,
+        },
+    )
+    monkeypatch.setattr(finance_runtime, "list_latest_quality_reports_db", lambda _: [])
+    monkeypatch.setattr(finance_runtime, "write_session_context", lambda **_: None)
+    monkeypatch.setattr(
+        finance_runtime,
+        "save_agent_run_record_db",
+        lambda record: saved_records.append(record) or True,
     )
 
 
@@ -94,3 +169,41 @@ class TestLLMCompose:
         assert result["data"]["summary_cards"]
         assert result["data"]["audit"]["status"] in ("verified", "needs_review", "data_limited")
         assert result["request_id"]
+
+    async def test_investment_reply_is_buffered_and_unsafe_output_is_blocked(
+        self, monkeypatch
+    ):
+        saved_records = []
+        _patch_investment_research(monkeypatch, saved_records)
+        client = StreamingFakeDeepSeek(
+            reply="Buy AAPL now for a guaranteed return."
+        )
+        deltas = []
+
+        async def on_delta(text):
+            deltas.append(text)
+
+        runtime = FinanceRuntime(llm_client=client)
+        result = await runtime.handle(
+            user_id="demo",
+            message="Should I buy stock AAPL?",
+            profile={},
+            transactions=[],
+            monthly_totals=[],
+            chat_history=[],
+            memory_context={},
+            on_reply_delta=on_delta,
+        )
+
+        assert client.stream_calls == 0
+        assert "Buy AAPL" not in result["reply"]
+        assert "guaranteed return" not in result["reply"]
+        assert deltas == [result["reply"]]
+        guard = saved_records[0].policy["investment_output_guard"]
+        assert guard == {
+            "status": "blocked",
+            "violations": ["trade_instruction", "return_guarantee"],
+        }
+        assert saved_records[0].policy["llm_usage_by_stage"]["llm_compose"][
+            "status"
+        ] == "policy_blocked"

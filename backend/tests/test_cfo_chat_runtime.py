@@ -220,6 +220,55 @@ async def test_runtime_runs_sourced_read_only_investment_team(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_runtime_degrades_without_fabricating_unavailable_market_data(
+    monkeypatch,
+):
+    from app.runtime.orchestration import finance_runtime
+
+    saved_records = []
+
+    class UnavailableResearchService:
+        def get_instrument_research(self, *args, **kwargs):
+            raise RuntimeError("provider unavailable")
+
+    monkeypatch.setattr(
+        finance_runtime,
+        "get_investment_research_service",
+        lambda: UnavailableResearchService(),
+    )
+    monkeypatch.setattr(
+        finance_runtime, "list_latest_quality_reports_db", lambda user_id: []
+    )
+    monkeypatch.setattr(finance_runtime, "write_session_context", lambda **kwargs: None)
+    monkeypatch.setattr(
+        finance_runtime,
+        "save_agent_run_record_db",
+        lambda record: saved_records.append(record) or True,
+    )
+
+    runtime = FinanceRuntime()
+    runtime.llm_client = None
+    result = await runtime.handle(
+        user_id="demo",
+        message="Analyze stock AAPL",
+        profile={"name": "Demo"},
+        transactions=[],
+        monthly_totals=[],
+        chat_history=[],
+    )
+
+    assert result["data"]["summary_cards"] == []
+    assert result["data"]["audit"]["status"] == "data_limited"
+    assert "cannot complete" in result["reply"]
+    assert "210.50" not in result["reply"]
+    assert saved_records[0].selected_agents == [
+        "cfo",
+        "investment_research",
+        "auditor",
+    ]
+
+
+@pytest.mark.asyncio
 async def test_runtime_persists_output_validation_failure(monkeypatch, caplog):
     from app.runtime.orchestration import finance_runtime
 
