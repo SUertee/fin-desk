@@ -10,9 +10,11 @@ from typing import Any
 from app.agents.specialists.contracts import SpecialistAgentOutput
 from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
 from app.connectors.postgres.exchange_rate_store import get_exchange_rate_snapshot_db
+from app.connectors.postgres.knowledge_store import PostgresLexicalKnowledgeRetriever
 from app.connectors.postgres.statement_import_store import list_latest_quality_reports_db
 from app.models.agent_data import AgentAction, AgentAudit, AgentFinding, SummaryCard
 from app.models.chat import ChatResponse
+from app.knowledge import KnowledgeQuery, KnowledgeRetriever
 from app.models.external_market_data import ExternalMarketHistoryArtifact
 from app.models.runtime import AgentRunUsage, RuntimePolicyResult
 from app.runtime.capabilities import (
@@ -216,6 +218,7 @@ class FinanceRuntime:
         mcp_market_data_tool: VibeMarketDataTool | None = None,
         capability_health_service: CapabilityHealthService | None = None,
         granted_capabilities: set[str] | None = None,
+        knowledge_retriever: KnowledgeRetriever | None = None,
     ):
         self.web_research_tool = web_research_tool or WebResearchTool(
             web_research_service or build_web_research_service()
@@ -262,6 +265,9 @@ class FinanceRuntime:
         self.llm_client = llm_client if llm_client is not None else DeepSeekTextClient()
         self.costing_service = costing_service or CostingService(
             exchange_rate_lookup=get_exchange_rate_snapshot_db
+        )
+        self.knowledge_retriever = (
+            knowledge_retriever or PostgresLexicalKnowledgeRetriever()
         )
         # Client getter: nulling self.llm_client also disables classification.
         self.entry_router = EntryRouter(
@@ -542,6 +548,16 @@ class FinanceRuntime:
             web_research = artifacts.get("search_web_research")
             if web_research:
                 finance_context = {**finance_context, "web_research": web_research}
+            knowledge_result = artifacts.get("search_knowledge")
+            if knowledge_result:
+                finance_context = {
+                    **finance_context,
+                    "knowledge_retrieval": knowledge_result,
+                }
+                trace.policy["knowledge_evidence"] = [
+                    self._knowledge_ledger_projection(item)
+                    for item in knowledge_result.get("artifacts") or []
+                ]
             specialist_outputs: dict[str, SpecialistAgentOutput] = {}
             handoff_names = bound_plan.handoff_names
             for specialist in [name for name in handoff_names if name != "auditor"]:
@@ -840,6 +856,12 @@ class FinanceRuntime:
                 executor=self._tool_query_transactions,
             ),
             ToolSpec(
+                name="search_knowledge",
+                description="Search reviewed finance guidance with bounded lexical retrieval.",
+                executor=self._tool_search_knowledge,
+                owner="knowledge",
+            ),
+            ToolSpec(
                 name="get_investment_research_context",
                 description="Fetch bounded, sourced stock or ETF research evidence.",
                 executor=self._tool_investment_research_context,
@@ -850,6 +872,57 @@ class FinanceRuntime:
         if self.mcp_market_data_tool is not None:
             specs.append(self.mcp_market_data_tool.spec())
         return ToolRegistry(specs)
+
+    async def _tool_search_knowledge(
+        self, payload: dict[str, Any]
+    ) -> ToolObservation:
+        started = perf_counter()
+        context: AgentContext = payload["context"]
+        try:
+            result = self.knowledge_retriever.retrieve(
+                KnowledgeQuery(text=context.message, top_k=4)
+            )
+        except Exception as exc:
+            logger.warning("Knowledge retrieval unavailable: %s", type(exc).__name__)
+            return ToolObservation(
+                tool_name="search_knowledge",
+                success=False,
+                agent=str(payload.get("agent") or "cfo"),
+                purpose="reviewed_knowledge_evidence",
+                error_class=type(exc).__name__,
+                error_message="Reviewed knowledge is currently unavailable.",
+                latency_ms=round((perf_counter() - started) * 1000, 2),
+            )
+        return ToolObservation(
+            tool_name="search_knowledge",
+            success=True,
+            agent=str(payload.get("agent") or "cfo"),
+            purpose="reviewed_knowledge_evidence",
+            result=result.model_dump(mode="json"),
+            evidence_refs=[item.citation_id for item in result.artifacts],
+            latency_ms=round((perf_counter() - started) * 1000, 2),
+        )
+
+    @staticmethod
+    def _knowledge_ledger_projection(item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            key: item.get(key)
+            for key in (
+                "citation_id",
+                "document_id",
+                "chunk_id",
+                "title",
+                "section",
+                "excerpt",
+                "source_url",
+                "source_authority",
+                "jurisdiction",
+                "reviewed_at",
+                "review_after",
+                "freshness",
+                "retrieval_method",
+            )
+        }
 
     async def _tool_investment_research_context(
         self, payload: dict[str, Any]
@@ -1082,6 +1155,8 @@ class FinanceRuntime:
                 "Answer ONLY from the evidence digest — never invent numbers, "
                 "dates, or merchants that are not present in it. If the "
                 "evidence cannot answer the question, say so plainly. "
+                "Reviewed knowledge is general guidance; never present it as "
+                "the user's ledger data or individualized financial advice. "
                 "No investment, tax, or legal advice. "
                 "Write plain conversational prose. Do NOT add pseudo-structure "
                 "labels or headings such as 核心洞察/关键发现/总结/建议 — the "
@@ -1186,6 +1261,28 @@ class FinanceRuntime:
         data = response_payload.get("data") or {}
         digest = {
             "typed_query_result": context.get("transaction_query"),
+            "reviewed_knowledge": [
+                {
+                    key: item.get(key)
+                    for key in (
+                        "title",
+                        "section",
+                        "excerpt",
+                        "source_url",
+                        "source_authority",
+                        "jurisdiction",
+                        "reviewed_at",
+                        "review_after",
+                        "freshness",
+                    )
+                }
+                for item in (context.get("knowledge_retrieval") or {}).get(
+                    "artifacts", []
+                )
+            ],
+            "knowledge_match_status": (context.get("knowledge_retrieval") or {}).get(
+                "match_status"
+            ),
             "investment_research": context.get("investment_research"),
             "external_market_history": context.get("external_market_history"),
             "expense_snapshot": {
@@ -1220,6 +1317,19 @@ class FinanceRuntime:
         findings: list[AgentFinding] = []
         actions: list[AgentAction] = []
         warnings: list[str] = []
+        knowledge = context.get("knowledge_retrieval") or {}
+
+        for item in (knowledge.get("artifacts") or [])[:2]:
+            freshness = item.get("freshness") or "current"
+            findings.append(
+                AgentFinding(
+                    agent="cfo",
+                    title=str(item.get("title") or "Reviewed finance guidance"),
+                    evidence=[
+                        f"{item.get('source_authority')} · {item.get('section')} · {freshness}"
+                    ],
+                )
+            )
 
         for specialist, output in specialist_outputs.items():
             if specialist == "auditor":
@@ -1343,6 +1453,22 @@ class FinanceRuntime:
                 if language == "zh"
                 else "I cannot complete this investment research yet: provide an explicit stock or ETF symbol and ensure the market-data source is available."
             )
+        elif knowledge.get("match_status") == "matched":
+            first = (knowledge.get("artifacts") or [])[0]
+            excerpt = str(first.get("excerpt") or "").strip()[:600]
+            authority = str(first.get("source_authority") or "reviewed source")
+            stale_note = (
+                "该资料已超过复核日期，请先核对最新规则。"
+                if first.get("freshness") == "stale" and language == "zh"
+                else " This source is past its review date; verify the latest rule."
+                if first.get("freshness") == "stale"
+                else ""
+            )
+            reply = (
+                f"根据已审核的 {authority} 指引：{excerpt}{stale_note}"
+                if language == "zh"
+                else f"Based on reviewed guidance from {authority}: {excerpt}{stale_note}"
+            )
         elif query_line:
             # The typed query answered the question; skip the generic summary.
             reply = query_line
@@ -1375,6 +1501,14 @@ class FinanceRuntime:
                 reply += "Add transactions or statement data before relying on detailed recommendations."
             else:
                 reply += "Keep monitoring the largest categories and refresh the data after new transactions."
+
+        if knowledge.get("match_status") == "no_match":
+            no_match_note = (
+                "现有已审核知识库没有直接匹配这个问题；以上结论未使用外部政策资料。"
+                if language == "zh"
+                else "The reviewed knowledge base has no direct match for this question; no external policy guidance was used above."
+            )
+            reply = f"{no_match_note}{reply}" if language == "zh" else f"{no_match_note} {reply}"
 
         if tone == "concise":
             # First sentences only: headline numbers plus the top action.

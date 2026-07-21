@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from app.models.runtime import RuntimePolicyResult
+from app.knowledge.retrieval import should_retrieve_knowledge
 from app.runtime.execution.context import AgentContext
 from app.tools.query_tools import has_query_intent
 from app.tools.mcp_market_data import (
@@ -83,6 +84,18 @@ def build_execution_plan(
                 step_type="tool",
                 capability_id="finance.query_transactions",
                 reason="typed_query_intent",
+            )
+        )
+    elif should_retrieve_knowledge(
+        context.message,
+        has_market_context="market_context" in policy.required_specialists,
+        has_investment_research="investment_research" in policy.required_specialists,
+    ):
+        steps.append(
+            PlanStep(
+                step_type="tool",
+                capability_id="knowledge.lexical_search",
+                reason="reviewed_guidance_query",
             )
         )
 

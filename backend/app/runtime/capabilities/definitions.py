@@ -77,6 +77,13 @@ TOOL_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
     "query_transactions": _tool(
         "finance.query_transactions", "Typed transaction query"
     ),
+    "search_knowledge": _tool(
+        "knowledge.lexical_search",
+        "Reviewed knowledge search",
+        description="Search reviewed finance guidance and return bounded citations.",
+        owner="knowledge",
+        output_contract="KnowledgeRetrievalResult",
+    ),
     "get_investment_research_context": _tool(
         "investment.research_context",
         "Investment research context",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from datetime import date, datetime, timezone
-from typing import Literal
+from typing import Literal, Protocol
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -17,6 +17,7 @@ KnowledgeSourceType = Literal[
 KnowledgeFreshness = Literal["current", "stale"]
 KnowledgeRetrievalMethod = Literal["lexical", "vector", "hybrid"]
 KnowledgeIngestionStatus = Literal["created", "updated", "unchanged"]
+KnowledgeMatchStatus = Literal["matched", "no_match"]
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{2,127}$")
 _HASH_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -168,6 +169,56 @@ class KnowledgeEvidenceArtifact(BaseModel):
         return _validate_http_url(value)
 
 
+class KnowledgeFilters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    jurisdictions: list[str] = Field(default_factory=list, max_length=5)
+    languages: list[str] = Field(default_factory=list, max_length=5)
+    source_types: list[KnowledgeSourceType] = Field(default_factory=list, max_length=3)
+    tags: list[str] = Field(default_factory=list, max_length=10)
+    include_stale: bool = False
+
+    @field_validator("jurisdictions", "languages", "tags")
+    @classmethod
+    def normalize_filter_values(cls, value: list[str]) -> list[str]:
+        normalized = [" ".join(item.split()).lower() for item in value if item.strip()]
+        return list(dict.fromkeys(normalized))
+
+
+class KnowledgeQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    text: str = Field(min_length=2, max_length=500)
+    top_k: int = Field(default=4, ge=1, le=10)
+    as_of: date = Field(default_factory=lambda: datetime.now(timezone.utc).date())
+    filters: KnowledgeFilters = Field(default_factory=KnowledgeFilters)
+
+    @field_validator("text")
+    @classmethod
+    def normalize_query(cls, value: str) -> str:
+        return " ".join(value.split())
+
+
+class KnowledgeRetrievalResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str
+    match_status: KnowledgeMatchStatus
+    artifacts: list[KnowledgeEvidenceArtifact] = Field(default_factory=list, max_length=10)
+
+    @model_validator(mode="after")
+    def validate_status(self) -> "KnowledgeRetrievalResult":
+        expected = "matched" if self.artifacts else "no_match"
+        if self.match_status != expected:
+            raise ValueError("match_status must agree with artifacts")
+        return self
+
+
+class KnowledgeRetriever(Protocol):
+    def retrieve(self, query: KnowledgeQuery) -> KnowledgeRetrievalResult:
+        """Return bounded reviewed evidence without exposing storage rows."""
+
+
 def build_knowledge_evidence(
     document: KnowledgeDocument,
     chunk: KnowledgeChunk,
@@ -194,4 +245,3 @@ def build_knowledge_evidence(
         retrieval_method=retrieval_method,
         score=score,
     )
-

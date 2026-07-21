@@ -114,6 +114,14 @@ CREATE TABLE IF NOT EXISTS knowledge_chunks (
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document
     ON knowledge_chunks (document_id, ordinal);
 
+ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS search_vector TSVECTOR
+    GENERATED ALWAYS AS (
+        to_tsvector('simple', COALESCE(heading, '') || ' ' || COALESCE(content, ''))
+    ) STORED;
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_search_vector
+    ON knowledge_chunks USING GIN (search_vector);
+
 -- Transactions imported from statement processors or future bank connectors
 CREATE TABLE IF NOT EXISTS transactions (
     id               BIGSERIAL PRIMARY KEY,
