@@ -1,4 +1,27 @@
 services:
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-16379}:6379"
+    command:
+      [
+        "redis-server",
+        "--save",
+        "",
+        "--appendonly",
+        "no",
+        "--maxmemory",
+        "256mb",
+        "--maxmemory-policy",
+        "allkeys-lru",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
   db:
     image: pgvector/pgvector:pg16
     ports:
@@ -35,6 +58,7 @@ services:
     environment:
       APP_ENV: docker
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-personal_finance_user}:${POSTGRES_PASSWORD:-personal_finance_password}@db:5432/${POSTGRES_DB:-personal_finance}
+      REDIS_URL: redis://redis:6379/0
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:18001,http://127.0.0.1:18001}
     restart: unless-stopped
 

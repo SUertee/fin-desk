@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from app.connectors.cache.redis_cache import get_redis_cache
 from app.connectors.postgres.memory_store import (
     get_session_memory_db,
     save_session_memory_db,
@@ -20,13 +21,32 @@ def _normalize_session_id(session_id: str) -> str:
     return (session_id or "").strip() or "default"
 
 
+def _redis_key(user_id: str, session_id: str) -> str | None:
+    cache = get_redis_cache()
+    return cache.key("session-memory", user_id, session_id) if cache else None
+
+
 def read_session_context(user_id: str, session_id: str = "default") -> dict[str, Any] | None:
     if not user_id:
         return None
     session_id = _normalize_session_id(session_id)
+    cache = get_redis_cache()
+    redis_key = _redis_key(user_id, session_id)
+    if cache and redis_key:
+        cached = cache.get_json(redis_key)
+        if isinstance(cached, dict):
+            _in_process_memory[(user_id, session_id)] = dict(cached)
+            return dict(cached)
+
     payload = get_session_memory_db(user_id, session_id)
     if payload:
         _in_process_memory[(user_id, session_id)] = dict(payload)
+        if cache and redis_key:
+            cache.set_json(
+                redis_key,
+                payload,
+                ttl_seconds=cache.settings.session_memory_ttl_seconds,
+            )
         return dict(payload)
     return _in_process_memory.get((user_id, session_id))
 
@@ -60,7 +80,18 @@ def write_session_context(
         existing["conversation_summary"] = str(conversation_summary)[:1200]
     existing["updated_at"] = datetime.now(timezone.utc).isoformat()
     _in_process_memory[(user_id, session_id)] = dict(existing)
-    save_session_memory_db(user_id, existing, session_id)
+    persisted = save_session_memory_db(user_id, existing, session_id)
+    cache = get_redis_cache()
+    redis_key = _redis_key(user_id, session_id)
+    if cache and redis_key:
+        if persisted:
+            cache.set_json(
+                redis_key,
+                existing,
+                ttl_seconds=cache.settings.session_memory_ttl_seconds,
+            )
+        else:
+            cache.delete(redis_key)
     return existing
 
 

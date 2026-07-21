@@ -72,7 +72,7 @@ User
 - **Database**: PostgreSQL 16 with pgvector (vector retrieval planned; schema migrations are idempotent DDL)
 - **AI layer**: self-hosted deterministic agent runtime by default; OpenAI (Agents SDK) as an optional provider adapter isolated in `runtime/llm/`
 - **Parsing**: GB18030 decoding, openpyxl (WeChat XLSX), pypdf (bank PDF text extraction)
-- **Infrastructure**: Docker Compose (pgvector + backend), GitHub Actions harness CI
+- **Infrastructure**: Docker Compose (pgvector + optional Redis cache + backend), GitHub Actions harness CI
 
 ## API Overview
 
@@ -118,10 +118,13 @@ npm run dev        # http://localhost:18001
 ```bash
 docker compose up --build
 # db:      127.0.0.1:15433 (pgvector/pgvector:pg16)
+# redis:   127.0.0.1:16379 (disposable runtime cache)
 # backend: http://localhost:18000
 ```
 
 The backend applies `connectors/postgres/schema.sql` automatically on startup.
+PostgreSQL remains the source of truth for chat history and session memory;
+Redis is a fail-open cache and can be disabled by leaving `REDIS_URL` empty.
 
 ### Tests and Harness CI
 
@@ -137,6 +140,9 @@ cd web && npm run build
 | Variable | Purpose |
 |---|---|
 | `POSTGRES_DSN` | database DSN (default local: `postgresql://...@localhost:15433/personal_finance`) |
+| `REDIS_URL` | optional Redis cache URL; empty disables Redis without changing application behavior |
+| `REDIS_CHAT_HISTORY_TTL_SECONDS` | recent chat-history cache TTL (default `3600`) |
+| `REDIS_SESSION_MEMORY_TTL_SECONDS` | session-memory cache TTL (default `86400`) |
 | `OPENAI_API_KEY` | optional — enables the OpenAI Agents SDK path for `/analyze` |
 | `OPENAI_AGENT_MODEL`, `OPENAI_AGENT_MAX_TURNS` | OpenAI adapter tuning |
 | `OPENAI_*_COST_PER_1M` | run-ledger cost estimation rates |

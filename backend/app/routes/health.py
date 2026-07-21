@@ -7,6 +7,7 @@ from functools import lru_cache
 from fastapi import APIRouter
 
 from app.agents.specialists import OPENAI_SPECIALIST_TOOL_NAMES
+from app.connectors.cache.redis_cache import redis_cache_status
 from app.runtime.orchestration.finance_runtime import (
     FinanceRuntime,
     SPECIALIST_TOOL_BY_AGENT,
@@ -45,6 +46,11 @@ def health():
             "investment_research": "read_only",
             "hypothetical_scenarios": True,
             "trade_execution": False,
+        },
+        "cache": {
+            "provider": "redis",
+            "status": redis_cache_status(),
+            "durable_source": "postgresql",
         },
         "runtime_components": [
             "team.finance_team_runtime",
