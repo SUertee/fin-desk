@@ -1,0 +1,149 @@
+{
+  "cases": [
+    {
+      "case_id": "zh-emergency-fund",
+      "category": "relevance",
+      "query": "应急基金应该准备多少",
+      "expected_match": true,
+      "acceptable_document_ids": ["au-emergency-fund", "us-emergency-savings"]
+    },
+    {
+      "case_id": "en-emergency-fund",
+      "category": "relevance",
+      "query": "how to build an emergency fund",
+      "expected_match": true,
+      "acceptable_document_ids": ["au-emergency-fund", "us-emergency-savings"]
+    },
+    {
+      "case_id": "zh-budget-review",
+      "category": "relevance",
+      "query": "如何建立并定期复核个人预算",
+      "expected_match": true,
+      "acceptable_document_ids": ["au-budget-foundation"]
+    },
+    {
+      "case_id": "en-budget-cash-flow",
+      "category": "relevance",
+      "query": "budget cash flow income expenses",
+      "expected_match": true,
+      "acceptable_document_ids": ["au-budget-foundation"]
+    },
+    {
+      "case_id": "zh-diversification-risk",
+      "category": "relevance",
+      "query": "投资组合怎么分散风险",
+      "expected_match": true,
+      "acceptable_document_ids": ["au-diversification", "us-asset-allocation"]
+    },
+    {
+      "case_id": "en-diversification-rebalance",
+      "category": "relevance",
+      "query": "portfolio diversification rebalancing",
+      "expected_match": true,
+      "acceptable_document_ids": ["au-diversification", "us-asset-allocation"]
+    },
+    {
+      "case_id": "zh-asset-time-horizon",
+      "category": "relevance",
+      "query": "资产配置要考虑投资期限吗",
+      "expected_match": true,
+      "acceptable_document_ids": ["us-asset-allocation", "au-diversification"]
+    },
+    {
+      "case_id": "en-asset-allocation-etf",
+      "category": "relevance",
+      "query": "asset allocation time horizon ETF",
+      "expected_match": true,
+      "acceptable_document_ids": ["us-asset-allocation"]
+    },
+    {
+      "case_id": "zh-investing-readiness",
+      "category": "relevance",
+      "query": "投资前应该检查哪些财务条件",
+      "expected_match": true,
+      "acceptable_document_ids": ["au-investing-plan"]
+    },
+    {
+      "case_id": "en-investing-plan",
+      "category": "relevance",
+      "query": "investing plan goals time horizon risk tolerance",
+      "expected_match": true,
+      "acceptable_document_ids": ["au-investing-plan"]
+    },
+    {
+      "case_id": "zh-income-shock-buffer",
+      "category": "relevance",
+      "query": "收入中断时如何准备现金缓冲",
+      "expected_match": true,
+      "acceptable_document_ids": ["us-emergency-savings", "au-emergency-fund"]
+    },
+    {
+      "case_id": "en-financial-shock",
+      "category": "relevance",
+      "query": "financial shock debt prevention savings",
+      "expected_match": true,
+      "acceptable_document_ids": ["us-emergency-savings"]
+    },
+    {
+      "case_id": "filter-au-emergency",
+      "category": "filter",
+      "query": "emergency fund savings",
+      "filters": {"jurisdictions": ["AU"]},
+      "expected_match": true,
+      "acceptable_document_ids": ["au-emergency-fund"]
+    },
+    {
+      "case_id": "filter-us-emergency",
+      "category": "filter",
+      "query": "emergency fund savings",
+      "filters": {"jurisdictions": ["US"]},
+      "expected_match": true,
+      "acceptable_document_ids": ["us-emergency-savings"]
+    },
+    {
+      "case_id": "filter-au-diversification",
+      "category": "filter",
+      "query": "asset allocation diversification",
+      "filters": {"jurisdictions": ["AU"]},
+      "expected_match": true,
+      "acceptable_document_ids": ["au-diversification"]
+    },
+    {
+      "case_id": "filter-us-allocation",
+      "category": "filter",
+      "query": "asset allocation diversification",
+      "filters": {"jurisdictions": ["US"]},
+      "expected_match": true,
+      "acceptable_document_ids": ["us-asset-allocation"]
+    },
+    {
+      "case_id": "freshness-exclude-stale",
+      "category": "freshness",
+      "query": "emergency fund savings",
+      "as_of": "2028-01-01",
+      "expected_match": false
+    },
+    {
+      "case_id": "freshness-include-stale",
+      "category": "freshness",
+      "query": "emergency fund savings",
+      "as_of": "2028-01-01",
+      "filters": {"include_stale": true},
+      "expected_match": true,
+      "acceptable_document_ids": ["au-emergency-fund", "us-emergency-savings"],
+      "expected_freshness": "stale"
+    },
+    {
+      "case_id": "no-match-mars-title",
+      "category": "no_match",
+      "query": "火星地契登记",
+      "expected_match": false
+    },
+    {
+      "case_id": "no-match-penguin-license",
+      "category": "no_match",
+      "query": "企鹅饲养许可证",
+      "expected_match": false
+    }
+  ]
+}
