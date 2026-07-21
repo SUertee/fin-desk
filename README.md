@@ -10,9 +10,8 @@ Most personal-finance tools stop at charts. FinDesk exists to answer the next qu
 
 The project is equally an exercise in AI engineering discipline: statement parsers reconcile to the payment platforms' own summary figures exactly, cross-source duplicates are flagged with recorded reasons instead of silently dropped, and agent behavior is covered by offline eval fixtures that run in CI without live model calls.
 
-FinDesk is intentionally a single-user, self-hosted agent team runtime rather
-than a SaaS control plane. Capabilities are registered statically in-process;
-optional providers are configured locally and remain behind typed connectors,
+FinDesk runs as a single-user, self-hosted agent team. Capabilities are
+registered in-process, while optional providers remain behind typed connectors,
 policy checks, and audit boundaries.
 
 ## Core Features
