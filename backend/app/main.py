@@ -11,6 +11,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from fastapi import FastAPI
@@ -20,6 +21,7 @@ from app.routes.analyze import router as analyze_router
 from app.routes.agent_gateway import router as agent_gateway_router
 from app.routes.ai_costs import router as ai_costs_router
 from app.routes.chat import router as chat_router
+from app.routes.capabilities import router as capabilities_router
 from app.routes.data_sources import router as data_sources_router
 from app.routes.evals import router as evals_router
 from app.routes.health import router as health_router
@@ -74,6 +76,7 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(analyze_router)
 app.include_router(chat_router)
+app.include_router(capabilities_router)
 app.include_router(data_sources_router)
 app.include_router(evals_router)
 app.include_router(profile_router)
