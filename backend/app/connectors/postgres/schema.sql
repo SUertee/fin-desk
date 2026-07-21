@@ -78,6 +78,42 @@ CREATE TABLE IF NOT EXISTS session_memory (
 CREATE INDEX IF NOT EXISTS idx_session_memory_updated_at
     ON session_memory (updated_at DESC);
 
+-- Reviewed finance guidance. Live web-search results are not written here.
+CREATE TABLE IF NOT EXISTS knowledge_documents (
+    document_id       TEXT PRIMARY KEY,
+    title             TEXT NOT NULL,
+    source_url        TEXT NOT NULL,
+    source_authority  TEXT NOT NULL,
+    source_type       TEXT NOT NULL
+        CHECK (source_type IN ('official_guidance', 'internal_policy', 'user_document')),
+    jurisdiction      TEXT NOT NULL,
+    language          TEXT NOT NULL,
+    source_updated_at DATE,
+    reviewed_at       DATE NOT NULL,
+    review_after      DATE NOT NULL CHECK (review_after >= reviewed_at),
+    tags              JSONB NOT NULL DEFAULT '[]'::jsonb,
+    content_hash      TEXT NOT NULL CHECK (length(content_hash) = 64),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_documents_review_after
+    ON knowledge_documents (review_after, document_id);
+
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+    chunk_id      TEXT PRIMARY KEY,
+    document_id   TEXT NOT NULL REFERENCES knowledge_documents(document_id) ON DELETE CASCADE,
+    ordinal       INTEGER NOT NULL CHECK (ordinal >= 0),
+    heading       TEXT NOT NULL,
+    content       TEXT NOT NULL,
+    content_hash  TEXT NOT NULL CHECK (length(content_hash) = 64),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (document_id, ordinal)
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document
+    ON knowledge_chunks (document_id, ordinal);
+
 -- Transactions imported from statement processors or future bank connectors
 CREATE TABLE IF NOT EXISTS transactions (
     id               BIGSERIAL PRIMARY KEY,
