@@ -8,12 +8,13 @@ depend on PyYAML.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 
 CONFIG_DIR = Path(__file__).resolve().parent
@@ -198,6 +199,63 @@ class WebResearchSettings:
 
 
 @dataclass(frozen=True)
+class KnowledgeSettings:
+    retrieval_mode: Literal["lexical", "hybrid"] = "lexical"
+    embedding_provider: str = "siliconflow"
+    allowed_embedding_providers: tuple[str, ...] = ("siliconflow",)
+    embedding_api_key: str = field(default="", repr=False)
+    embedding_base_url: str = "https://api.siliconflow.cn/v1"
+    embedding_model: str = "BAAI/bge-m3"
+    embedding_dimension: int = 1024
+    embedding_timeout_seconds: int = 20
+    embedding_batch_size: int = 32
+    vector_min_score: float = 0.25
+    rrf_k: int = 60
+
+    def __post_init__(self) -> None:
+        mode = self.retrieval_mode.strip().lower()
+        provider = self.embedding_provider.strip().lower()
+        allowed = tuple(
+            item.strip().lower()
+            for item in self.allowed_embedding_providers
+            if item.strip()
+        )
+        if mode not in {"lexical", "hybrid"}:
+            raise ValueError("knowledge retrieval mode must be lexical or hybrid")
+        if not allowed or provider not in allowed:
+            raise ValueError("knowledge embedding provider is not allowlisted")
+        if not self.embedding_model.strip():
+            raise ValueError("knowledge embedding model cannot be empty")
+        parsed_base_url = urlsplit(self.embedding_base_url.strip())
+        if parsed_base_url.scheme != "https" or not parsed_base_url.hostname:
+            raise ValueError("knowledge embedding base URL must use HTTPS")
+        if not 1 <= self.embedding_dimension <= 4096:
+            raise ValueError(
+                "knowledge embedding dimension must be between 1 and 4096"
+            )
+        if not 1 <= self.embedding_timeout_seconds <= 120:
+            raise ValueError(
+                "knowledge embedding timeout must be between 1 and 120 seconds"
+            )
+        if not 1 <= self.embedding_batch_size <= 256:
+            raise ValueError("knowledge embedding batch size must be between 1 and 256")
+        if not 0 <= self.vector_min_score <= 1:
+            raise ValueError("knowledge vector score must be between 0 and 1")
+        if not 1 <= self.rrf_k <= 1000:
+            raise ValueError("knowledge RRF k must be between 1 and 1000")
+        object.__setattr__(self, "retrieval_mode", mode)
+        object.__setattr__(self, "embedding_provider", provider)
+        object.__setattr__(self, "allowed_embedding_providers", allowed)
+        object.__setattr__(self, "embedding_api_key", self.embedding_api_key.strip())
+        object.__setattr__(
+            self,
+            "embedding_base_url",
+            self.embedding_base_url.rstrip("/"),
+        )
+        object.__setattr__(self, "embedding_model", self.embedding_model.strip())
+
+
+@dataclass(frozen=True)
 class FinanceInboxSettings:
     timeout_seconds: int = 10
     max_response_bytes: int = 2_000_000
@@ -356,6 +414,7 @@ class AppSettings:
     market_data: MarketDataSettings = MarketDataSettings()
     exchange_rate: ExchangeRateSettings = ExchangeRateSettings()
     web_research: WebResearchSettings = WebResearchSettings()
+    knowledge: KnowledgeSettings = KnowledgeSettings()
     finance_inbox: FinanceInboxSettings = FinanceInboxSettings()
     mcp: McpSettings = McpSettings()
 
@@ -538,6 +597,42 @@ def get_settings() -> AppSettings:
             outbound_call_budget=int(
                 os.getenv("WEB_RESEARCH_OUTBOUND_CALL_BUDGET", "1")
             ),
+        ),
+        knowledge=KnowledgeSettings(
+            retrieval_mode=os.getenv("KNOWLEDGE_RETRIEVAL_MODE", "lexical"),
+            embedding_provider=os.getenv(
+                "KNOWLEDGE_EMBEDDING_PROVIDER", "siliconflow"
+            ),
+            allowed_embedding_providers=tuple(
+                _split_csv(
+                    os.getenv(
+                        "KNOWLEDGE_EMBEDDING_ALLOWED_PROVIDERS",
+                        "siliconflow",
+                    )
+                )
+            ),
+            embedding_api_key=os.getenv("SILICONFLOW_API_KEY", ""),
+            embedding_base_url=os.getenv(
+                "SILICONFLOW_BASE_URL",
+                "https://api.siliconflow.cn/v1",
+            ),
+            embedding_model=os.getenv(
+                "SILICONFLOW_EMBEDDING_MODEL",
+                "BAAI/bge-m3",
+            ),
+            embedding_dimension=int(
+                os.getenv("SILICONFLOW_EMBEDDING_DIMENSION", "1024")
+            ),
+            embedding_timeout_seconds=int(
+                os.getenv("SILICONFLOW_EMBEDDING_TIMEOUT_SECONDS", "20")
+            ),
+            embedding_batch_size=int(
+                os.getenv("KNOWLEDGE_EMBEDDING_BATCH_SIZE", "32")
+            ),
+            vector_min_score=float(
+                os.getenv("KNOWLEDGE_VECTOR_MIN_SCORE", "0.25")
+            ),
+            rrf_k=int(os.getenv("KNOWLEDGE_RRF_K", "60")),
         ),
         finance_inbox=FinanceInboxSettings(
             timeout_seconds=int(os.getenv("FINANCE_INBOX_TIMEOUT_SECONDS", "10")),

@@ -10,11 +10,11 @@ from typing import Any
 from app.agents.specialists.contracts import SpecialistAgentOutput
 from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
 from app.connectors.postgres.exchange_rate_store import get_exchange_rate_snapshot_db
-from app.connectors.postgres.knowledge_store import PostgresLexicalKnowledgeRetriever
 from app.connectors.postgres.statement_import_store import list_latest_quality_reports_db
 from app.models.agent_data import AgentAction, AgentAudit, AgentFinding, SummaryCard
 from app.models.chat import ChatResponse
 from app.knowledge import KnowledgeQuery, KnowledgeRetriever
+from app.knowledge.factory import build_knowledge_retriever
 from app.models.external_market_data import ExternalMarketHistoryArtifact
 from app.models.runtime import AgentRunUsage, RuntimePolicyResult
 from app.runtime.capabilities import (
@@ -266,9 +266,7 @@ class FinanceRuntime:
         self.costing_service = costing_service or CostingService(
             exchange_rate_lookup=get_exchange_rate_snapshot_db
         )
-        self.knowledge_retriever = (
-            knowledge_retriever or PostgresLexicalKnowledgeRetriever()
-        )
+        self.knowledge_retriever = knowledge_retriever or build_knowledge_retriever()
         # Client getter: nulling self.llm_client also disables classification.
         self.entry_router = EntryRouter(
             classifier=ModelIntentClassifier(lambda: self.llm_client)
