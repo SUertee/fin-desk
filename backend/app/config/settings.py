@@ -209,7 +209,7 @@ class KnowledgeSettings:
     embedding_dimension: int = 1024
     embedding_timeout_seconds: int = 20
     embedding_batch_size: int = 32
-    vector_min_score: float = 0.25
+    vector_min_score: float = 0.45
     rrf_k: int = 60
 
     def __post_init__(self) -> None:
@@ -630,7 +630,7 @@ def get_settings() -> AppSettings:
                 os.getenv("KNOWLEDGE_EMBEDDING_BATCH_SIZE", "32")
             ),
             vector_min_score=float(
-                os.getenv("KNOWLEDGE_VECTOR_MIN_SCORE", "0.25")
+                os.getenv("KNOWLEDGE_VECTOR_MIN_SCORE", "0.45")
             ),
             rrf_k=int(os.getenv("KNOWLEDGE_RRF_K", "60")),
         ),

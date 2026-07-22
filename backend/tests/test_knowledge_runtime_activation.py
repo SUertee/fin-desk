@@ -132,5 +132,6 @@ def test_environment_maps_siliconflow_knowledge_settings(monkeypatch):
         assert settings.embedding_api_key == "runtime-key"
         assert settings.embedding_model == "BAAI/bge-m3"
         assert settings.embedding_dimension == 1024
+        assert settings.vector_min_score == 0.45
     finally:
         get_settings.cache_clear()
