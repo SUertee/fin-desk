@@ -288,8 +288,8 @@ async def test_runtime_persists_output_validation_failure(monkeypatch, caplog):
     )
     runtime = FinanceRuntime(decision_engine=execute("finance.expense_review"))
     monkeypatch.setattr(
-        runtime,
-        "_compose_response",
+        runtime.response_builder,
+        "build",
         lambda **kwargs: {"agent_used": "cfo", "data": None},
     )
     caplog.set_level(logging.INFO, logger="app.runtime.orchestration.finance_runtime")
