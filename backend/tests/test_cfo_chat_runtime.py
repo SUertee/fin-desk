@@ -130,6 +130,7 @@ async def test_runtime_binds_all_capabilities_before_execution(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_runtime_runs_sourced_read_only_investment_team(monkeypatch):
+    from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
 
     saved_records = []
@@ -139,12 +140,12 @@ async def test_runtime_runs_sourced_read_only_investment_team(monkeypatch):
             return object()
 
     monkeypatch.setattr(
-        finance_runtime,
+        finance_toolset,
         "get_investment_research_service",
         lambda: FakeResearchService(),
     )
     monkeypatch.setattr(
-        finance_runtime,
+        finance_toolset,
         "project_instrument_research",
         lambda snapshot: {
             "status": "available",
@@ -180,7 +181,7 @@ async def test_runtime_runs_sourced_read_only_investment_team(monkeypatch):
         },
     )
     monkeypatch.setattr(
-        finance_runtime, "list_latest_quality_reports_db", lambda user_id: []
+        finance_toolset, "list_latest_quality_reports_db", lambda user_id: []
     )
     monkeypatch.setattr(finance_runtime, "write_session_context", lambda **kwargs: None)
     monkeypatch.setattr(
@@ -230,6 +231,7 @@ async def test_runtime_runs_sourced_read_only_investment_team(monkeypatch):
 async def test_runtime_degrades_without_fabricating_unavailable_market_data(
     monkeypatch,
 ):
+    from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
 
     saved_records = []
@@ -239,12 +241,12 @@ async def test_runtime_degrades_without_fabricating_unavailable_market_data(
             raise RuntimeError("provider unavailable")
 
     monkeypatch.setattr(
-        finance_runtime,
+        finance_toolset,
         "get_investment_research_service",
         lambda: UnavailableResearchService(),
     )
     monkeypatch.setattr(
-        finance_runtime, "list_latest_quality_reports_db", lambda user_id: []
+        finance_toolset, "list_latest_quality_reports_db", lambda user_id: []
     )
     monkeypatch.setattr(finance_runtime, "write_session_context", lambda **kwargs: None)
     monkeypatch.setattr(

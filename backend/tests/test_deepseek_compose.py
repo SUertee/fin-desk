@@ -70,6 +70,7 @@ async def _run(client, message="帮我分析这个月消费"):
 
 
 def _patch_investment_research(monkeypatch, saved_records):
+    from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
 
     class FakeResearchService:
@@ -77,12 +78,12 @@ def _patch_investment_research(monkeypatch, saved_records):
             return object()
 
     monkeypatch.setattr(
-        finance_runtime,
+        finance_toolset,
         "get_investment_research_service",
         lambda: FakeResearchService(),
     )
     monkeypatch.setattr(
-        finance_runtime,
+        finance_toolset,
         "project_instrument_research",
         lambda snapshot: {
             "status": "available",
@@ -121,7 +122,11 @@ def _patch_investment_research(monkeypatch, saved_records):
             "trade_actions_allowed": False,
         },
     )
-    monkeypatch.setattr(finance_runtime, "list_latest_quality_reports_db", lambda _: [])
+    monkeypatch.setattr(
+        finance_toolset,
+        "list_latest_quality_reports_db",
+        lambda _: [],
+    )
     monkeypatch.setattr(finance_runtime, "write_session_context", lambda **_: None)
     monkeypatch.setattr(
         finance_runtime,

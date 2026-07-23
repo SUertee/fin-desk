@@ -492,6 +492,7 @@ def test_mcp_tool_binds_through_capability_catalog():
 
 @pytest.mark.asyncio
 async def test_runtime_uses_mcp_artifact_without_internal_provider_fallback(monkeypatch):
+    from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
     from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
@@ -499,7 +500,7 @@ async def test_runtime_uses_mcp_artifact_without_internal_provider_fallback(monk
     client = FakeMcpClient(response=_valid_response())
     tool = VibeMarketDataTool(client, _settings(), clock=lambda: NOW)
     monkeypatch.setattr(
-        finance_runtime, "list_latest_quality_reports_db", lambda _user_id: []
+        finance_toolset, "list_latest_quality_reports_db", lambda _user_id: []
     )
     monkeypatch.setattr(finance_runtime, "write_session_context", lambda **_kwargs: None)
     monkeypatch.setattr(
@@ -535,6 +536,7 @@ async def test_runtime_uses_mcp_artifact_without_internal_provider_fallback(monk
 
 @pytest.mark.asyncio
 async def test_runtime_mcp_failure_remains_external_and_reports_unavailable(monkeypatch):
+    from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
     from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
@@ -542,7 +544,7 @@ async def test_runtime_mcp_failure_remains_external_and_reports_unavailable(monk
     client = FakeMcpClient(error=McpInvocationError("provider failed"))
     tool = VibeMarketDataTool(client, _settings(), clock=lambda: NOW)
     monkeypatch.setattr(
-        finance_runtime, "list_latest_quality_reports_db", lambda _user_id: []
+        finance_toolset, "list_latest_quality_reports_db", lambda _user_id: []
     )
     monkeypatch.setattr(finance_runtime, "write_session_context", lambda **_kwargs: None)
     monkeypatch.setattr(
@@ -576,6 +578,7 @@ async def test_runtime_mcp_failure_remains_external_and_reports_unavailable(monk
 
 @pytest.mark.asyncio
 async def test_runtime_does_not_plan_unhealthy_external_capability(monkeypatch):
+    from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
     from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
@@ -595,7 +598,7 @@ async def test_runtime_does_not_plan_unhealthy_external_capability(monkeypatch):
     health = FakeHealth()
     tool = VibeMarketDataTool(client, _settings(), clock=lambda: NOW)
     monkeypatch.setattr(
-        finance_runtime, "list_latest_quality_reports_db", lambda _user_id: []
+        finance_toolset, "list_latest_quality_reports_db", lambda _user_id: []
     )
     monkeypatch.setattr(finance_runtime, "write_session_context", lambda **_kwargs: None)
     monkeypatch.setattr(

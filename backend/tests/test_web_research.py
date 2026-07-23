@@ -234,13 +234,14 @@ async def test_light_conversation_never_calls_web_research(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_direct_cfo_reply_does_not_call_external_search(monkeypatch):
+    from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
     from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
     provider = FakeProvider()
     records = []
     monkeypatch.setattr(
-        finance_runtime, "list_latest_quality_reports_db", lambda _user: []
+        finance_toolset, "list_latest_quality_reports_db", lambda _user: []
     )
     monkeypatch.setattr(
         finance_runtime, "write_session_context", lambda **_kwargs: None

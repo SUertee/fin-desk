@@ -187,6 +187,7 @@ def test_emergency_fund_is_budget_guidance_not_investment_research():
 
 @pytest.mark.asyncio
 async def test_runtime_uses_bounded_knowledge_and_records_citations(monkeypatch):
+    from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime as runtime_module
     from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
@@ -205,7 +206,11 @@ async def test_runtime_uses_bounded_knowledge_and_records_citations(monkeypatch)
 
     records = []
     retriever = FakeRetriever()
-    monkeypatch.setattr(runtime_module, "list_latest_quality_reports_db", lambda _user: [])
+    monkeypatch.setattr(
+        finance_toolset,
+        "list_latest_quality_reports_db",
+        lambda _user: [],
+    )
     monkeypatch.setattr(runtime_module, "write_session_context", lambda **_kwargs: None)
     monkeypatch.setattr(
         runtime_module,
@@ -239,6 +244,7 @@ async def test_runtime_uses_bounded_knowledge_and_records_citations(monkeypatch)
 
 @pytest.mark.asyncio
 async def test_runtime_states_no_match_without_fabricating_guidance(monkeypatch):
+    from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime as runtime_module
     from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
@@ -248,7 +254,11 @@ async def test_runtime_states_no_match_without_fabricating_guidance(monkeypatch)
                 query=query.text, match_status="no_match", artifacts=[]
             )
 
-    monkeypatch.setattr(runtime_module, "list_latest_quality_reports_db", lambda _user: [])
+    monkeypatch.setattr(
+        finance_toolset,
+        "list_latest_quality_reports_db",
+        lambda _user: [],
+    )
     monkeypatch.setattr(runtime_module, "write_session_context", lambda **_kwargs: None)
     monkeypatch.setattr(runtime_module, "save_agent_run_record_db", lambda _record: True)
     runtime = FinanceRuntime(

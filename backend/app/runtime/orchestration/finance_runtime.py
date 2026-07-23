@@ -3,18 +3,16 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, timedelta
-from time import perf_counter
+from datetime import date
 from typing import Any
 
 from app.agents.cfo import CfoDecisionEngine
 from app.agents.specialists.contracts import SpecialistAgentOutput
-from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
 from app.connectors.postgres.exchange_rate_store import get_exchange_rate_snapshot_db
-from app.connectors.postgres.statement_import_store import list_latest_quality_reports_db
+from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
 from app.models.chat import ChatResponse
 from app.models.turn_execution import TurnExecutionFacts
-from app.knowledge import KnowledgeQuery, KnowledgeRetriever
+from app.knowledge import KnowledgeRetriever
 from app.knowledge.factory import build_knowledge_retriever
 from app.models.external_market_data import ExternalMarketHistoryArtifact
 from app.models.runtime import AgentRunUsage, RuntimePolicyResult
@@ -36,10 +34,10 @@ from app.runtime.execution import (
     HandoffResult,
     ToolObservation,
     ToolRegistry,
-    ToolSpec,
     build_execution_plan,
 )
 from app.runtime.execution.artifact_registry import ArtifactRegistry
+from app.runtime.execution.finance_toolset import FinanceToolset
 from app.runtime.execution.specialist_runner import SpecialistRunner
 from app.runtime.memory.finance_memory_extractor import extract_finance_memory
 from app.runtime.memory.session_context import write_session_context
@@ -53,23 +51,12 @@ from app.config.settings import get_settings
 from app.runtime.llm.deepseek_client import DeepSeekTextClient
 from app.runtime.response.cfo_reply_generator import CfoReplyGenerator
 from app.runtime.response.finance_response_builder import FinanceResponseBuilder
-from app.services.investment_research_runtime import get_investment_research_service
 from app.services.web_research import WebResearchService, build_web_research_service
-from app.tools.investment_research_tools import (
-    extract_instrument_reference,
-    project_instrument_research,
-)
 from app.tools.web_research import WebResearchTool
 from app.tools.mcp_market_data import (
     VibeMarketDataTool,
     build_vibe_market_data_tool,
     project_external_history_for_specialist,
-)
-from app.tools.query_tools import extract_query_filters, run_transaction_query
-from app.tools.finance_tools import (
-    build_budget_snapshot,
-    build_expense_snapshot,
-    build_finance_context_payload,
 )
 
 logger = logging.getLogger(__name__)
@@ -116,6 +103,7 @@ class FinanceRuntime:
         decision_engine: CfoDecisionEngine | None = None,
         response_builder: FinanceResponseBuilder | None = None,
         reply_generator: CfoReplyGenerator | None = None,
+        toolset: FinanceToolset | None = None,
     ):
         self.web_research_tool = web_research_tool or WebResearchTool(
             web_research_service or build_web_research_service()
@@ -132,7 +120,15 @@ class FinanceRuntime:
             and not injected_mcp_tool
         ):
             self.capability_health_service = get_capability_health_service()
-        self.tool_registry = tool_registry or self._build_tool_registry()
+        self.knowledge_retriever = (
+            knowledge_retriever or build_knowledge_retriever()
+        )
+        self.toolset = toolset or FinanceToolset(
+            knowledge_retriever=self.knowledge_retriever,
+            web_research_tool=self.web_research_tool,
+            mcp_market_data_tool=self.mcp_market_data_tool,
+        )
+        self.tool_registry = tool_registry or self.toolset.build_registry()
         self.specialist_runner = specialist_runner or SpecialistRunner()
         optional_statuses = None
         if self.mcp_market_data_tool is None and not injected_mcp_tool:
@@ -163,7 +159,6 @@ class FinanceRuntime:
         self.costing_service = costing_service or CostingService(
             exchange_rate_lookup=get_exchange_rate_snapshot_db
         )
-        self.knowledge_retriever = knowledge_retriever or build_knowledge_retriever()
         self.decision_engine = decision_engine or CfoDecisionEngine(
             lambda: self.llm_client
         )
@@ -493,7 +488,7 @@ class FinanceRuntime:
                     "knowledge_retrieval": knowledge_result,
                 }
                 trace.policy["knowledge_evidence"] = [
-                    self._knowledge_ledger_projection(item)
+                    self.toolset.knowledge_ledger_projection(item)
                     for item in knowledge_result.get("artifacts") or []
                 ]
             specialist_outputs: dict[str, SpecialistAgentOutput] = {}
@@ -814,206 +809,6 @@ class FinanceRuntime:
             },
         }
 
-    def _build_tool_registry(self) -> ToolRegistry:
-        specs = [
-            ToolSpec(
-                name="get_finance_context",
-                description="Build a complete finance context payload.",
-                executor=self._tool_finance_context,
-            ),
-            ToolSpec(
-                name="get_expense_snapshot",
-                description="Summarize transactions, categories, and anomalies.",
-                executor=self._tool_expense_snapshot,
-            ),
-            ToolSpec(
-                name="get_budget_snapshot",
-                description="Summarize income, expense ratio, and budget status.",
-                executor=self._tool_budget_snapshot,
-            ),
-            ToolSpec(
-                name="get_anomaly_summary",
-                description="Return anomaly summary from the expense snapshot.",
-                executor=self._tool_anomaly_summary,
-            ),
-            ToolSpec(
-                name="get_cashflow_summary",
-                description="Summarize monthly cash flow totals.",
-                executor=self._tool_cashflow_summary,
-            ),
-            ToolSpec(
-                name="get_import_quality_report",
-                description="Latest statement-import quality report per source.",
-                executor=self._tool_import_quality,
-            ),
-            ToolSpec(
-                name="query_transactions",
-                description="Typed ledger aggregation from extracted filters (nl2filters).",
-                executor=self._tool_query_transactions,
-            ),
-            ToolSpec(
-                name="search_knowledge",
-                description="Search reviewed finance guidance with bounded lexical retrieval.",
-                executor=self._tool_search_knowledge,
-                owner="knowledge",
-            ),
-            ToolSpec(
-                name="get_investment_research_context",
-                description="Fetch bounded, sourced stock or ETF research evidence.",
-                executor=self._tool_investment_research_context,
-                owner="investment_research",
-            ),
-            self.web_research_tool.spec(),
-        ]
-        if self.mcp_market_data_tool is not None:
-            specs.append(self.mcp_market_data_tool.spec())
-        return ToolRegistry(specs)
-
-    async def _tool_search_knowledge(
-        self, payload: dict[str, Any]
-    ) -> ToolObservation:
-        started = perf_counter()
-        context: AgentContext = payload["context"]
-        try:
-            result = self.knowledge_retriever.retrieve(
-                KnowledgeQuery(text=context.effective_message, top_k=4)
-            )
-        except Exception as exc:
-            logger.warning("Knowledge retrieval unavailable: %s", type(exc).__name__)
-            return ToolObservation(
-                tool_name="search_knowledge",
-                success=False,
-                agent=str(payload.get("agent") or "cfo"),
-                purpose="reviewed_knowledge_evidence",
-                error_class=type(exc).__name__,
-                error_message="Reviewed knowledge is currently unavailable.",
-                latency_ms=round((perf_counter() - started) * 1000, 2),
-            )
-        return ToolObservation(
-            tool_name="search_knowledge",
-            success=True,
-            agent=str(payload.get("agent") or "cfo"),
-            purpose="reviewed_knowledge_evidence",
-            result=result.model_dump(mode="json"),
-            evidence_refs=[item.citation_id for item in result.artifacts],
-            latency_ms=round((perf_counter() - started) * 1000, 2),
-        )
-
-    @staticmethod
-    def _knowledge_ledger_projection(item: dict[str, Any]) -> dict[str, Any]:
-        return {
-            key: item.get(key)
-            for key in (
-                "citation_id",
-                "document_id",
-                "chunk_id",
-                "title",
-                "section",
-                "excerpt",
-                "source_url",
-                "source_authority",
-                "jurisdiction",
-                "reviewed_at",
-                "review_after",
-                "freshness",
-                "retrieval_method",
-            )
-        }
-
-    async def _tool_investment_research_context(
-        self, payload: dict[str, Any]
-    ) -> ToolObservation:
-        started = perf_counter()
-        context: AgentContext = payload["context"]
-        reference = extract_instrument_reference(context.effective_message)
-        if reference is None:
-            result = {
-                "status": "symbol_required",
-                "reason": "An explicit stock or ETF symbol is required; company names are not inferred.",
-                "trade_actions_allowed": False,
-            }
-            return ToolObservation(
-                tool_name="get_investment_research_context",
-                success=True,
-                agent=str(payload.get("agent") or "cfo"),
-                purpose="sourced_investment_research",
-                result=result,
-                latency_ms=round((perf_counter() - started) * 1000, 2),
-            )
-
-        symbol, asset_type = reference
-        date_to = date.today()
-        try:
-            snapshot = get_investment_research_service().get_instrument_research(
-                context.user_id,
-                symbol,
-                asset_type=asset_type,
-                date_from=date_to - timedelta(days=90),
-                date_to=date_to,
-            )
-            result = project_instrument_research(snapshot)
-        except Exception as exc:
-            logger.warning(
-                "Investment research unavailable symbol=%s error=%s",
-                symbol,
-                type(exc).__name__,
-            )
-            result = {
-                "status": "unavailable",
-                "symbol": symbol,
-                "asset_type": asset_type,
-                "reason": "Sourced market evidence is currently unavailable.",
-                "trade_actions_allowed": False,
-            }
-        return ToolObservation(
-            tool_name="get_investment_research_context",
-            success=True,
-            agent=str(payload.get("agent") or "cfo"),
-            purpose="sourced_investment_research",
-            result=result,
-            latency_ms=round((perf_counter() - started) * 1000, 2),
-        )
-
-    async def _tool_query_transactions(self, payload: dict[str, Any]) -> ToolObservation:
-        started = perf_counter()
-        context: AgentContext = payload["context"]
-        filters = extract_query_filters(context.effective_message)
-        result = run_transaction_query(context.user_id, filters)
-        return ToolObservation(
-            tool_name="query_transactions",
-            success=True,
-            agent=str(payload.get("agent") or "cfo"),
-            purpose="typed_ledger_query",
-            result=result,
-            latency_ms=round((perf_counter() - started) * 1000, 2),
-        )
-
-    async def _tool_import_quality(self, payload: dict[str, Any]) -> ToolObservation:
-        started = perf_counter()
-        context: AgentContext = payload["context"]
-        reports = list_latest_quality_reports_db(context.user_id)
-        return ToolObservation(
-            tool_name="get_import_quality_report",
-            success=True,
-            agent=str(payload.get("agent") or "cfo"),
-            purpose="data_quality_evidence",
-            result={"reports": reports},
-            latency_ms=round((perf_counter() - started) * 1000, 2),
-        )
-
-    def _context_payload(self, context: AgentContext) -> dict[str, Any]:
-        return build_finance_context_payload(
-            user_id=context.user_id,
-            profile=context.profile,
-            transactions=context.transactions,
-            monthly_totals=context.monthly_totals,
-            chat_history=context.chat_history,
-            memory_context=context.memory_context,
-        ) | {
-            "message": context.effective_message,
-            "runtime_policy": context.runtime_policy,
-        }
-
     def _write_memory(
         self,
         *,
@@ -1031,84 +826,6 @@ class FinanceRuntime:
             chat_history=chat_history,
         )
         write_session_context(user_id=user_id, session_id=session_id, **memory)
-
-    async def _tool_finance_context(self, payload: dict[str, Any]) -> ToolObservation:
-        started = perf_counter()
-        context: AgentContext = payload["context"]
-        result = self._context_payload(context)
-        return ToolObservation(
-            tool_name="get_finance_context",
-            success=True,
-            agent=str(payload.get("agent") or "cfo"),
-            purpose="baseline_context",
-            result=result,
-            latency_ms=round((perf_counter() - started) * 1000, 2),
-        )
-
-    async def _tool_expense_snapshot(self, payload: dict[str, Any]) -> ToolObservation:
-        started = perf_counter()
-        context: AgentContext = payload["context"]
-        result = build_expense_snapshot(context.transactions, context.monthly_totals)
-        return ToolObservation(
-            tool_name="get_expense_snapshot",
-            success=True,
-            agent=str(payload.get("agent") or "cfo"),
-            purpose="expense_evidence",
-            result=result,
-            latency_ms=round((perf_counter() - started) * 1000, 2),
-        )
-
-    async def _tool_budget_snapshot(self, payload: dict[str, Any]) -> ToolObservation:
-        started = perf_counter()
-        context: AgentContext = payload["context"]
-        result = build_budget_snapshot(
-            context.profile,
-            context.transactions,
-            context.monthly_totals,
-        )
-        return ToolObservation(
-            tool_name="get_budget_snapshot",
-            success=True,
-            agent=str(payload.get("agent") or "cfo"),
-            purpose="budget_evidence",
-            result=result,
-            latency_ms=round((perf_counter() - started) * 1000, 2),
-        )
-
-    async def _tool_anomaly_summary(self, payload: dict[str, Any]) -> ToolObservation:
-        started = perf_counter()
-        artifacts = payload.get("artifacts") or {}
-        snapshot = artifacts.get("get_expense_snapshot") or {}
-        result = {
-            "anomaly_count": snapshot.get("anomaly_count", 0),
-            "anomalies": snapshot.get("anomalies", []),
-        }
-        return ToolObservation(
-            tool_name="get_anomaly_summary",
-            success=True,
-            agent=str(payload.get("agent") or "cfo"),
-            purpose="anomaly_evidence",
-            result=result,
-            latency_ms=round((perf_counter() - started) * 1000, 2),
-        )
-
-    async def _tool_cashflow_summary(self, payload: dict[str, Any]) -> ToolObservation:
-        started = perf_counter()
-        context: AgentContext = payload["context"]
-        net_total = sum(float(item.get("net") or 0) for item in context.monthly_totals)
-        result = {
-            "month_count": len(context.monthly_totals),
-            "net_total": round(net_total, 2),
-            "monthly_totals": context.monthly_totals,
-        }
-        return ToolObservation(
-            tool_name="get_cashflow_summary",
-            success=True,
-            agent=str(payload.get("agent") or "cfo"),
-            purpose="cashflow_evidence",
-            result=result,
-            latency_ms=round((perf_counter() - started) * 1000, 2),
-        )
 
     def _run_specialist_handoff(
         self,
