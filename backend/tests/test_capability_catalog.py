@@ -168,6 +168,17 @@ def test_duplicate_capability_ids_are_rejected():
         CapabilityCatalog([entry, entry])
 
 
+def test_duplicate_tool_names_are_rejected():
+    spec = ToolSpec(
+        name="duplicate_tool",
+        description="Duplicate registration test.",
+        executor=lambda _payload: None,
+    )
+
+    with pytest.raises(ValueError, match="Duplicate tool name"):
+        ToolRegistry([spec, spec])
+
+
 @pytest.mark.parametrize(
     ("capability_id", "entry", "grants", "expected_status"),
     [

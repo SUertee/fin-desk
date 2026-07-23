@@ -45,6 +45,8 @@ class ToolRegistry:
             self.register(spec)
 
     def register(self, spec: ToolSpec) -> None:
+        if spec.name in self._specs:
+            raise ValueError(f"Duplicate tool name: {spec.name}")
         self._specs[spec.name] = spec
 
     def get(self, name: str) -> ToolSpec | None:

@@ -7,45 +7,33 @@ from datetime import date
 from typing import Any
 
 from app.agents.cfo import CfoDecisionEngine
-from app.agents.specialists.contracts import SpecialistAgentOutput
 from app.connectors.postgres.exchange_rate_store import get_exchange_rate_snapshot_db
 from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
 from app.models.chat import ChatResponse
 from app.models.turn_execution import TurnExecutionFacts
 from app.knowledge import KnowledgeRetriever
 from app.knowledge.factory import build_knowledge_retriever
-from app.models.external_market_data import ExternalMarketHistoryArtifact
-from app.models.runtime import AgentRunUsage, RuntimePolicyResult
+from app.models.runtime import AgentRunUsage
 from app.runtime.capabilities import (
     CapabilityBindingError,
     CapabilityCatalog,
     CapabilityHealthService,
     CapabilityResolver,
-    bind_execution_plan,
     get_capability_health_service,
 )
 from app.runtime.capabilities.contracts import CapabilityRuntimeStatus
 from app.runtime.contracts.output_validation import validate_output_contract
 from app.runtime.execution import (
     AgentContext,
-    AgentState,
-    BoundedToolExecutor,
-    HandoffRequest,
-    HandoffResult,
-    ToolObservation,
     ToolRegistry,
-    build_execution_plan,
 )
-from app.runtime.execution.artifact_registry import ArtifactRegistry
 from app.runtime.execution.finance_toolset import FinanceToolset
+from app.runtime.execution.finance_turn_executor import FinanceTurnExecutor
 from app.runtime.execution.specialist_runner import SpecialistRunner
 from app.runtime.memory.finance_memory_extractor import extract_finance_memory
 from app.runtime.memory.session_context import write_session_context
 from app.runtime.observability.trace_collector import TraceCollector
-from app.runtime.observability.steps_projection import project_steps
 from app.runtime.orchestration.intake import ModelTurnContextualizer, TurnContextualizer
-from app.runtime.policy.audit_runner import should_run_audit
-from app.runtime.policy.runtime_policy import evaluate_runtime_policy
 from app.runtime.costing import CostingService
 from app.config.settings import get_settings
 from app.runtime.llm.deepseek_client import DeepSeekTextClient
@@ -56,30 +44,9 @@ from app.tools.web_research import WebResearchTool
 from app.tools.mcp_market_data import (
     VibeMarketDataTool,
     build_vibe_market_data_tool,
-    project_external_history_for_specialist,
 )
 
 logger = logging.getLogger(__name__)
-
-SPECIALIST_TOOL_BY_AGENT = {
-    "expense_analyst": "consult_expense_analyst",
-    "budget_coach": "consult_budget_coach",
-    "auditor": "consult_auditor",
-    "market_context": "consult_market_context",
-    "investment_research": "consult_investment_research",
-}
-
-
-def _bounded_handoff_output(output: dict[str, Any]) -> dict[str, Any]:
-    """Evidence-safe subset of a specialist output for the run ledger."""
-
-    return {
-        "specialist": output.get("specialist"),
-        "findings": output.get("findings") or [],
-        "recommendations": output.get("recommendations") or [],
-        "limitations": output.get("limitations") or [],
-    }
-
 
 def _excerpt(value: str, limit: int = 120) -> str:
     return " ".join((value or "").split())[:limit]
@@ -104,6 +71,7 @@ class FinanceRuntime:
         response_builder: FinanceResponseBuilder | None = None,
         reply_generator: CfoReplyGenerator | None = None,
         toolset: FinanceToolset | None = None,
+        turn_executor: FinanceTurnExecutor | None = None,
     ):
         self.web_research_tool = web_research_tool or WebResearchTool(
             web_research_service or build_web_research_service()
@@ -169,6 +137,16 @@ class FinanceRuntime:
         self.reply_generator = reply_generator or CfoReplyGenerator(
             lambda: self.llm_client,
             self.response_builder.resolve_language,
+        )
+        self.turn_executor = turn_executor or FinanceTurnExecutor(
+            capability_catalog=self.capability_catalog,
+            capability_resolver=self.capability_resolver,
+            granted_capabilities=self.granted_capabilities,
+            tool_registry=self.tool_registry,
+            toolset=self.toolset,
+            specialist_runner=self.specialist_runner,
+            web_research_tool=self.web_research_tool,
+            capability_health_service=self.capability_health_service,
         )
 
     async def handle(
@@ -320,14 +298,6 @@ class FinanceRuntime:
             capability_ids = [
                 request.capability_id for request in decision.capability_requests
             ]
-            policy = evaluate_runtime_policy(capability_ids, self.capability_catalog)
-            trace.set_policy(
-                {
-                    **policy.model_dump(),
-                    "contextualization": contextualization_record,
-                    "cfo_decision": decision_record,
-                }
-            )
             context = AgentContext(
                 request_id=trace.request_id,
                 user_id=user_id,
@@ -339,32 +309,21 @@ class FinanceRuntime:
                 monthly_totals=monthly_totals,
                 chat_history=chat_history,
                 memory_context=memory_context or {},
-                runtime_policy=policy.model_dump(),
             )
-            state = AgentState()
-            artifacts = ArtifactRegistry()
-            effective_grants = set(self.granted_capabilities)
-            if (
-                "investment.external_market_history" in capability_ids
-                and self.capability_health_service is not None
-            ):
-                mcp_status = (
-                    await self.capability_health_service.vibe_market_data_status()
-                )
-                if not mcp_status.available:
-                    effective_grants.discard(
-                        "investment.external_market_history"
-                    )
-            plan = build_execution_plan(
-                capability_ids,
-                policy,
-                self.capability_catalog,
+            reply_language = self.response_builder.resolve_language(
+                (profile or {}).get("preferences") or {},
+                message,
             )
             try:
-                bound_plan = bind_execution_plan(
-                    plan,
-                    self.capability_resolver,
-                    granted_capabilities=effective_grants,
+                execution_result = await self.turn_executor.execute(
+                    capability_ids=capability_ids,
+                    context=context,
+                    reply_language=reply_language,
+                    trace=trace,
+                    policy_metadata={
+                        "contextualization": contextualization_record,
+                        "cfo_decision": decision_record,
+                    },
                 )
             except CapabilityBindingError as exc:
                 execution = TurnExecutionFacts(
@@ -385,222 +344,23 @@ class FinanceRuntime:
                     "execution": execution.model_dump(mode="json"),
                 }
                 return self._complete_turn(trace, profile, response_payload, llm_stages)
-            web_research_budget = (
-                self.web_research_tool.new_budget()
-                if "search_web_research" in bound_plan.tool_names
-                else None
-            )
-            state.selected_agents = list(bound_plan.selected_agents)
-            trace.select_agents(list(bound_plan.selected_agents))
-            trace.set_tools_available(
-                [
-                    *[spec.name for spec in self.tool_registry.available()],
-                    *SPECIALIST_TOOL_BY_AGENT.values(),
-                ]
-            )
-            trace.set_input_summary(
-                self._input_summary(
-                    message=message,
-                    transactions=transactions,
-                    monthly_totals=monthly_totals,
-                    chat_history=chat_history,
-                    memory_context=context.memory_context,
-                )
-            )
-
-            executor = BoundedToolExecutor(
-                self.tool_registry,
-                allowed_tools=bound_plan.tool_names,
-                max_tool_calls=policy.max_tool_calls,
-            )
-            for step in bound_plan.steps:
-                if step.step_type != "tool":
-                    continue
-                observation = await executor.execute(
-                    step.registry_name,
-                    {
-                        "agent": step.agent,
-                        "context": context,
-                        "artifacts": artifacts.as_dict(),
-                        "web_research_budget": web_research_budget,
-                    },
-                )
-                state.record_tool_observation(observation)
-                if observation.success:
-                    artifacts.put(step.registry_name, observation.result)
-                trace.record_tool_call(
-                    observation.tool_name,
-                    status="called" if observation.success else "failed",
-                    agent=observation.agent,
-                    latency_ms=observation.latency_ms,
-                )
-
-            finance_context = artifacts.get("get_finance_context") or {
-                "user_id": context.user_id,
-                "profile": context.profile,
-                "message": context.effective_message,
-                "runtime_policy": context.runtime_policy,
-            }
-            reply_language = self.response_builder.resolve_language(
-                (profile or {}).get("preferences") or {}, message
-            )
-            finance_context = {**finance_context, "reply_language": reply_language}
-            import_quality = artifacts.get("get_import_quality_report")
-            if import_quality and import_quality.get("reports"):
-                finance_context = {**finance_context, "import_quality": import_quality}
-            query_result = artifacts.get("query_transactions")
-            if query_result and query_result.get("count"):
-                finance_context = {**finance_context, "transaction_query": query_result}
-            investment_research = artifacts.get("get_investment_research_context")
-            if investment_research:
-                finance_context = {
-                    **finance_context,
-                    "investment_research": investment_research,
-                }
-            external_market_history = artifacts.get("get_vibe_market_data")
-            if external_market_history:
-                artifact = ExternalMarketHistoryArtifact.model_validate(
-                    external_market_history
-                )
-                finance_context = {
-                    **finance_context,
-                    "external_market_history": external_market_history,
-                    "investment_research": project_external_history_for_specialist(
-                        artifact
-                    ),
-                }
-            elif "investment.external_market_history" in capability_ids:
-                finance_context = {
-                    **finance_context,
-                    "investment_research": {
-                        "status": "unavailable",
-                        "reason": "The requested external MCP market-data capability is disabled or unavailable.",
-                        "trade_actions_allowed": False,
-                    },
-                }
-            web_research = artifacts.get("search_web_research")
-            if web_research:
-                finance_context = {**finance_context, "web_research": web_research}
-            knowledge_result = artifacts.get("search_knowledge")
-            if knowledge_result:
-                finance_context = {
-                    **finance_context,
-                    "knowledge_retrieval": knowledge_result,
-                }
-                trace.policy["knowledge_evidence"] = [
-                    self.toolset.knowledge_ledger_projection(item)
-                    for item in knowledge_result.get("artifacts") or []
-                ]
-            specialist_outputs: dict[str, SpecialistAgentOutput] = {}
-            handoff_names = bound_plan.handoff_names
-            for specialist in [name for name in handoff_names if name != "auditor"]:
-                request = HandoffRequest(
-                    from_agent="cfo",
-                    to_agent=specialist,
-                    task=f"Produce {specialist} review for CFO response",
-                    evidence=finance_context,
-                    constraints=["Use loaded evidence only", "Call out limitations"],
-                    output_contract="SpecialistAgentOutput",
-                )
-                result = self._run_specialist_handoff(request)
-                state.record_handoff_result(result)
-                trace.record_handoff(
-                    from_agent=result.from_agent,
-                    to_agent=result.to_agent,
-                    status=result.status,
-                    reason="typed_internal_handoff",
-                    output=_bounded_handoff_output(result.output) if result.output else None,
-                )
-                trace.record_tool_call(
-                    SPECIALIST_TOOL_BY_AGENT[specialist],
-                    status="called" if result.status == "completed" else "failed",
-                    agent="cfo",
-                    latency_ms=result.latency_ms,
-                )
-                _, validation = validate_output_contract(
-                    agent=specialist,
-                    contract="SpecialistAgentOutput",
-                    model_type=SpecialistAgentOutput,
-                    payload=result.output,
-                )
-                trace.record_output_validation(validation)
-                if validation.status == "passed":
-                    specialist_outputs[specialist] = SpecialistAgentOutput.model_validate(
-                        result.output
-                    )
-
-            if "auditor" in handoff_names and should_run_audit(
-                policy, specialists_used=list(specialist_outputs)
-            ):
-                audit_request = HandoffRequest(
-                    from_agent="cfo",
-                    to_agent="auditor",
-                    task="Audit CFO and specialist evidence before final response",
-                    evidence={
-                        "finance_context": finance_context,
-                        "specialists": {
-                            key: value.model_dump()
-                            for key, value in specialist_outputs.items()
-                        },
-                    },
-                    constraints=["No investment/tax/legal advice", "Expose uncertainty"],
-                    output_contract="SpecialistAgentOutput",
-                )
-                audit_result = self._run_specialist_handoff(audit_request, policy=policy)
-                state.record_handoff_result(audit_result)
-                trace.record_handoff(
-                    from_agent=audit_result.from_agent,
-                    to_agent=audit_result.to_agent,
-                    status=audit_result.status,
-                    reason="typed_internal_handoff",
-                    output=_bounded_handoff_output(audit_result.output) if audit_result.output else None,
-                )
-                trace.record_tool_call(
-                    SPECIALIST_TOOL_BY_AGENT["auditor"],
-                    status="called" if audit_result.status == "completed" else "failed",
-                    agent="cfo",
-                    latency_ms=audit_result.latency_ms,
-                )
-                _, audit_validation = validate_output_contract(
-                    agent="auditor",
-                    contract="SpecialistAgentOutput",
-                    model_type=SpecialistAgentOutput,
-                    payload=audit_result.output,
-                )
-                trace.record_output_validation(audit_validation)
-                if audit_validation.status == "passed":
-                    specialist_outputs["auditor"] = SpecialistAgentOutput.model_validate(
-                        audit_result.output
-                    )
-
+            finance_context = execution_result.context
             response_payload = self.response_builder.build(
                 context=finance_context,
-                policy=policy,
-                specialist_outputs=specialist_outputs,
+                policy=execution_result.policy,
+                specialist_outputs=execution_result.specialist_outputs,
             )
             response_payload["request_id"] = trace.request_id
-            projected_steps = project_steps(
-                {
-                    "tool_calls": [tc.model_dump() for tc in trace.tool_calls],
-                    "handoffs": [h.model_dump() for h in trace.handoffs],
-                }
+            response_payload["execution"] = (
+                execution_result.execution_facts.model_dump(mode="json")
             )
-            execution = TurnExecutionFacts(
-                outcome="executed",
-                evidence_available=any(
-                    self._has_projectable_evidence(observation)
-                    for observation in state.tool_observations
-                ),
-                specialist_findings_available=any(
-                    name != "auditor" and output.findings
-                    for name, output in specialist_outputs.items()
-                ),
-                process_available=bool(projected_steps),
-            )
-            response_payload["execution"] = execution.model_dump(mode="json")
-            trace.policy["turn_execution"] = execution.model_dump(mode="json")
-            if on_pipeline_complete is not None and projected_steps:
-                await on_pipeline_complete(projected_steps)
+            if (
+                on_pipeline_complete is not None
+                and execution_result.projected_steps
+            ):
+                await on_pipeline_complete(
+                    list(execution_result.projected_steps)
+                )
             compose_result = await self.reply_generator.generate(
                 context=finance_context,
                 message=message,
@@ -719,15 +479,6 @@ class FinanceRuntime:
             "memory_summary_used": bool(memory_context.get("summary_used")),
         }
 
-    @staticmethod
-    def _has_projectable_evidence(observation: ToolObservation) -> bool:
-        if not observation.success or not observation.result:
-            return False
-        return observation.result.get("status") not in {
-            "unavailable",
-            "symbol_required",
-        }
-
     def _decision_failure_reply(
         self, profile: dict[str, Any], message: str
     ) -> str:
@@ -826,14 +577,6 @@ class FinanceRuntime:
             chat_history=chat_history,
         )
         write_session_context(user_id=user_id, session_id=session_id, **memory)
-
-    def _run_specialist_handoff(
-        self,
-        request: HandoffRequest,
-        *,
-        policy: RuntimePolicyResult | None = None,
-    ) -> HandoffResult:
-        return self.specialist_runner.run(request, policy=policy)
 
     def _finalize_trace(
         self, trace: TraceCollector, profile: dict[str, Any] | None = None
