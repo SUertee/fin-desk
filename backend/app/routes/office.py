@@ -27,29 +27,31 @@ from app.models.office import (
     UpdateSessionRequest,
     UserEvidenceProjection,
 )
-from app.models.routing import ConversationRoute
+from app.models.turn_execution import TurnExecutionFacts
 from app.runtime.observability.steps_projection import project_steps
-from app.services.memory import save_message
-
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _project_message_route(request_id: str | None) -> ConversationRoute | None:
-    """Expose only the product-safe route flags for a persisted assistant turn."""
+def _project_message_execution(
+    request_id: str | None,
+) -> TurnExecutionFacts | None:
+    """Expose only facts recorded after a persisted assistant turn ran."""
 
     if not request_id:
         return None
     record = get_agent_run_record_db(request_id)
     if not record:
         return None
-    raw_route = (record.get("policy") or {}).get("conversation_route")
-    if not raw_route:
+    raw_execution = (record.get("policy") or {}).get("turn_execution")
+    if not raw_execution:
         return None
     try:
-        return ConversationRoute.model_validate(raw_route)
+        return TurnExecutionFacts.model_validate(raw_execution)
     except Exception:
-        logger.warning("Invalid conversation route in run record request_id=%s", request_id)
+        logger.warning(
+            "Invalid turn execution facts in run record request_id=%s", request_id
+        )
         return None
 
 
@@ -57,28 +59,12 @@ def _project_message_route(request_id: str | None) -> ConversationRoute | None:
 def create_session(req: CreateSessionRequest):
     try:
         title = req.title.strip()
-        if not title and req.seed_messages:
-            first_user = next(
-                (m.content for m in req.seed_messages if m.role == "user"), ""
-            )
-            title = " ".join(first_user.split())[:24]
         session = create_session_db(req.user_id, title=title)
         if session is None:
             return JSONResponse(
                 status_code=503,
                 content={"ok": False, "error": "Session persistence unavailable"},
             )
-        # Promote a floating-chat conversation: seeds persist in order but
-        # carry no run linkage (they had none), so they render without
-        # evidence chips — honest by design.
-        for seed in req.seed_messages:
-            save_message(req.user_id, seed.role, seed.content, session_id=session["id"])
-        if req.seed_messages:
-            last = req.seed_messages[-1].content
-            update_session_db(
-                req.user_id, session["id"], last_message_preview=last
-            )
-            session["last_message_preview"] = last[:60]
         return OfficeSession.model_validate(session)
     except Exception:
         logger.exception("Failed to create office session")
@@ -104,7 +90,14 @@ def list_messages(user_id: str, session_id: str):
             )
         messages = [
             OfficeMessage.model_validate(
-                {**m, "route": _project_message_route(m.get("request_id"))}
+                {
+                    "id": m.get("id"),
+                    "role": m.get("role"),
+                    "content": m.get("content"),
+                    "request_id": m.get("request_id"),
+                    "created_at": m.get("created_at"),
+                    "execution": _project_message_execution(m.get("request_id")),
+                }
             ).model_dump(mode="json")
             for m in list_session_messages_db(user_id, session_id)
         ]

@@ -10,6 +10,7 @@ from app.routes import chat as chat_route
 from app.routes import office as office_route
 from app.runtime.observability.steps_projection import project_steps
 from app.services import memory as memory_service
+from tests.cfo_decision_fakes import execute
 
 
 @pytest.fixture(autouse=True)
@@ -100,23 +101,7 @@ class TestSessionRoutes:
         listed = office_route.list_sessions("demo")
         assert len(listed["sessions"]) == 1
 
-    def test_seed_messages_promote_floating_chat(self, store):
-        session = office_route.create_session(
-            CreateSessionRequest(
-                user_id="demo",
-                seed_messages=[
-                    {"role": "user", "content": "6月10日为什么花这么多？"},
-                    {"role": "assistant", "content": "当日支出主要来自购物。"},
-                ],
-            )
-        )
-
-        assert session.title == "6月10日为什么花这么多？"[:24]
-        messages = office_route.list_messages("demo", session.id)["messages"]
-        assert len(messages) == 2
-        assert messages[0]["request_id"] is None  # promoted turns carry no run linkage
-
-    def test_messages_include_safe_conversation_route(self, store, monkeypatch):
+    def test_messages_include_safe_execution_facts(self, store, monkeypatch):
         session = office_route.create_session(CreateSessionRequest(user_id="demo", title="t"))
         store["messages"].append(
             {
@@ -132,20 +117,12 @@ class TestSessionRoutes:
             "get_agent_run_record_db",
             lambda rid: {
                 "policy": {
-                    "conversation_route": {
-                        "intent": "finance_query",
-                        "execution_path": "cfo_analysis",
-                        "run_finance_pipeline": True,
-                        "emit_steps": True,
-                        "attach_evidence": True,
-                        "memory_scope": "finance_context",
-                        "response_mode": "analysis",
-                        "label": "finance analysis",
-                        "ui_hints": {
-                            "show_process": True,
-                            "show_evidence_chips": True,
-                            "structured_answer": True,
-                        },
+                    "turn_execution": {
+                        "outcome": "executed",
+                        "evidence_available": True,
+                        "specialist_findings_available": True,
+                        "process_available": True,
+                        "policy_blocked": False,
                     }
                 }
             },
@@ -153,8 +130,8 @@ class TestSessionRoutes:
 
         messages = office_route.list_messages("demo", session.id)["messages"]
 
-        assert messages[0]["route"]["execution_path"] == "cfo_analysis"
-        assert messages[0]["route"]["attach_evidence"] is True
+        assert messages[0]["execution"]["outcome"] == "executed"
+        assert messages[0]["execution"]["evidence_available"] is True
 
     def test_archive_excluded_from_default_list(self, store):
         session = office_route.create_session(CreateSessionRequest(user_id="demo", title="t"))
@@ -228,6 +205,11 @@ class TestStepsEvent:
                 return LLMResponse(content="你好", usage=AgentRunUsage(requests=1), model_name="deepseek-chat")
 
         monkeypatch.setattr(chat_route._runtime, "llm_client", FakeLLM())
+        monkeypatch.setattr(
+            chat_route._runtime,
+            "decision_engine",
+            execute("finance.expense_review"),
+        )
         session = office_route.create_session(CreateSessionRequest(user_id="demo"))
 
         response = await chat_route.chat_stream(
@@ -405,6 +387,11 @@ class TestSessionMemoryIsolation:
         )
         # Deterministic replies only: keep the LLM composer out of the way.
         monkeypatch.setattr(chat_route._runtime, "llm_client", None)
+        monkeypatch.setattr(
+            chat_route._runtime,
+            "decision_engine",
+            execute("finance.expense_review"),
+        )
         monkeypatch.setattr(chat_route, "list_transactions_db", lambda u, limit=2000: [
             {"amount": -10, "date": "2026-06-01", "month": "2026-06"}
         ])

@@ -17,7 +17,6 @@ from app.runtime.orchestration.intake.contracts import (
     ResolvedSlot,
     unchanged_turn,
 )
-from app.runtime.orchestration.router.facts import MessageFacts
 from app.tools.query_tools import QueryFilters, extract_query_filters
 
 # Canonical ledger categories -> user-facing zh labels for rewrites.
@@ -40,6 +39,12 @@ CATEGORY_ZH = {
 _SUBSTITUTION_MARKERS = ("呢", "那么")
 _DAY_PRONOUNS = ("这一天", "这天", "那天", "那一天")
 _TXN_PRONOUNS = ("这笔", "那笔")
+_EVIDENCE_REQUESTS = ("引用", "来源", "证据", "为什么这样", "依据")
+
+
+def _is_evidence_request(message: str) -> bool:
+    text = message or ""
+    return any(marker in text for marker in _EVIDENCE_REQUESTS)
 
 
 def _session_memory(memory_context: dict[str, Any] | None) -> dict[str, Any]:
@@ -107,7 +112,6 @@ class SlotResolver:
     def resolve(
         self,
         raw_message: str,
-        facts: MessageFacts,
         memory_context: dict[str, Any] | None = None,
         *,
         today: date | None = None,
@@ -117,11 +121,7 @@ class SlotResolver:
 
         # Evidence requests keep their nature: never rewritten into a fresh
         # ledger query. Slots may point at the prior topic for traceability.
-        if (
-            facts.has_evidence_signal
-            and not facts.has_finance_signal
-            and not facts.has_digits
-        ):
+        if _is_evidence_request(raw_message):
             turn = unchanged_turn(raw_message)
             focus = str(
                 (_session_memory(memory_context).get("last_topic") or {}).get("focus")

@@ -75,26 +75,6 @@ export type OfficeChatStreamEvent =
   | { type: "done"; response: ChatResponse }
   | { type: "error"; error: string };
 
-export async function sendOfficeChatMessage(
-  userId: string,
-  sessionId: string,
-  message: string
-): Promise<ChatResponse> {
-  const response = await fetch(`${getApiBaseUrl()}/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      user_id: userId,
-      message,
-      session_id: sessionId,
-    }),
-  });
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-  return (await response.json()) as ChatResponse;
-}
-
 export async function sendOfficeChatMessageStream(
   userId: string,
   sessionId: string,

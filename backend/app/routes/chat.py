@@ -78,7 +78,6 @@ async def chat(req: ChatRequest):
             chat_history=chat_history,
             memory_context=memory_context.model_dump(),
             session_id=session_id,
-            requested_specialist=req.requested_specialist,
         )
         _persist_turns(
             req.user_id, session_id, req.message, result["reply"],
@@ -129,7 +128,6 @@ async def chat_stream(req: ChatRequest):
                 chat_history=chat_history,
                 memory_context=memory_context.model_dump(),
                 session_id=session_id,
-                requested_specialist=req.requested_specialist,
                 on_reply_delta=on_delta,
                 on_pipeline_complete=on_steps,
             )

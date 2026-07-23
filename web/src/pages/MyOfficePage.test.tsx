@@ -12,42 +12,26 @@ import {
   sendOfficeChatMessageStream,
 } from "../services/officeApi";
 import type {
-  ConversationRoute,
   OfficeMessage,
   OfficeSession,
+  TurnExecutionFacts,
   UserEvidenceProjection,
 } from "../types/office";
 
-const analysisRoute: ConversationRoute = {
-  intent: "finance_query",
-  execution_path: "cfo_analysis",
-  run_finance_pipeline: true,
-  emit_steps: true,
-  attach_evidence: true,
-  memory_scope: "finance_context",
-  response_mode: "analysis",
-  label: "finance analysis",
-  ui_hints: {
-    show_process: true,
-    show_evidence_chips: true,
-    structured_answer: true,
-  },
+const analysisExecution: TurnExecutionFacts = {
+  outcome: "executed",
+  evidence_available: true,
+  specialist_findings_available: true,
+  process_available: true,
+  policy_blocked: false,
 };
 
-const lightRoute: ConversationRoute = {
-  intent: "small_talk",
-  execution_path: "light_reply",
-  run_finance_pipeline: false,
-  emit_steps: false,
-  attach_evidence: false,
-  memory_scope: "session",
-  response_mode: "light",
-  label: "light reply",
-  ui_hints: {
-    show_process: false,
-    show_evidence_chips: false,
-    structured_answer: false,
-  },
+const directExecution: TurnExecutionFacts = {
+  outcome: "direct_response",
+  evidence_available: false,
+  specialist_findings_available: false,
+  process_available: false,
+  policy_blocked: false,
 };
 
 const session: OfficeSession = {
@@ -73,7 +57,7 @@ const sessionMessages: OfficeMessage[] = [
     role: "assistant",
     content: "我核对完了。shopping 本月支出 ¥11,348，占总支出 22.7%。",
     request_id: "req-1",
-    route: analysisRoute,
+    execution: analysisExecution,
     created_at: "2026-07-01T09:01:00Z",
   },
 ];
@@ -105,7 +89,6 @@ vi.mock("../services/officeApi", () => ({
   fetchOfficeSessionMessages: vi.fn(async () => sessionMessages),
   fetchOfficeEvidence: vi.fn(async () => evidence),
   createOfficeSession: vi.fn(),
-  sendOfficeChatMessage: vi.fn(),
   sendOfficeChatMessageStream: vi.fn(),
 }));
 
@@ -129,7 +112,6 @@ describe("MyOfficePage", () => {
     // Answer-level chips are the only evidence entrypoint.
     expect(screen.getByRole("button", { name: "引用来源" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "团队发现" })).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "保存为备忘" }).length).toBeGreaterThan(0);
   });
 
   it("opens the message-specific drawer from the citations chip and closes it", async () => {
@@ -143,7 +125,7 @@ describe("MyOfficePage", () => {
     await screen.findByText("账本：120 笔已加载交易");
     expect(screen.getByText("证据来源", { selector: "h3" })).toBeTruthy();
     expect(screen.getByText("团队发现", { selector: "h3" })).toBeTruthy();
-    expect(screen.getByText("CFO 思考")).toBeTruthy();
+    expect(screen.getByText("审计说明")).toBeTruthy();
     expect(screen.getByText("数据覆盖")).toBeTruthy();
     // Appears in the drawer and again as the bubble's key-finding strip.
     expect(screen.getAllByText("shopping 支出占总支出 22.7%").length).toBeGreaterThan(0);
@@ -188,7 +170,7 @@ describe("MyOfficePage", () => {
             reply: "你好，我在。你可以直接问我财务问题。",
             request_id: "req-light",
             data: null,
-            route: lightRoute,
+            execution: directExecution,
           },
         });
       }

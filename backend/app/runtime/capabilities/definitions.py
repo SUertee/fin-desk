@@ -25,6 +25,7 @@ class CapabilityDefinition:
     output_contract: str
     description: str = ""
     source: CapabilitySource = "internal"
+    requires: tuple[str, ...] = ()
 
     def descriptor(self, *, fallback_description: str = "") -> CapabilityDescriptor:
         return CapabilityDescriptor(
@@ -38,6 +39,7 @@ class CapabilityDefinition:
             input_contract=self.input_contract,
             output_contract=self.output_contract,
             source=self.source,
+            requires=self.requires,
         )
 
 
@@ -115,6 +117,7 @@ def _agent(
     *,
     owner: str,
     risk_level: CapabilityRiskLevel = "low",
+    requires: tuple[str, ...] = (),
 ) -> CapabilityDefinition:
     return CapabilityDefinition(
         capability_id=capability_id,
@@ -126,6 +129,7 @@ def _agent(
         execution_mode="analysis",
         input_contract="SpecialistInput",
         output_contract="SpecialistAgentOutput",
+        requires=requires,
     )
 
 
@@ -135,12 +139,25 @@ SPECIALIST_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
         "Expense review",
         "Review spending structure, anomalies, and controllable expenses.",
         owner="expense_analyst",
+        requires=(
+            "finance.context",
+            "finance.expense_snapshot",
+            "finance.anomaly_summary",
+            "finance.import_quality",
+        ),
     ),
     "budget_coach": _agent(
         "finance.budget_coaching",
         "Budget coaching",
         "Evaluate cash flow, budget pressure, and savings actions.",
         owner="budget_coach",
+        requires=(
+            "finance.context",
+            "finance.expense_snapshot",
+            "finance.budget_snapshot",
+            "finance.cashflow_summary",
+            "finance.import_quality",
+        ),
     ),
     "auditor": _agent(
         "finance.audit_review",
@@ -155,6 +172,7 @@ SPECIALIST_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
         "Interpret governed and sourced market context without trade execution.",
         owner="market_context",
         risk_level="medium",
+        requires=("market.web_research",),
     ),
     "investment_research": _agent(
         "investment.research_review",
@@ -162,5 +180,6 @@ SPECIALIST_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
         "Produce read-only research from bounded market evidence.",
         owner="investment_research",
         risk_level="medium",
+        requires=("investment.research_context",),
     ),
 }

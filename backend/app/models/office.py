@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.routing import ConversationRoute
+from app.models.turn_execution import TurnExecutionFacts
 
 
 class OfficeSession(BaseModel):
@@ -25,23 +25,19 @@ class OfficeSession(BaseModel):
 
 
 class OfficeMessage(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     role: str
     content: str
     request_id: Optional[str] = None
-    route: Optional[ConversationRoute] = None
+    execution: Optional[TurnExecutionFacts] = None
     created_at: str
-
-
-class SeedMessage(BaseModel):
-    role: Literal["user", "assistant"]
-    content: str
 
 
 class CreateSessionRequest(BaseModel):
     user_id: str = "demo"
     title: str = ""
-    seed_messages: list[SeedMessage] = Field(default_factory=list)
 
 
 class UpdateSessionRequest(BaseModel):

@@ -1,10 +1,9 @@
 import logging
-from types import SimpleNamespace
 
 import pytest
 
-from app.runtime.capabilities import CapabilityBindingError
 from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from tests.cfo_decision_fakes import direct, execute
 
 
 @pytest.mark.asyncio
@@ -17,7 +16,7 @@ async def test_runtime_uses_self_hosted_multi_agent_path(monkeypatch, caplog):
         "save_agent_run_record_db",
         lambda record: saved_records.append(record) or True,
     )
-    runtime = FinanceRuntime()
+    runtime = FinanceRuntime(decision_engine=execute("finance.expense_review"))
     caplog.set_level(logging.INFO, logger="app.runtime.orchestration.finance_runtime")
 
     result = await runtime.handle(
@@ -37,7 +36,7 @@ async def test_runtime_uses_self_hosted_multi_agent_path(monkeypatch, caplog):
     trace = traces[-1]
     assert trace["runtime_requested"] == "self_hosted"
     assert trace["runtime_used"] == "self_hosted"
-    assert trace["model_name"] == "self-hosted-deterministic"
+    assert trace["model_name"] is None
     assert trace["cost"]["status"] == "not_applicable"
     assert trace["cost"]["billing_totals"] == []
     assert trace["selected_agents"] == ["cfo", "expense_analyst", "auditor"]
@@ -98,21 +97,29 @@ async def test_runtime_binds_all_capabilities_before_execution(monkeypatch):
     )
     # The first planned capability is granted and the second is denied. The
     # first tool must still not run because binding is an all-or-nothing phase.
-    runtime = FinanceRuntime(granted_capabilities={"finance.context"})
+    runtime = FinanceRuntime(
+        granted_capabilities={"finance.context"},
+        decision_engine=execute("finance.expense_review"),
+    )
     runtime.llm_client = None
 
-    with pytest.raises(CapabilityBindingError) as caught:
-        await runtime.handle(
-            user_id="demo",
-            message="Please analyze my spending",
-            profile={"name": "Demo"},
-            transactions=[{"amount": -100, "category": "shopping"}],
-            monthly_totals=[],
-            chat_history=[],
-        )
+    result = await runtime.handle(
+        user_id="demo",
+        message="Please analyze my spending",
+        profile={"name": "Demo"},
+        transactions=[{"amount": -100, "category": "shopping"}],
+        monthly_totals=[],
+        chat_history=[],
+    )
 
-    assert caught.value.status == "disallowed"
-    assert saved_records[0].error_type == "CapabilityBindingError"
+    assert result["execution"] == {
+        "outcome": "blocked",
+        "evidence_available": False,
+        "specialist_findings_available": False,
+        "process_available": False,
+        "policy_blocked": True,
+    }
+    assert saved_records[0].policy["capability_rejection"]["status"] == "disallowed"
     assert not {
         "get_finance_context",
         "get_import_quality_report",
@@ -182,7 +189,7 @@ async def test_runtime_runs_sourced_read_only_investment_team(monkeypatch):
         lambda record: saved_records.append(record) or True,
     )
 
-    runtime = FinanceRuntime()
+    runtime = FinanceRuntime(decision_engine=execute("investment.research_review"))
     runtime.llm_client = None
     result = await runtime.handle(
         user_id="demo",
@@ -193,7 +200,7 @@ async def test_runtime_runs_sourced_read_only_investment_team(monkeypatch):
         chat_history=[],
     )
 
-    assert result["route"]["execution_path"] == "cfo_analysis"
+    assert result["execution"]["outcome"] == "executed"
     assert [item["agent"] for item in result["data"]["findings"]] == [
         "investment_research",
         "investment_research",
@@ -246,7 +253,7 @@ async def test_runtime_degrades_without_fabricating_unavailable_market_data(
         lambda record: saved_records.append(record) or True,
     )
 
-    runtime = FinanceRuntime()
+    runtime = FinanceRuntime(decision_engine=execute("investment.research_review"))
     runtime.llm_client = None
     result = await runtime.handle(
         user_id="demo",
@@ -259,6 +266,7 @@ async def test_runtime_degrades_without_fabricating_unavailable_market_data(
 
     assert result["data"]["summary_cards"] == []
     assert result["data"]["audit"]["status"] == "data_limited"
+    assert result["execution"]["evidence_available"] is False
     assert "cannot complete" in result["reply"]
     assert "210.50" not in result["reply"]
     assert saved_records[0].selected_agents == [
@@ -278,7 +286,7 @@ async def test_runtime_persists_output_validation_failure(monkeypatch, caplog):
         "save_agent_run_record_db",
         lambda record: saved_records.append(record) or True,
     )
-    runtime = FinanceRuntime()
+    runtime = FinanceRuntime(decision_engine=execute("finance.expense_review"))
     monkeypatch.setattr(
         runtime,
         "_compose_response",
@@ -313,7 +321,7 @@ async def test_runtime_short_circuits_acknowledgement_without_pipeline(monkeypat
         "save_agent_run_record_db",
         lambda record: saved_records.append(record) or True,
     )
-    runtime = FinanceRuntime()
+    runtime = FinanceRuntime(decision_engine=direct("好的，我们继续。"))
     steps = []
 
     async def on_steps(payload):
@@ -331,51 +339,13 @@ async def test_runtime_short_circuits_acknowledgement_without_pipeline(monkeypat
 
     assert result["agent_used"] == "cfo"
     assert result["data"] is None
-    assert result["route"]["execution_path"] == "light_reply"
-    assert result["route"]["emit_steps"] is False
-    assert result["route"]["attach_evidence"] is False
+    assert result["execution"]["outcome"] == "direct_response"
+    assert result["execution"]["process_available"] is False
+    assert result["execution"]["evidence_available"] is False
     assert steps == []
 
     record = saved_records[0]
     assert record.selected_agents == ["cfo"]
-    assert record.tool_calls == []
+    assert [call.name for call in record.tool_calls] == ["cfo_decide"]
     assert record.handoffs == []
-    assert record.policy["conversation_route"]["execution_path"] == "light_reply"
-
-
-@pytest.mark.asyncio
-async def test_orchestrator_saves_and_logs_error_reply(monkeypatch, caplog):
-    from app.agents import orchestrator
-
-    class FailingRuntime:
-        async def handle(self, **kwargs):
-            raise RuntimeError("runtime unavailable")
-
-    saved_messages = []
-
-    monkeypatch.setattr(orchestrator, "_runtime", FailingRuntime())
-    monkeypatch.setattr(
-        orchestrator,
-        "get_profile",
-        lambda user_id: SimpleNamespace(model_dump=lambda: {"name": "Demo"}),
-    )
-    monkeypatch.setattr(orchestrator, "get_chat_history", lambda user_id: [])
-    monkeypatch.setattr(
-        orchestrator,
-        "save_message",
-        lambda user_id, role, content: saved_messages.append((user_id, role, content)),
-    )
-    caplog.set_level(logging.INFO, logger=orchestrator.logger.name)
-
-    result = await orchestrator.handle_message(user_id="demo", message="hello")
-
-    assert result == {
-        "reply": "Sorry, something went wrong. Please try again.",
-        "agent_used": "error",
-        "data": None,
-    }
-    assert saved_messages == [
-        ("demo", "user", "hello"),
-        ("demo", "assistant", "Sorry, something went wrong. Please try again."),
-    ]
-    assert "Handled message for user=demo, agent=error" in caplog.text
+    assert record.policy["turn_execution"]["outcome"] == "direct_response"

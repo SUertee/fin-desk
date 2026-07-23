@@ -63,8 +63,8 @@ analysis:
   pricing_source: openai_model_page
   pricing_effective_date: 2026-07-13
 
-# Entry-router intent classification: tiny, cold, fast-fail. The guard
-# falls back to deterministic routing on any timeout or invalid output.
+# CFO turn decisions and ambiguous-reference resolution use a small,
+# fast-fail profile. Invalid decisions fail explicitly and never select tools.
 router:
   provider: deepseek
   model: deepseek-v4-flash

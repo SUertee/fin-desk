@@ -279,7 +279,7 @@ class VibeMarketDataTool:
     async def execute(self, payload: dict[str, Any]) -> ToolObservation:
         started = perf_counter()
         context: AgentContext = payload["context"]
-        reference = extract_instrument_reference(context.message)
+        reference = extract_instrument_reference(context.effective_message)
         if reference is None:
             return ToolObservation(
                 tool_name="get_vibe_market_data",

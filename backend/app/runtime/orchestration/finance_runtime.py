@@ -7,17 +7,20 @@ from datetime import date, timedelta
 from time import perf_counter
 from typing import Any
 
+from app.agents.cfo import CfoDecisionEngine
 from app.agents.specialists.contracts import SpecialistAgentOutput
 from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
 from app.connectors.postgres.exchange_rate_store import get_exchange_rate_snapshot_db
 from app.connectors.postgres.statement_import_store import list_latest_quality_reports_db
 from app.models.agent_data import AgentAction, AgentAudit, AgentFinding, SummaryCard
 from app.models.chat import ChatResponse
+from app.models.turn_execution import TurnExecutionFacts
 from app.knowledge import KnowledgeQuery, KnowledgeRetriever
 from app.knowledge.factory import build_knowledge_retriever
 from app.models.external_market_data import ExternalMarketHistoryArtifact
 from app.models.runtime import AgentRunUsage, RuntimePolicyResult
 from app.runtime.capabilities import (
+    CapabilityBindingError,
     CapabilityCatalog,
     CapabilityHealthService,
     CapabilityResolver,
@@ -42,12 +45,9 @@ from app.runtime.execution.specialist_runner import SpecialistRunner
 from app.runtime.memory.finance_memory_extractor import extract_finance_memory
 from app.runtime.memory.session_context import write_session_context
 from app.runtime.observability.trace_collector import TraceCollector
-from app.runtime.orchestration.entry_router import EntryRouter
+from app.runtime.observability.steps_projection import project_steps
 from app.runtime.orchestration.intake import ModelTurnContextualizer, TurnContextualizer
-from app.runtime.orchestration.router import ModelIntentClassifier
-from app.models.routing import route_for_path
 from app.runtime.policy.audit_runner import should_run_audit
-from app.runtime.policy.conversation_policy import compose_short_cfo_reply
 from app.runtime.policy.investment_policy import investment_output_violations
 from app.runtime.policy.runtime_policy import evaluate_runtime_policy
 from app.runtime.costing import CostingService
@@ -64,7 +64,6 @@ from app.tools.web_research import WebResearchTool
 from app.tools.mcp_market_data import (
     VibeMarketDataTool,
     build_vibe_market_data_tool,
-    has_external_market_data_intent,
     project_external_history_for_specialist,
 )
 from app.tools.query_tools import extract_query_filters, run_transaction_query
@@ -204,6 +203,10 @@ def _bounded_handoff_output(output: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _excerpt(value: str, limit: int = 120) -> str:
+    return " ".join((value or "").split())[:limit]
+
+
 class FinanceRuntime:
     """Application runtime boundary for finance chat orchestration."""
 
@@ -219,6 +222,7 @@ class FinanceRuntime:
         capability_health_service: CapabilityHealthService | None = None,
         granted_capabilities: set[str] | None = None,
         knowledge_retriever: KnowledgeRetriever | None = None,
+        decision_engine: CfoDecisionEngine | None = None,
     ):
         self.web_research_tool = web_research_tool or WebResearchTool(
             web_research_service or build_web_research_service()
@@ -267,9 +271,8 @@ class FinanceRuntime:
             exchange_rate_lookup=get_exchange_rate_snapshot_db
         )
         self.knowledge_retriever = knowledge_retriever or build_knowledge_retriever()
-        # Client getter: nulling self.llm_client also disables classification.
-        self.entry_router = EntryRouter(
-            classifier=ModelIntentClassifier(lambda: self.llm_client)
+        self.decision_engine = decision_engine or CfoDecisionEngine(
+            lambda: self.llm_client
         )
         self.turn_contextualizer = TurnContextualizer(
             model=ModelTurnContextualizer(lambda: self.llm_client)
@@ -285,11 +288,9 @@ class FinanceRuntime:
         monthly_totals: list[dict[str, Any]],
         chat_history: list[dict[str, Any]],
         memory_context: dict[str, Any] | None = None,
-        # CFO Room session scope for session memory; empty keeps the legacy
-        # flat-history scope ("default").
+        # CFO Room session scope; empty uses the default chat scope.
         session_id: str = "",
         entrypoint: str = "chat",
-        requested_specialist: str | None = None,
         on_reply_delta=None,
         on_pipeline_complete=None,
     ) -> dict[str, Any]:
@@ -298,13 +299,10 @@ class FinanceRuntime:
             entrypoint=entrypoint,
             runtime_requested="self_hosted",
         )
-        trace.set_model_name("self-hosted-deterministic")
         trace.set_output_contract("ChatResponse")
 
         try:
-            # Intake: resolve follow-up references BEFORE routing. The raw
-            # user text stays untouched for history/UI; everything the
-            # runtime executes reads the effective message.
+            # Resolve follow-up references before the CFO chooses an action.
             llm_stages: dict[str, dict[str, Any]] = {}
             intake = await self.turn_contextualizer.contextualize_with_trace(
                 message,
@@ -332,84 +330,115 @@ class FinanceRuntime:
                     profile="router",
                     latency_ms=intake.model_latency_ms,
                 )
+                if intake.model_name:
+                    trace.set_model_name(intake.model_name)
 
-            route_decision = await self.entry_router.decide(
+            decision_capabilities = tuple(
+                item.descriptor
+                for item in self.capability_catalog.list()
+                if item.status.enabled
+                and item.status.available
+                and item.descriptor.capability_id in self.granted_capabilities
+            )
+            decision_result = await self.decision_engine.decide(
                 effective_message,
+                capabilities=decision_capabilities,
                 chat_history=chat_history,
                 memory_context=memory_context or {},
+                profile=profile,
+                needs_clarification=(
+                    turn.resolution_status == "needs_clarification"
+                ),
             )
-            route = route_decision.route
-            if route_decision.classifier_status != "skipped":
+            if decision_result.status in {"called", "invalid_output", "failed"}:
                 trace.record_tool_call(
-                    "route_classify",
-                    status="called" if route_decision.classifier_status == "called" else "failed",
+                    "cfo_decide",
+                    status="called" if decision_result.status == "called" else "failed",
                     agent="cfo",
-                    latency_ms=route_decision.classifier_latency_ms,
+                    latency_ms=decision_result.latency_ms,
                 )
-                trace.add_usage(route_decision.classifier_usage)
-                llm_stages["route_classify"] = self._llm_stage_entry(
+                trace.add_usage(decision_result.usage)
+                llm_stages["cfo_decide"] = self._llm_stage_entry(
                     trace,
-                    status=route_decision.classifier_status,
-                    usage=route_decision.classifier_usage,
-                    model_name=route_decision.classifier_model,
+                    status=decision_result.status,
+                    usage=decision_result.usage,
+                    model_name=decision_result.model_name,
                     profile="router",
-                    latency_ms=route_decision.classifier_latency_ms,
+                    latency_ms=decision_result.latency_ms,
                 )
-            # An unresolved reference must never run a fabricated finance
-            # query — ask for clarification instead.
-            if turn.resolution_status == "needs_clarification" and route.run_finance_pipeline:
-                route = route_for_path(
-                    "clarification", "clarification", label="context_clarification"
-                )
-            if not route.run_finance_pipeline:
-                response_payload = self._compose_non_analysis_response(
-                    trace=trace,
-                    route=route,
-                    route_decision=route_decision,
-                    contextualization_record=contextualization_record,
+                if decision_result.model_name:
+                    trace.set_model_name(decision_result.model_name)
+            decision = decision_result.decision
+            decision_record = {
+                "stage": "cfo_decision",
+                "status": decision_result.status,
+                "action": decision.action if decision else None,
+                "capability_ids": [
+                    request.capability_id
+                    for request in (decision.capability_requests if decision else ())
+                ],
+            }
+            trace.set_policy(
+                {
+                    "contextualization": contextualization_record,
+                    "cfo_decision": decision_record,
+                }
+            )
+            trace.select_agents(["cfo"])
+            trace.set_input_summary(
+                self._input_summary(
                     message=message,
-                    profile=profile,
                     transactions=transactions,
                     monthly_totals=monthly_totals,
                     chat_history=chat_history,
                     memory_context=memory_context or {},
                 )
-                if llm_stages:
-                    trace.policy["llm_usage_by_stage"] = llm_stages
-                _, response_validation = validate_output_contract(
-                    agent="cfo",
-                    contract="ChatResponse",
-                    model_type=ChatResponse,
-                    payload=response_payload,
-                )
-                trace.record_output_validation(response_validation)
-                if response_validation.status == "failed":
-                    raise ValueError("FinanceRuntime returned invalid ChatResponse")
-                trace.mark_runtime_used("self_hosted")
-                self._finalize_trace(trace, profile)
-                self._log_trace(trace)
-                self._persist_trace(trace)
-                return response_payload
-
-            policy = evaluate_runtime_policy(
-                user_message=effective_message,
-                transactions=transactions,
-                monthly_totals=monthly_totals,
-                requested_specialist=requested_specialist,
             )
+
+            if decision is None:
+                execution = TurnExecutionFacts(outcome="failed")
+                trace.policy["turn_execution"] = execution.model_dump(mode="json")
+                response_payload = {
+                    "reply": self._decision_failure_reply(profile, message),
+                    "agent_used": "cfo",
+                    "request_id": trace.request_id,
+                    "data": None,
+                    "execution": execution.model_dump(mode="json"),
+                }
+                return self._complete_turn(trace, profile, response_payload, llm_stages)
+
+            if decision.action in {"direct_response", "ask_clarification"}:
+                outcome = (
+                    "direct_response"
+                    if decision.action == "direct_response"
+                    else "clarification"
+                )
+                execution = TurnExecutionFacts(outcome=outcome)
+                trace.policy["turn_execution"] = execution.model_dump(mode="json")
+                response_payload = {
+                    "reply": decision.reply or "",
+                    "agent_used": "cfo",
+                    "request_id": trace.request_id,
+                    "data": None,
+                    "execution": execution.model_dump(mode="json"),
+                }
+                return self._complete_turn(trace, profile, response_payload, llm_stages)
+
+            capability_ids = [
+                request.capability_id for request in decision.capability_requests
+            ]
+            policy = evaluate_runtime_policy(capability_ids, self.capability_catalog)
             trace.set_policy(
                 {
                     **policy.model_dump(),
-                    "conversation_route": route.model_dump(mode="json"),
-                    "route_decision": route_decision.ledger_dump(),
                     "contextualization": contextualization_record,
+                    "cfo_decision": decision_record,
                 }
             )
             context = AgentContext(
                 request_id=trace.request_id,
                 user_id=user_id,
                 entrypoint=entrypoint,
-                message=effective_message,
                 raw_message=message,
                 effective_message=effective_message,
                 profile=profile,
@@ -421,30 +450,48 @@ class FinanceRuntime:
             )
             state = AgentState()
             artifacts = ArtifactRegistry()
-            available_capabilities = set(
-                self.available_capabilities & self.granted_capabilities
-            )
+            effective_grants = set(self.granted_capabilities)
             if (
-                has_external_market_data_intent(effective_message)
+                "investment.external_market_history" in capability_ids
                 and self.capability_health_service is not None
             ):
                 mcp_status = (
                     await self.capability_health_service.vibe_market_data_status()
                 )
                 if not mcp_status.available:
-                    available_capabilities.discard(
+                    effective_grants.discard(
                         "investment.external_market_history"
                     )
             plan = build_execution_plan(
-                context,
+                capability_ids,
                 policy,
-                available_capabilities=available_capabilities,
+                self.capability_catalog,
             )
-            bound_plan = bind_execution_plan(
-                plan,
-                self.capability_resolver,
-                granted_capabilities=self.granted_capabilities,
-            )
+            try:
+                bound_plan = bind_execution_plan(
+                    plan,
+                    self.capability_resolver,
+                    granted_capabilities=effective_grants,
+                )
+            except CapabilityBindingError as exc:
+                execution = TurnExecutionFacts(
+                    outcome="blocked",
+                    policy_blocked=True,
+                )
+                trace.policy["capability_rejection"] = {
+                    "capability_id": exc.capability_id,
+                    "status": exc.status,
+                    "reason": exc.reason,
+                }
+                trace.policy["turn_execution"] = execution.model_dump(mode="json")
+                response_payload = {
+                    "reply": self._capability_blocked_reply(profile, message),
+                    "agent_used": "cfo",
+                    "request_id": trace.request_id,
+                    "data": None,
+                    "execution": execution.model_dump(mode="json"),
+                }
+                return self._complete_turn(trace, profile, response_payload, llm_stages)
             web_research_budget = (
                 self.web_research_tool.new_budget()
                 if "search_web_research" in bound_plan.tool_names
@@ -459,23 +506,13 @@ class FinanceRuntime:
                 ]
             )
             trace.set_input_summary(
-                {
-                    "message_length": len(message or ""),
-                    "transaction_count": len(transactions),
-                    "monthly_total_count": len(monthly_totals),
-                    "chat_history_count": len(chat_history),
-                    "memory_recent_turns_count": len(
-                        context.memory_context.get("recent_turns") or []
-                    ),
-                    "memory_session_state_present": bool(
-                        context.memory_context.get("session_memory")
-                    ),
-                    "memory_truncated": bool(context.memory_context.get("truncated")),
-                    "memory_summary_used": bool(
-                        context.memory_context.get("summary_used")
-                    ),
-                    "conversation_route": route.execution_path,
-                }
+                self._input_summary(
+                    message=message,
+                    transactions=transactions,
+                    monthly_totals=monthly_totals,
+                    chat_history=chat_history,
+                    memory_context=context.memory_context,
+                )
             )
 
             executor = BoundedToolExecutor(
@@ -505,7 +542,12 @@ class FinanceRuntime:
                     latency_ms=observation.latency_ms,
                 )
 
-            finance_context = artifacts.get("get_finance_context") or self._context_payload(context)
+            finance_context = artifacts.get("get_finance_context") or {
+                "user_id": context.user_id,
+                "profile": context.profile,
+                "message": context.effective_message,
+                "runtime_policy": context.runtime_policy,
+            }
             reply_language = self._resolve_language(
                 (profile or {}).get("preferences") or {}, message
             )
@@ -534,7 +576,7 @@ class FinanceRuntime:
                         artifact
                     ),
                 }
-            elif has_external_market_data_intent(context.message):
+            elif "investment.external_market_history" in capability_ids:
                 finance_context = {
                     **finance_context,
                     "investment_research": {
@@ -644,25 +686,34 @@ class FinanceRuntime:
                 specialist_outputs=specialist_outputs,
             )
             response_payload["request_id"] = trace.request_id
-            response_payload["route"] = route.model_dump(mode="json")
-            if on_pipeline_complete is not None and route.emit_steps:
-                from app.runtime.observability.steps_projection import project_steps
-
-                await on_pipeline_complete(
-                    project_steps(
-                        {
-                            "tool_calls": [tc.model_dump() for tc in trace.tool_calls],
-                            "handoffs": [h.model_dump() for h in trace.handoffs],
-                        }
-                    )
-                )
+            projected_steps = project_steps(
+                {
+                    "tool_calls": [tc.model_dump() for tc in trace.tool_calls],
+                    "handoffs": [h.model_dump() for h in trace.handoffs],
+                }
+            )
+            execution = TurnExecutionFacts(
+                outcome="executed",
+                evidence_available=any(
+                    self._has_projectable_evidence(observation)
+                    for observation in state.tool_observations
+                ),
+                specialist_findings_available=any(
+                    name != "auditor" and output.findings
+                    for name, output in specialist_outputs.items()
+                ),
+                process_available=bool(projected_steps),
+            )
+            response_payload["execution"] = execution.model_dump(mode="json")
+            trace.policy["turn_execution"] = execution.model_dump(mode="json")
+            if on_pipeline_complete is not None and projected_steps:
+                await on_pipeline_complete(projected_steps)
             compose_stage = await self._llm_compose_reply(
                 trace=trace,
                 context=finance_context,
                 message=message,
                 effective_message=effective_message,
                 chat_history=chat_history,
-                route=route,
                 response_payload=response_payload,
                 on_reply_delta=on_reply_delta,
             )
@@ -670,17 +721,7 @@ class FinanceRuntime:
                 llm_stages["llm_compose"] = compose_stage
             if llm_stages:
                 trace.policy["llm_usage_by_stage"] = llm_stages
-            _, response_validation = validate_output_contract(
-                agent="cfo",
-                contract="ChatResponse",
-                model_type=ChatResponse,
-                payload=response_payload,
-            )
-            trace.record_output_validation(response_validation)
-            if response_validation.status == "failed":
-                raise ValueError("FinanceRuntime returned invalid ChatResponse")
-
-            audit = response_payload.get("data", {}).get("audit")
+            audit = (response_payload.get("data") or {}).get("audit")
             if isinstance(audit, dict):
                 trace.set_audit_status(audit.get("status"))
             self._write_memory(
@@ -693,11 +734,7 @@ class FinanceRuntime:
                 finance_context=finance_context,
                 chat_history=chat_history,
             )
-            trace.mark_runtime_used("self_hosted")
-            self._finalize_trace(trace, profile)
-            self._log_trace(trace)
-            self._persist_trace(trace)
-            return response_payload
+            return self._complete_turn(trace, profile, response_payload, llm_stages)
         except Exception as exc:
             trace.fail(exc)
             self._finalize_trace(trace, profile)
@@ -705,53 +742,78 @@ class FinanceRuntime:
             self._persist_trace(trace)
             raise
 
-    def _compose_non_analysis_response(
+    def _complete_turn(
         self,
-        *,
         trace: TraceCollector,
-        route,
-        route_decision,
-        contextualization_record: dict[str, Any],
-        message: str,
         profile: dict[str, Any],
+        response_payload: dict[str, Any],
+        llm_stages: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        if llm_stages:
+            trace.policy["llm_usage_by_stage"] = llm_stages
+        _, validation = validate_output_contract(
+            agent="cfo",
+            contract="ChatResponse",
+            model_type=ChatResponse,
+            payload=response_payload,
+        )
+        trace.record_output_validation(validation)
+        if validation.status == "failed":
+            raise ValueError("FinanceRuntime returned invalid ChatResponse")
+        trace.mark_runtime_used("self_hosted")
+        self._finalize_trace(trace, profile)
+        self._log_trace(trace)
+        self._persist_trace(trace)
+        return response_payload
+
+    @staticmethod
+    def _input_summary(
+        *,
+        message: str,
         transactions: list[dict[str, Any]],
         monthly_totals: list[dict[str, Any]],
         chat_history: list[dict[str, Any]],
         memory_context: dict[str, Any],
     ) -> dict[str, Any]:
-        trace.set_policy(
-            {
-                "conversation_route": route.model_dump(mode="json"),
-                "route_decision": route_decision.ledger_dump(),
-                "contextualization": contextualization_record,
-            }
-        )
-        trace.select_agents(["cfo"])
-        trace.set_tools_available([])
-        trace.set_input_summary(
-            {
-                "message_length": len(message or ""),
-                "transaction_count": len(transactions),
-                "monthly_total_count": len(monthly_totals),
-                "chat_history_count": len(chat_history),
-                "memory_recent_turns_count": len(memory_context.get("recent_turns") or []),
-                "memory_session_state_present": bool(memory_context.get("session_memory")),
-                "memory_truncated": bool(memory_context.get("truncated")),
-                "memory_summary_used": bool(memory_context.get("summary_used")),
-                "conversation_route": route.execution_path,
-            }
-        )
         return {
-            "reply": compose_short_cfo_reply(
-                route=route,
-                message=message,
-                profile=profile,
-            ),
-            "agent_used": "cfo",
-            "request_id": trace.request_id,
-            "data": None,
-            "route": route.model_dump(mode="json"),
+            "message_length": len(message or ""),
+            "transaction_count": len(transactions),
+            "monthly_total_count": len(monthly_totals),
+            "chat_history_count": len(chat_history),
+            "memory_recent_turns_count": len(memory_context.get("recent_turns") or []),
+            "memory_session_state_present": bool(memory_context.get("session_memory")),
+            "memory_truncated": bool(memory_context.get("truncated")),
+            "memory_summary_used": bool(memory_context.get("summary_used")),
         }
+
+    @staticmethod
+    def _has_projectable_evidence(observation: ToolObservation) -> bool:
+        if not observation.success or not observation.result:
+            return False
+        return observation.result.get("status") not in {
+            "unavailable",
+            "symbol_required",
+        }
+
+    def _decision_failure_reply(
+        self, profile: dict[str, Any], message: str
+    ) -> str:
+        language = self._resolve_language(
+            (profile or {}).get("preferences") or {}, message
+        )
+        if language == "zh":
+            return "CFO 暂时无法判断这一步该如何处理，请稍后重试。"
+        return "The CFO could not decide how to handle this turn. Please try again."
+
+    def _capability_blocked_reply(
+        self, profile: dict[str, Any], message: str
+    ) -> str:
+        language = self._resolve_language(
+            (profile or {}).get("preferences") or {}, message
+        )
+        if language == "zh":
+            return "这项能力当前未启用或不可用，因此没有执行。"
+        return "This capability is disabled or unavailable, so nothing was executed."
 
     def _llm_stage_entry(
         self,
@@ -798,14 +860,12 @@ class FinanceRuntime:
         chat history, prompts, or raw ledger payloads.
         """
 
-        from app.runtime.orchestration.router.facts import excerpt
-
         turn = intake.turn
         return {
             "stage": "turn_contextualization",
-            "raw_message_excerpt": excerpt(raw_message),
+            "raw_message_excerpt": _excerpt(raw_message),
             "effective_message_excerpt": (
-                excerpt(turn.effective_message) if turn.rewrite_applied else ""
+                _excerpt(turn.effective_message) if turn.rewrite_applied else ""
             ),
             **turn.ledger_dump(),
             "model": {
@@ -878,7 +938,7 @@ class FinanceRuntime:
         context: AgentContext = payload["context"]
         try:
             result = self.knowledge_retriever.retrieve(
-                KnowledgeQuery(text=context.message, top_k=4)
+                KnowledgeQuery(text=context.effective_message, top_k=4)
             )
         except Exception as exc:
             logger.warning("Knowledge retrieval unavailable: %s", type(exc).__name__)
@@ -927,7 +987,7 @@ class FinanceRuntime:
     ) -> ToolObservation:
         started = perf_counter()
         context: AgentContext = payload["context"]
-        reference = extract_instrument_reference(context.message)
+        reference = extract_instrument_reference(context.effective_message)
         if reference is None:
             result = {
                 "status": "symbol_required",
@@ -979,7 +1039,7 @@ class FinanceRuntime:
     async def _tool_query_transactions(self, payload: dict[str, Any]) -> ToolObservation:
         started = perf_counter()
         context: AgentContext = payload["context"]
-        filters = extract_query_filters(context.message)
+        filters = extract_query_filters(context.effective_message)
         result = run_transaction_query(context.user_id, filters)
         return ToolObservation(
             tool_name="query_transactions",
@@ -1012,7 +1072,7 @@ class FinanceRuntime:
             chat_history=context.chat_history,
             memory_context=context.memory_context,
         ) | {
-            "message": context.message,
+            "message": context.effective_message,
             "runtime_policy": context.runtime_policy,
         }
 
@@ -1128,15 +1188,13 @@ class FinanceRuntime:
         message: str,
         effective_message: str = "",
         chat_history: list[dict[str, Any]],
-        route,
         response_payload: dict[str, Any],
         on_reply_delta=None,
     ) -> dict[str, Any] | None:
         """Compose the final reply with the LLM when available.
 
-        Grounded strictly in the run's evidence digest; on missing key or any
-        provider failure the deterministic template reply stays — the user
-        never sees an error from this step.
+        The typed finance response remains authoritative if optional language
+        composition is unavailable.
         """
 
         if not self.llm_client or not getattr(self.llm_client, "available", lambda *_: False)("chat"):
@@ -1165,11 +1223,6 @@ class FinanceRuntime:
                     "comprehensive": "Explain thoroughly with the key figures.",
                 }.get(tone, "Keep it focused: lead with the answer, then one insight.")
             )
-            if getattr(route, "execution_path", "") == "cfo_followup":
-                system += (
-                    "Answer the current follow-up directly; do not restate the full "
-                    "finance brief unless it is necessary for the answer. "
-                )
             recent = "\n".join(
                 f"{turn.get('role')}: {str(turn.get('content'))[:200]}"
                 for turn in (chat_history or [])[-6:]

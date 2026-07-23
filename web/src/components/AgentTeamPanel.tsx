@@ -1,7 +1,6 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { ArrowUpRight, BadgeDollarSign, PanelRightClose, Send, ShieldCheck, Sparkles, TrendingUp, X } from "lucide-react";
-import { sendChatMessage, sendChatMessageStream } from "../services/financeApi";
-import { AGENTS, type AgentType } from "../types/agents";
+import { sendChatMessageStream } from "../services/financeApi";
 import type { ChatResponse } from "../types/financeAgent";
 import { AgentResponse } from "./AgentResponse";
 
@@ -34,7 +33,6 @@ export function AgentTeamPanel({
   prefill,
   onPrefillConsumed,
 }: AgentTeamPanelProps) {
-  const [activeAgent, setActiveAgent] = useState<AgentType>("cfo");
   const [input, setInput] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -46,11 +44,6 @@ export function AgentTeamPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, prefill]);
-
-  const activeMeta = useMemo(
-    () => AGENTS.find((agent) => agent.id === activeAgent) ?? AGENTS[0],
-    [activeAgent]
-  );
 
   const sendPrompt = async (prompt: string) => {
     if (!prompt || isSending) return;
@@ -75,7 +68,6 @@ export function AgentTeamPanel({
       await sendChatMessageStream(
         userId,
         prompt,
-        activeMeta.requestedSpecialist,
         (event) => {
           if (event.type === "delta") {
             streamed += event.text;
@@ -91,21 +83,11 @@ export function AgentTeamPanel({
           }
         }
       );
-    } catch {
-      // Streaming failed — fall back to the non-streaming endpoint.
-      try {
-        const response = await sendChatMessage(userId, prompt, activeMeta.requestedSpecialist);
-        updateLast(() => ({
-          role: "assistant",
-          content: response.reply,
-          response,
-        }));
-      } catch (error: any) {
-        updateLast(() => ({
-          role: "assistant",
-          content: error?.message ?? "Request failed. Check the server.",
-        }));
-      }
+    } catch (error: any) {
+      updateLast(() => ({
+        role: "assistant",
+        content: error?.message ?? "Request failed. Check the server.",
+      }));
     } finally {
       setIsSending(false);
     }
@@ -135,33 +117,6 @@ export function AgentTeamPanel({
           >
             <X />
           </button>
-        </div>
-      </div>
-
-      <div className="agent-team-selector">
-        <div className="agent-team-grid">
-          {AGENTS.map((agent) => (
-            <button
-              key={agent.id}
-              type="button"
-              onClick={() => setActiveAgent(agent.id)}
-              className={`agent-team-agent-button ${
-                activeAgent === agent.id ? "agent-team-agent-button-active" : ""
-              }`}
-              title={agent.label}
-            >
-              <div className={`agent-team-badge agent-team-badge-${agent.id}`}>
-                {agent.icon}
-              </div>
-              <div className="agent-team-agent-label">
-                {agent.shortLabel}
-              </div>
-            </button>
-          ))}
-        </div>
-        <div className="agent-team-active-card">
-          <div className="agent-team-active-title">{activeMeta.label}</div>
-          <div className="agent-team-active-summary">{activeMeta.summary}</div>
         </div>
       </div>
 
@@ -275,7 +230,7 @@ export function AgentTeamPanel({
             type="text"
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={`Ask ${activeMeta.label}...`}
+            placeholder="Ask CFO..."
             className="agent-team-input"
           />
           <button

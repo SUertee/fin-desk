@@ -6,7 +6,7 @@ from app.models.user import UserPreferences, UserProfile
 from app.routes import workspace as workspace_route
 from app.routes.health import health
 from app.runtime.orchestration.finance_runtime import FinanceRuntime
-from app.runtime.policy.runtime_policy import evaluate_runtime_policy
+from tests.cfo_decision_fakes import execute
 
 TRANSACTIONS = [
     {
@@ -41,7 +41,7 @@ def _profile(**preferences) -> dict:
 
 
 async def _run(message: str, *, preferences: dict | None = None, **kwargs) -> dict:
-    runtime = FinanceRuntime()
+    runtime = FinanceRuntime(decision_engine=execute("finance.expense_review"))
     return await runtime.handle(
         user_id="demo",
         message=message,
@@ -96,34 +96,14 @@ class TestPreferences:
         )
         assert "Audit confidence" in heavy["reply"]
 
-
-class TestSpecialistHint:
-    def test_hint_adds_specialist(self):
-        policy = evaluate_runtime_policy(
-            "what is my balance", transactions=[{"amount": 1}],
-            requested_specialist="budget_coach",
-        )
-        assert "budget_coach" in policy.required_specialists
-
-    def test_hint_never_removes_policy_selection(self):
-        policy = evaluate_runtime_policy(
-            "帮我分析消费", transactions=[{"amount": 1}],
-            requested_specialist="budget_coach",
-        )
-        assert "expense_analyst" in policy.required_specialists
-        assert "budget_coach" in policy.required_specialists
-
-    def test_auditor_and_unknown_names_are_not_hintable(self):
-        for name in ("auditor", "market_context", "hacker"):
-            policy = evaluate_runtime_policy(
-                "hello", transactions=[{"amount": 1}], requested_specialist=name
-            )
-            assert name not in policy.required_specialists
-
-
 @pytest.mark.asyncio
 class TestWorkspaceBrief:
     async def test_brief_from_orchestration_path(self, monkeypatch):
+        monkeypatch.setattr(
+            workspace_route._runtime,
+            "decision_engine",
+            execute("finance.expense_review"),
+        )
         monkeypatch.setattr(
             workspace_route, "list_transactions_db", lambda u, limit=2000: TRANSACTIONS
         )
@@ -162,7 +142,7 @@ class TestHealthTruth:
     def test_health_reports_actual_chat_runtime(self):
         payload = health()
 
-        assert payload["agent_runtime"] == "self_hosted_deterministic"
+        assert payload["agent_runtime"] == "self_hosted_cfo_agent"
         assert payload["analysis_runtime"] == "openai_agents_sdk"
         assert "get_investment_research_context" in payload["controlled_tools"]
         assert "consult_investment_research" in payload["specialist_agent_tools"]

@@ -367,28 +367,6 @@ export interface StatementImportResult {
   };
 }
 
-export async function sendChatMessage(
-  userId: string,
-  message: string,
-  requestedSpecialist?: string
-): Promise<ChatResponse> {
-  const response = await fetch(`${apiBaseUrl}/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      user_id: userId,
-      message,
-      requested_specialist: requestedSpecialist ?? null,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-
-  return (await response.json()) as ChatResponse;
-}
-
 export async function fetchAgentRuns(
   userId: string,
   limit = 10,
@@ -480,7 +458,6 @@ export type ChatStreamEvent =
 export async function sendChatMessageStream(
   userId: string,
   message: string,
-  requestedSpecialist: string | undefined,
   onEvent: (event: ChatStreamEvent) => void
 ): Promise<void> {
   const response = await fetch(`${apiBaseUrl}/chat/stream`, {
@@ -489,7 +466,6 @@ export async function sendChatMessageStream(
     body: JSON.stringify({
       user_id: userId,
       message,
-      requested_specialist: requestedSpecialist ?? null,
     }),
   });
   if (!response.ok || !response.body) {

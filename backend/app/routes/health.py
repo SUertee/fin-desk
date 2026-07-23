@@ -6,14 +6,12 @@ from functools import lru_cache
 
 from fastapi import APIRouter
 
-from app.agents.specialists import OPENAI_SPECIALIST_TOOL_NAMES
 from app.connectors.cache.redis_cache import redis_cache_status
 from app.runtime.orchestration.finance_runtime import (
     FinanceRuntime,
     SPECIALIST_TOOL_BY_AGENT,
 )
 from app.services.schema import FINANCE_ANALYSIS_SCHEMA
-from app.tools.openai_finance_tools import OPENAI_FINANCE_TOOL_NAMES
 
 router = APIRouter()
 
@@ -32,16 +30,11 @@ def health():
         "status": "ok",
         "version": "2.0.0",
         "architecture": "cfo_first",
-        # The runtime actually serving /chat; the SDK runtime only backs /analyze.
-        "agent_runtime": "self_hosted_deterministic",
+        "agent_runtime": "self_hosted_cfo_agent",
         "analysis_runtime": "openai_agents_sdk",
         "user_facing_agent": "cfo",
         "controlled_tools": list(_self_hosted_tool_names()),
         "specialist_agent_tools": list(SPECIALIST_TOOL_BY_AGENT.values()),
-        "analysis_adapter_tools": [
-            *OPENAI_FINANCE_TOOL_NAMES,
-            *OPENAI_SPECIALIST_TOOL_NAMES,
-        ],
         "capabilities": {
             "investment_research": "read_only",
             "hypothetical_scenarios": True,
@@ -53,10 +46,11 @@ def health():
             "durable_source": "postgresql",
         },
         "runtime_components": [
-            "team.finance_team_runtime",
-            "providers.openai_cfo_runtime",
+            "orchestration.finance_runtime",
+            "agents.cfo.decision",
             "providers.openai_analysis_runtime",
-            "harness.agent_contracts",
+            "capabilities.catalog",
+            "capabilities.resolver",
             "policy.runtime_policy",
             "policy.audit_runner",
             "specialists.investment_research",

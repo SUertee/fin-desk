@@ -24,7 +24,6 @@ from app.runtime.capabilities.definitions import (
     TOOL_CAPABILITY_DEFINITIONS,
 )
 from app.runtime.execution import (
-    AgentContext,
     ExecutionPlan,
     PlanStep,
     ToolObservation,
@@ -232,14 +231,9 @@ def test_plan_binding_resolves_semantic_ids_to_existing_registry_names():
 
 
 def test_planner_emits_semantic_capability_ids_only():
+    runtime = FinanceRuntime()
     plan = build_execution_plan(
-        AgentContext(
-            request_id="req-plan",
-            user_id="demo",
-            entrypoint="chat",
-            message="Analyze my spending",
-            transactions=[{"amount": -20, "category": "shopping"}],
-        ),
+        ["finance.expense_review"],
         RuntimePolicyResult(
             complexity="moderate",
             risk_level="medium",
@@ -247,6 +241,7 @@ def test_planner_emits_semantic_capability_ids_only():
             audit_required=True,
             max_tool_calls=6,
         ),
+        runtime.capability_catalog,
     )
 
     assert "finance.expense_snapshot" in plan.tool_capability_ids

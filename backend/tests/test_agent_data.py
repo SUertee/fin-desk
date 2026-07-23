@@ -7,6 +7,10 @@ from app.models.agent_data import (
     normalize_finance_agent_data,
 )
 from app.models.chat import ChatResponse
+from app.models.turn_execution import TurnExecutionFacts
+
+
+EXECUTED = TurnExecutionFacts(outcome="executed", evidence_available=True)
 
 
 def test_finance_agent_data_accepts_expected_sections():
@@ -92,6 +96,7 @@ def test_chat_response_accepts_finance_agent_data():
         reply="本月现金流稳定，但数据样本有限。",
         agent_used="cfo",
         data=data,
+        execution=EXECUTED,
     )
 
     assert response.data.audit.status == "data_limited"
@@ -101,6 +106,7 @@ def test_chat_response_discards_legacy_agent_data_sections():
     response = ChatResponse(
         reply="Legacy payload ignored.",
         data={"category_summary": {}, "anomalies": []},
+        execution=EXECUTED,
     )
 
     assert response.data is None
@@ -110,6 +116,7 @@ def test_chat_response_discards_malformed_known_sections():
     response = ChatResponse(
         reply="Malformed payload ignored.",
         data={"actions": [{"title": "Broken", "rationale": "x"}]},
+        execution=EXECUTED,
     )
 
     assert response.data is None
@@ -118,6 +125,7 @@ def test_chat_response_discards_malformed_known_sections():
 def test_chat_response_normalizes_valid_raw_agent_data():
     response = ChatResponse(
         reply="Valid payload accepted.",
+        execution=EXECUTED,
         data={
             "summary_cards": [
                 {

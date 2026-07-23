@@ -11,11 +11,12 @@ from datetime import date
 import pytest
 
 from app.runtime.orchestration.intake import (
+    ModelContextualizationResult,
     ModelTurnContextualizer,
     SlotResolver,
     TurnContextualizer,
 )
-from app.runtime.orchestration.router.facts import MessageFacts
+from tests.cfo_decision_fakes import clarify, direct, execute
 
 TODAY = date(2026, 7, 6)
 
@@ -47,8 +48,7 @@ LAST_QUERY_DINING_TOTAL = {
 
 
 def _resolve(message, memory=None, today=TODAY):
-    facts = MessageFacts.from_message(message, [], memory)
-    return SlotResolver().resolve(message, facts, memory, today=today)
+    return SlotResolver().resolve(message, memory, today=today)
 
 
 class TestSlotResolver:
@@ -166,7 +166,7 @@ class TestTurnContextualizerFacade:
                 return True
 
             async def contextualize(self, *args, **kwargs):
-                return None
+                return ModelContextualizationResult(status="failed")
 
         contextualizer = TurnContextualizer(model=FailingModel())
         turn = await contextualizer.contextualize("那餐饮呢？", memory_context=None)
@@ -184,7 +184,7 @@ class TestTurnContextualizerFacade:
 
             async def contextualize(self, raw, chat_history=None, memory_context=None):
                 calls.append(raw)
-                return None
+                return ModelContextualizationResult(status="failed")
 
         contextualizer = TurnContextualizer(model=RecordingModel())
         await contextualizer.contextualize("那餐饮呢？", memory_context=LAST_QUERY_SHOPPING_SHARE)
@@ -219,7 +219,7 @@ class TestModelTurnContextualizer:
                     ],
                     "confidence": 0.9,
                     # hostile extras must be ignored
-                    "execution_path": "cfo_analysis",
+                    "ui_mode": "analysis",
                     "tool": "run_sql",
                     "sql": "DROP TABLE transactions",
                 }
@@ -233,7 +233,7 @@ class TestModelTurnContextualizer:
         assert turn.resolution_status == "resolved"
         assert turn.resolved_slots[0].source == "model"
         dumped = turn.model_dump()
-        assert "execution_path" not in dumped
+        assert "ui_mode" not in dumped
         assert "sql" not in dumped
 
         # Invalid status enum -> output rejected, never a crash.
@@ -326,7 +326,7 @@ class TestLastQueryMemory:
 
 @pytest.mark.asyncio
 class TestRuntimeIntegration:
-    async def _run(self, monkeypatch, message, memory_context):
+    async def _run(self, monkeypatch, message, memory_context, decision_engine):
         from app.runtime.orchestration import finance_runtime as fr
 
         records = []
@@ -340,8 +340,8 @@ class TestRuntimeIntegration:
             return {"filters": filters.model_dump(exclude_none=True), "total": 1234.5, "count": 7, "groups": []}
 
         monkeypatch.setattr(fr, "run_transaction_query", fake_query)
-        runtime = fr.FinanceRuntime()
-        runtime.llm_client = None  # zero LLM: deterministic intake + routing
+        runtime = fr.FinanceRuntime(decision_engine=decision_engine)
+        runtime.llm_client = None
 
         result = await runtime.handle(
             user_id="demo",
@@ -367,7 +367,12 @@ class TestRuntimeIntegration:
                 "last_topic": {"capability": "spending_review", "focus": "shopping"},
             }
         }
-        result, records, captured = await self._run(monkeypatch, "那餐饮呢？", memory)
+        result, records, captured = await self._run(
+            monkeypatch,
+            "那餐饮呢？",
+            memory,
+            execute("finance.query_transactions"),
+        )
 
         # Typed query executed against the REWRITTEN message.
         assert captured, "query_transactions should run on the effective message"
@@ -397,13 +402,18 @@ class TestRuntimeIntegration:
             "resolved_slots",
             "model",
         }
-        assert result["route"]["execution_path"] == "cfo_analysis"
+        assert result["execution"]["outcome"] == "executed"
 
     async def test_unresolved_reference_routes_to_clarification(self, monkeypatch):
-        result, records, captured = await self._run(monkeypatch, "那餐饮呢？", None)
+        result, records, captured = await self._run(
+            monkeypatch,
+            "那餐饮呢？",
+            None,
+            clarify("请补充要查询的月份。"),
+        )
 
         assert captured == []  # no fabricated ledger query
-        assert result["route"]["execution_path"] == "clarification"
+        assert result["execution"]["outcome"] == "clarification"
         contextualization = records[0].policy["contextualization"]
         assert contextualization["resolution_status"] == "needs_clarification"
         # llm_client is None -> the model stage is honestly "unavailable".
@@ -454,6 +464,11 @@ class TestRuntimeIntegration:
         )
         monkeypatch.setattr(chat_route, "get_latest_analysis_run_db", lambda u: None)
         monkeypatch.setattr(chat_route._runtime, "llm_client", None)
+        monkeypatch.setattr(
+            chat_route._runtime,
+            "decision_engine",
+            execute("finance.query_transactions"),
+        )
 
         await chat_route.chat(ChatRequest(user_id="demo", message="那餐饮呢？"))
 
@@ -462,12 +477,18 @@ class TestRuntimeIntegration:
 
 
     async def test_capability_question_stays_light_end_to_end(self, monkeypatch):
-        result, records, captured = await self._run(monkeypatch, "你有什么用？", None)
+        result, records, captured = await self._run(
+            monkeypatch,
+            "你有什么用？",
+            None,
+            direct("我可以分析账本、预算和投资研究证据。"),
+        )
 
-        route = result["route"]
-        assert route["run_finance_pipeline"] is False
-        assert route["attach_evidence"] is False
-        assert route["emit_steps"] is False
+        execution = result["execution"]
+        assert execution["outcome"] == "direct_response"
+        assert execution["evidence_available"] is False
+        assert execution["specialist_findings_available"] is False
+        assert execution["process_available"] is False
         assert result["data"] is None  # no evidence / team-process payload
         assert captured == []
 

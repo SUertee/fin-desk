@@ -26,7 +26,6 @@ from app.runtime.orchestration.intake.contracts import (
     ContextualizedTurn,
     ResolvedSlot,
 )
-from app.runtime.orchestration.router.facts import excerpt
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +53,10 @@ class ModelContextualizationResult(BaseModel):
 _PROMPT_PATH = Path(__file__).parent / "prompts" / "turn_contextualizer.md"
 
 
+def _excerpt(value: str, limit: int) -> str:
+    return " ".join((value or "").split())[:limit]
+
+
 @lru_cache(maxsize=1)
 def _system_prompt() -> str:
     return _PROMPT_PATH.read_text(encoding="utf-8")
@@ -75,9 +78,9 @@ def _render_user_prompt(
             lines.append(f"{key}: {value}")
     brief = str(session_memory.get("last_result_brief") or "")
     if brief:
-        lines.append(f"last_result_brief: {excerpt(brief, 100)}")
+        lines.append(f"last_result_brief: {_excerpt(brief, 100)}")
     turns = [
-        f"  {turn.get('role')}: {excerpt(str(turn.get('content') or ''), turn_excerpt)}"
+        f"  {turn.get('role')}: {_excerpt(str(turn.get('content') or ''), turn_excerpt)}"
         for turn in (chat_history or [])[-max_turns:]
         if turn.get("content")
     ]

@@ -28,6 +28,7 @@ from app.tools.mcp_market_data import (
     normalize_market_history,
     project_external_history_for_specialist,
 )
+from tests.cfo_decision_fakes import execute
 
 
 NOW = datetime(2026, 7, 21, 10, 0, tzinfo=timezone.utc)
@@ -373,7 +374,8 @@ async def test_vibe_tool_calls_one_bounded_read_only_tool():
                 request_id="req-mcp",
                 user_id="demo",
                 entrypoint="chat",
-                message="请用 Vibe MCP 查询股票 AAPL 的外部行情",
+                raw_message="请用 Vibe MCP 查询股票 AAPL 的外部行情",
+                effective_message="请用 Vibe MCP 查询股票 AAPL 的外部行情",
             ),
         }
     )
@@ -403,7 +405,8 @@ async def test_vibe_tool_failure_is_explicit_and_has_no_fallback():
                 request_id="req-mcp-fail",
                 user_id="demo",
                 entrypoint="chat",
-                message="请用 Vibe MCP 查询股票 AAPL 的外部行情",
+                raw_message="请用 Vibe MCP 查询股票 AAPL 的外部行情",
+                effective_message="请用 Vibe MCP 查询股票 AAPL 的外部行情",
             ),
         }
     )
@@ -426,6 +429,8 @@ async def test_vibe_tool_failure_is_explicit_and_has_no_fallback():
 
 
 def test_planner_selects_external_or_internal_market_evidence_exclusively():
+    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+
     policy = RuntimePolicyResult(
         complexity="complex",
         risk_level="high",
@@ -433,32 +438,21 @@ def test_planner_selects_external_or_internal_market_evidence_exclusively():
         audit_required=True,
         max_tool_calls=10,
     )
-    external_context = AgentContext(
-        request_id="req-external",
-        user_id="demo",
-        entrypoint="chat",
-        message="请用 Vibe MCP 查询股票 AAPL 的外部行情",
+    tool = VibeMarketDataTool(
+        FakeMcpClient(response=_valid_response()), _settings(), clock=lambda: NOW
     )
+    runtime = FinanceRuntime(mcp_market_data_tool=tool)
     external = build_execution_plan(
-        external_context,
+        [EXTERNAL_MARKET_HISTORY_CAPABILITY, "investment.research_review"],
         policy,
-        available_capabilities={EXTERNAL_MARKET_HISTORY_CAPABILITY},
+        runtime.capability_catalog,
     )
-    unavailable = build_execution_plan(external_context, policy)
     internal = build_execution_plan(
-        AgentContext(
-            request_id="req-internal",
-            user_id="demo",
-            entrypoint="chat",
-            message="请分析股票 AAPL",
-        ),
-        policy,
+        ["investment.research_review"], policy, runtime.capability_catalog
     )
 
     assert EXTERNAL_MARKET_HISTORY_CAPABILITY in external.tool_capability_ids
     assert "investment.research_context" not in external.tool_capability_ids
-    assert EXTERNAL_MARKET_HISTORY_CAPABILITY not in unavailable.tool_capability_ids
-    assert "investment.research_context" not in unavailable.tool_capability_ids
     assert "investment.research_context" in internal.tool_capability_ids
 
 
@@ -472,17 +466,12 @@ def test_mcp_tool_binds_through_capability_catalog():
     )
     item = catalog.list()[0]
     plan = build_execution_plan(
-        AgentContext(
-            request_id="req-bind",
-            user_id="demo",
-            entrypoint="chat",
-            message="请用 Vibe MCP 查询股票 AAPL 的外部行情",
-        ),
+        [EXTERNAL_MARKET_HISTORY_CAPABILITY],
         RuntimePolicyResult(
             required_specialists=["investment_research"],
             max_tool_calls=10,
         ),
-        available_capabilities={EXTERNAL_MARKET_HISTORY_CAPABILITY},
+        catalog,
     )
     external_only = type(plan)(
         steps=[
@@ -518,7 +507,13 @@ async def test_runtime_uses_mcp_artifact_without_internal_provider_fallback(monk
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(mcp_market_data_tool=tool)
+    runtime = FinanceRuntime(
+        mcp_market_data_tool=tool,
+        decision_engine=execute(
+            EXTERNAL_MARKET_HISTORY_CAPABILITY,
+            "investment.research_review",
+        ),
+    )
     runtime.llm_client = None
 
     result = await runtime.handle(
@@ -531,7 +526,7 @@ async def test_runtime_uses_mcp_artifact_without_internal_provider_fallback(monk
     )
 
     called = {call.name for call in records[0].tool_calls if call.status == "called"}
-    assert result["route"]["execution_path"] == "cfo_analysis"
+    assert result["execution"]["outcome"] == "executed"
     assert "get_vibe_market_data" in called
     assert "get_investment_research_context" not in called
     assert result["data"]["summary_cards"][0]["value"] == "USD 110"
@@ -555,7 +550,13 @@ async def test_runtime_mcp_failure_remains_external_and_reports_unavailable(monk
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(mcp_market_data_tool=tool)
+    runtime = FinanceRuntime(
+        mcp_market_data_tool=tool,
+        decision_engine=execute(
+            EXTERNAL_MARKET_HISTORY_CAPABILITY,
+            "investment.research_review",
+        ),
+    )
     runtime.llm_client = None
 
     result = await runtime.handle(
@@ -605,6 +606,10 @@ async def test_runtime_does_not_plan_unhealthy_external_capability(monkeypatch):
     runtime = FinanceRuntime(
         mcp_market_data_tool=tool,
         capability_health_service=health,
+        decision_engine=execute(
+            EXTERNAL_MARKET_HISTORY_CAPABILITY,
+            "investment.research_review",
+        ),
     )
     runtime.llm_client = None
 
@@ -622,4 +627,4 @@ async def test_runtime_does_not_plan_unhealthy_external_capability(monkeypatch):
     assert client.calls == []
     assert "get_vibe_market_data" not in called
     assert "get_investment_research_context" not in called
-    assert result["route"]["execution_path"] == "cfo_analysis"
+    assert result["execution"]["outcome"] == "blocked"

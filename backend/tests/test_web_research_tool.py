@@ -70,7 +70,8 @@ def _context(message: str) -> AgentContext:
         request_id="req-web",
         user_id="demo",
         entrypoint="chat",
-        message=message,
+        raw_message=message,
+        effective_message=message,
         profile={"name": "Ryan", "email": "ryan@example.com"},
     )
 

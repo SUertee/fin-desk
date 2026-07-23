@@ -12,6 +12,7 @@ from app.tools.query_tools import (
     has_query_intent,
     run_transaction_query,
 )
+from tests.cfo_decision_fakes import execute
 
 TODAY = date(2026, 7, 6)
 
@@ -97,7 +98,9 @@ class TestEndToEnd:
 
         monkeypatch.setattr(query_tools, "aggregate_transactions_db", fake_aggregate)
 
-        runtime = FinanceRuntime()
+        runtime = FinanceRuntime(
+            decision_engine=execute("finance.query_transactions")
+        )
         result = await runtime.handle(
             user_id="demo",
             message="6月餐饮花了多少",

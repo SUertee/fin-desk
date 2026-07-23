@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
-  BookmarkPlus,
   ChevronDown,
   ChevronRight,
   MessagesSquare,
@@ -14,13 +13,12 @@ import {
   fetchOfficeEvidence,
   fetchOfficeSessionMessages,
   fetchOfficeSessions,
-  sendOfficeChatMessage,
   sendOfficeChatMessageStream,
 } from "../services/officeApi";
 import type {
-  ConversationRoute,
   EvidenceStep,
   OfficeSession,
+  TurnExecutionFacts,
   UserEvidenceProjection,
 } from "../types/office";
 import type { ChatResponse, FinanceAgentData } from "../types/financeAgent";
@@ -38,7 +36,7 @@ type ThreadMessage = {
   content: string;
   createdAt: string | null;
   requestId: string | null;
-  route: ConversationRoute | null;
+  execution: TurnExecutionFacts | null;
   data: FinanceAgentData | null;
   steps: EvidenceStep[] | null;
   pending?: boolean;
@@ -134,7 +132,7 @@ export function MyOfficePage({
             content: row.content,
             createdAt: row.created_at,
             requestId: row.request_id ?? null,
-            route: row.route ?? null,
+            execution: row.execution ?? null,
             data: null,
             steps: null,
           }))
@@ -217,7 +215,7 @@ export function MyOfficePage({
           content: trimmed,
           createdAt: sentAt,
           requestId: null,
-          route: null,
+          execution: null,
           data: null,
           steps: null,
         },
@@ -227,7 +225,7 @@ export function MyOfficePage({
           content: "",
           createdAt: null,
           requestId: null,
-          route: null,
+          execution: null,
           data: null,
           steps: null,
           pending: true,
@@ -246,7 +244,7 @@ export function MyOfficePage({
           content: response.reply,
           createdAt: new Date().toISOString(),
           requestId: response.request_id ?? null,
-          route: response.route ?? null,
+          execution: response.execution,
           data: response.data ?? null,
           pending: false,
         }));
@@ -261,26 +259,20 @@ export function MyOfficePage({
           setSessions((prev) => [session, ...(prev ?? [])]);
         }
 
-        try {
-          let streamed = "";
-          await sendOfficeChatMessageStream(userId, sessionId, trimmed, (event) => {
-            if (event.type === "delta") {
-              streamed += event.text;
-              const content = streamed;
-              updateCfo((msg) => ({ ...msg, content }));
-            } else if (event.type === "steps") {
-              updateCfo((msg) => ({ ...msg, steps: event.steps }));
-            } else if (event.type === "done") {
-              finishWith(event.response);
-            } else if (event.type === "error") {
-              throw new Error(event.error);
-            }
-          });
-        } catch {
-          // Streaming failed — fall back to the non-streaming endpoint.
-          const response = await sendOfficeChatMessage(userId, sessionId, trimmed);
-          finishWith(response);
-        }
+        let streamed = "";
+        await sendOfficeChatMessageStream(userId, sessionId, trimmed, (event) => {
+          if (event.type === "delta") {
+            streamed += event.text;
+            const content = streamed;
+            updateCfo((msg) => ({ ...msg, content }));
+          } else if (event.type === "steps") {
+            updateCfo((msg) => ({ ...msg, steps: event.steps }));
+          } else if (event.type === "done") {
+            finishWith(event.response);
+          } else if (event.type === "error") {
+            throw new Error(event.error);
+          }
+        });
         void loadSessions();
       } catch (error: any) {
         updateCfo((msg) => ({
@@ -366,16 +358,6 @@ export function MyOfficePage({
               ))
             )}
           </div>
-          <div className="office-rail-secondary">
-            <div className="office-rail-subrow">
-              <span>待跟进事项</span>
-              <span className="office-rail-subrow-note">暂无</span>
-            </div>
-            <div className="office-rail-subrow">
-              <span>Saved Memos</span>
-              <span className="office-rail-subrow-note">暂无</span>
-            </div>
-          </div>
         </aside>
         {railOpen && (
           <button
@@ -401,14 +383,6 @@ export function MyOfficePage({
                 {activeSession?.title || "新会议"}
               </div>
             </div>
-            <button
-              type="button"
-              className="office-memo-button"
-              disabled
-              title="备忘功能即将开放"
-            >
-              <BookmarkPlus /> 保存为备忘
-            </button>
           </header>
 
           <div className="office-messages" ref={threadRef}>
@@ -529,32 +503,20 @@ function UserBubble({
   );
 }
 
-function hasStructuredAgentData(data: FinanceAgentData | null): boolean {
-  return Boolean(
-    data?.findings?.length ||
-      data?.actions?.length ||
-      data?.summary_cards?.length ||
-      data?.audit
-  );
-}
-
 function buildCfoDisplayPolicy(
   message: ThreadMessage,
   evidence: UserEvidenceProjection | null
 ) {
-  const route = message.route;
-  const hasData = hasStructuredAgentData(message.data);
-  const canAttachEvidence = route ? route.attach_evidence : hasData;
-  const canShowSteps = route ? route.emit_steps : hasData;
-  const canShowStructuredAnswer = route
-    ? route.response_mode === "analysis" || route.run_finance_pipeline
-    : hasData;
-  const canShowEvidenceOnly = route?.execution_path === "evidence_only";
-  const steps = canShowSteps ? message.steps ?? evidence?.steps ?? null : null;
-  const findings = canShowStructuredAnswer || canShowEvidenceOnly
+  const execution = message.execution;
+  const executed = execution?.outcome === "executed";
+  const showProcess = Boolean(
+    execution?.process_available || (message.pending && message.steps?.length)
+  );
+  const steps = showProcess ? message.steps ?? evidence?.steps ?? null : null;
+  const findings = execution?.specialist_findings_available
     ? message.data?.findings ?? evidence?.findings ?? null
     : null;
-  const actions = canShowStructuredAnswer ? message.data?.actions ?? null : null;
+  const actions = executed ? message.data?.actions ?? null : null;
   const findingCount = findings?.length ?? 0;
   const sourceCount = evidence?.cited_sources.length ?? null;
   const isSettled = Boolean(message.requestId && !message.pending);
@@ -565,15 +527,10 @@ function buildCfoDisplayPolicy(
     actions,
     sourceCount,
     findingCount,
-    // 「CFO 判断」eyebrow marks grounded analysis answers; plain chat stays unlabeled.
-    showJudgementLabel:
-      isSettled && (route ? route.response_mode === "analysis" : hasData),
-    showSourcesChip: isSettled && canAttachEvidence,
+    showJudgementLabel: isSettled && executed,
+    showSourcesChip: isSettled && Boolean(execution?.evidence_available),
     showFindingsChip:
-      isSettled &&
-      canAttachEvidence &&
-      (findingCount > 0 || Boolean(route?.run_finance_pipeline)),
-    showMemoChip: isSettled && canShowStructuredAnswer,
+      isSettled && Boolean(execution?.specialist_findings_available),
   };
 }
 
@@ -591,8 +548,7 @@ function CfoBubble({
   onOpenEvidence: (requestId: string, focus: DrawerFocus) => void;
 }) {
   const display = buildCfoDisplayPolicy(message, evidence);
-  const hasChipRow =
-    display.showSourcesChip || display.showFindingsChip || display.showMemoChip;
+  const hasChipRow = display.showSourcesChip || display.showFindingsChip;
 
   return (
     <div className="office-msg office-msg-cfo">
@@ -683,16 +639,6 @@ function CfoBubble({
                   {display.findingCount > 0
                     ? `团队发现 · ${display.findingCount}`
                     : "团队发现"}
-                </button>
-              )}
-              {display.showMemoChip && (
-                <button
-                  type="button"
-                  className="office-chip office-chip-disabled"
-                  disabled
-                  title="备忘功能即将开放"
-                >
-                  保存为备忘
                 </button>
               )}
             </div>
@@ -792,7 +738,7 @@ function EvidenceDrawer({
           </section>
 
           <section className="office-drawer-section">
-            <h3>CFO 思考</h3>
+            <h3>审计说明</h3>
             {auditNote || auditWarnings.length > 0 ? (
               <>
                 {auditNote && <p>{auditNote}</p>}
@@ -805,7 +751,7 @@ function EvidenceDrawer({
                 )}
               </>
             ) : (
-              <div className="office-muted">该回答暂无 CFO 思考说明。</div>
+              <div className="office-muted">该回答暂无审计说明。</div>
             )}
           </section>
 

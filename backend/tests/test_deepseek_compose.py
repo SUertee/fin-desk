@@ -5,6 +5,7 @@ import pytest
 from app.models.runtime import AgentRunUsage
 from app.runtime.llm.client import LLMResponse
 from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from tests.cfo_decision_fakes import execute
 
 TRANSACTIONS = [
     {"date": "2026-06-10", "month": "2026-06", "description": "房租",
@@ -28,7 +29,7 @@ class FakeDeepSeek:
             raise TimeoutError("provider timeout")
         return LLMResponse(
             content=self.reply,
-            usage=AgentRunUsage(requests=1, input_tokens=800, output_tokens=120, total_tokens=920),
+            usage=AgentRunUsage(request_count=1, input_tokens=800, output_tokens=120, total_tokens=920),
             model_name="deepseek-chat",
         )
 
@@ -53,7 +54,10 @@ class StreamingFakeDeepSeek(FakeDeepSeek):
 
 
 async def _run(client, message="帮我分析这个月消费"):
-    runtime = FinanceRuntime(llm_client=client)
+    runtime = FinanceRuntime(
+        llm_client=client,
+        decision_engine=execute("finance.expense_review"),
+    )
     return await runtime.handle(
         user_id="demo",
         message=message,
@@ -183,7 +187,10 @@ class TestLLMCompose:
         async def on_delta(text):
             deltas.append(text)
 
-        runtime = FinanceRuntime(llm_client=client)
+        runtime = FinanceRuntime(
+            llm_client=client,
+            decision_engine=execute("investment.research_review"),
+        )
         result = await runtime.handle(
             user_id="demo",
             message="Should I buy stock AAPL?",

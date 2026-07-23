@@ -11,9 +11,9 @@ from app.models.web_research import (
     WebSearchProviderResult,
     WebSearchProviderStatus,
 )
-from app.runtime.execution.context import AgentContext
 from app.runtime.execution.planner import build_execution_plan
 from app.services.web_research import WebResearchBudget, WebResearchService
+from tests.cfo_decision_fakes import direct, execute
 
 
 NOW = datetime(2026, 7, 19, 8, 0, tzinfo=timezone.utc)
@@ -134,12 +134,9 @@ def test_exhausted_budget_blocks_provider_call():
 
 
 def test_market_plan_searches_before_specialist_handoff():
-    context = AgentContext(
-        request_id="req-market",
-        user_id="demo",
-        entrypoint="chat",
-        message="What is the latest interest-rate news?",
-    )
+    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+
+    runtime = FinanceRuntime()
     policy = RuntimePolicyResult(
         complexity="moderate",
         risk_level="medium",
@@ -148,7 +145,9 @@ def test_market_plan_searches_before_specialist_handoff():
         allow_market_context=True,
         max_tool_calls=6,
     )
-    plan = build_execution_plan(context, policy)
+    plan = build_execution_plan(
+        ["market.context_review"], policy, runtime.capability_catalog
+    )
     tool_index = next(
         index
         for index, step in enumerate(plan.steps)
@@ -169,13 +168,15 @@ async def test_runtime_injects_research_before_market_specialist(monkeypatch):
     from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
     records = []
-    monkeypatch.setenv("MARKET_CONTEXT_ENABLED", "true")
     monkeypatch.setattr(
         finance_runtime,
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(web_research_service=_service())
+    runtime = FinanceRuntime(
+        web_research_service=_service(),
+        decision_engine=execute("market.context_review"),
+    )
     runtime.llm_client = None
 
     result = await runtime.handle(
@@ -211,7 +212,10 @@ async def test_light_conversation_never_calls_web_research(monkeypatch):
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(web_research_service=_service(provider))
+    runtime = FinanceRuntime(
+        web_research_service=_service(provider),
+        decision_engine=direct("你好，我在。"),
+    )
     runtime.llm_client = None
 
     result = await runtime.handle(
@@ -223,19 +227,18 @@ async def test_light_conversation_never_calls_web_research(monkeypatch):
         chat_history=[],
     )
 
-    assert result["route"]["run_finance_pipeline"] is False
+    assert result["execution"]["outcome"] == "direct_response"
     assert provider.calls == 0
     assert all(call.name != "search_web_research" for call in records[0].tool_calls)
 
 
 @pytest.mark.asyncio
-async def test_market_feature_gate_prevents_external_search(monkeypatch):
+async def test_direct_cfo_reply_does_not_call_external_search(monkeypatch):
     from app.runtime.orchestration import finance_runtime
     from app.runtime.orchestration.finance_runtime import FinanceRuntime
 
     provider = FakeProvider()
     records = []
-    monkeypatch.delenv("MARKET_CONTEXT_ENABLED", raising=False)
     monkeypatch.setattr(
         finance_runtime, "list_latest_quality_reports_db", lambda _user: []
     )
@@ -247,7 +250,12 @@ async def test_market_feature_gate_prevents_external_search(monkeypatch):
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(web_research_service=_service(provider))
+    runtime = FinanceRuntime(
+        web_research_service=_service(provider),
+        decision_engine=direct(
+            "I can run sourced market research when the question requires it."
+        ),
+    )
     runtime.llm_client = None
 
     await runtime.handle(

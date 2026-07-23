@@ -18,14 +18,12 @@ from app.models.runtime import AgentRunUsage
 
 from app.runtime.orchestration.intake.contracts import (
     ContextualizedTurn,
-    unchanged_turn,
 )
 from app.runtime.orchestration.intake.model_contextualizer import (
     ModelContextualizationResult,
     ModelTurnContextualizer,
 )
 from app.runtime.orchestration.intake.slot_resolver import SlotResolver
-from app.runtime.orchestration.router.facts import MessageFacts
 
 IntakeModelStatus = Literal[
     "skipped_deterministic",
@@ -46,16 +44,6 @@ class IntakeOutcome(BaseModel):
     model_latency_ms: Optional[float] = None
     model_name: Optional[str] = None
     model_usage: Optional["AgentRunUsage"] = None
-
-
-def _normalize_model_result(result: Any) -> ModelContextualizationResult:
-    """Tolerate legacy/fake contextualizers returning a turn or None."""
-
-    if isinstance(result, ModelContextualizationResult):
-        return result
-    if isinstance(result, ContextualizedTurn):
-        return ModelContextualizationResult(status="called", turn=result)
-    return ModelContextualizationResult(status="failed")
 
 
 class TurnContextualizer:
@@ -86,18 +74,8 @@ class TurnContextualizer:
         *,
         today: date | None = None,
     ) -> IntakeOutcome:
-        facts = MessageFacts.from_message(raw_message, chat_history, memory_context)
-
-        # High-certainty social turns are never rewritten ("OK", "哈哈").
-        if facts.is_empty or (
-            not facts.has_finance_signal
-            and not facts.has_digits
-            and (facts.is_exact_acknowledgement or facts.is_exact_greeting)
-        ):
-            return IntakeOutcome(turn=unchanged_turn(raw_message))
-
         turn = self.slot_resolver.resolve(
-            raw_message, facts, memory_context, today=today
+            raw_message, memory_context, today=today
         )
 
         # Deterministic answer stands — never fabricate an LLM call record.
@@ -108,8 +86,8 @@ class TurnContextualizer:
             return IntakeOutcome(turn=turn, model_status="skipped_model_unavailable")
 
         started = perf_counter()
-        result = _normalize_model_result(
-            await self.model.contextualize(raw_message, chat_history, memory_context)
+        result = await self.model.contextualize(
+            raw_message, chat_history, memory_context
         )
         latency_ms = round((perf_counter() - started) * 1000, 2)
 

@@ -70,7 +70,7 @@ User
 - **Frontend**: React 18, Vite, TypeScript, Recharts; lightweight zh/en i18n layer
 - **Backend**: FastAPI, Pydantic v2 contracts at every boundary
 - **Database**: PostgreSQL 16 with pgvector (vector retrieval planned; schema migrations are idempotent DDL)
-- **AI layer**: self-hosted deterministic agent runtime by default; OpenAI (Agents SDK) as an optional provider adapter isolated in `runtime/llm/`
+- **AI layer**: self-hosted CFO agent loop with deterministic capability binding, policy, evidence tools, and audit; provider adapters stay isolated in `runtime/llm/`
 - **Parsing**: GB18030 decoding, openpyxl (WeChat XLSX), pypdf (bank PDF text extraction)
 - **Infrastructure**: Docker Compose (pgvector + optional Redis cache + backend), GitHub Actions harness CI
 

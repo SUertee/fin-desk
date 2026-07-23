@@ -65,7 +65,7 @@ def test_stage_cost_uses_profile_native_currency_and_decimal_precision():
     service = CostingService(profiles=profiles)
 
     stage = service.stage_cost(
-        stage="route_classify",
+        stage="cfo_decide",
         status="called",
         profile_name="router",
         model_name="model-a",
@@ -190,7 +190,7 @@ def test_invalid_output_is_still_billed():
     )
 
     stage = service.stage_cost(
-        stage="route_classify",
+        stage="cfo_decide",
         status="invalid_output",
         profile_name="router",
         model_name="model-a",
@@ -233,7 +233,7 @@ def test_mixed_native_currencies_are_grouped_then_reported():
     service = CostingService(profiles=profiles, exchange_rate_lookup=lookup)
     stages = [
         service.stage_cost(
-            stage="route_classify",
+            stage="cfo_decide",
             status="called",
             profile_name="router",
             model_name="model-usd",
@@ -294,7 +294,7 @@ def test_missing_exchange_rate_preserves_native_amount_without_reporting_zero():
 def test_zero_usage_is_not_applicable_not_missing_pricing():
     service = CostingService(profiles={})
     stage = service.stage_cost(
-        stage="route_classify",
+        stage="cfo_decide",
         status="failed",
         profile_name="missing",
         model_name=None,
@@ -344,7 +344,7 @@ def test_stage_entry_costing_reuses_exchange_rate_per_currency_pair():
             "model_name": "model-usd",
             "input_tokens": 10,
         },
-        "route_classify": {
+        "cfo_decide": {
             "status": "called",
             "profile": "router",
             "model_name": "model-usd",

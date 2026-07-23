@@ -23,44 +23,21 @@ export type OfficeMessage = {
   role: string;
   content: string;
   request_id?: string | null;
-  route?: ConversationRoute | null;
+  execution?: TurnExecutionFacts | null;
   created_at: string;
 };
 
-export type ConversationIntent =
-  | "small_talk"
-  | "acknowledgement"
-  | "finance_query"
-  | "follow_up"
-  | "evidence_request"
-  | "clarification"
-  | "unsupported";
-
-export type ConversationExecutionPath =
-  | "light_reply"
-  | "cfo_analysis"
-  | "cfo_followup"
-  | "evidence_only"
-  | "clarification";
-
-export type ConversationMemoryScope = "none" | "session" | "finance_context";
-
-export type ConversationResponseMode =
-  | "light"
-  | "direct_answer"
-  | "analysis"
-  | "ask_clarification";
-
-export type ConversationRoute = {
-  intent: ConversationIntent;
-  execution_path: ConversationExecutionPath;
-  run_finance_pipeline: boolean;
-  emit_steps: boolean;
-  attach_evidence: boolean;
-  memory_scope: ConversationMemoryScope;
-  response_mode: ConversationResponseMode;
-  label?: string;
-  ui_hints?: Record<string, boolean>;
+export type TurnExecutionFacts = {
+  outcome:
+    | "direct_response"
+    | "clarification"
+    | "executed"
+    | "blocked"
+    | "failed";
+  evidence_available: boolean;
+  specialist_findings_available: boolean;
+  process_available: boolean;
+  policy_blocked: boolean;
 };
 
 export type EvidenceStepKind = "tool" | "specialist" | "audit";

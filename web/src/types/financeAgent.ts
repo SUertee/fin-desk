@@ -1,4 +1,4 @@
-import type { ConversationRoute } from "./office";
+import type { TurnExecutionFacts } from "./office";
 
 export type SummaryStatus = "neutral" | "good" | "watch" | "risk";
 export type EffortLevel = "low" | "medium" | "high";
@@ -43,7 +43,7 @@ export type ChatResponse = {
   agent_used?: string | null;
   request_id?: string | null;
   data?: FinanceAgentData | null;
-  route?: ConversationRoute | null;
+  execution: TurnExecutionFacts;
 };
 
 export type WorkspaceBrief = {

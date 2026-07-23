@@ -14,8 +14,10 @@ from app.knowledge import (
 from app.knowledge.markdown_ingestion import DEFAULT_CORPUS, parse_markdown_file
 from app.knowledge.retrieval import lexical_terms
 from app.models.runtime import RuntimePolicyResult
-from app.runtime.execution import AgentContext, build_execution_plan
+from app.runtime.execution import build_execution_plan
+from app.runtime.orchestration.finance_runtime import FinanceRuntime
 from app.runtime.policy.runtime_policy import evaluate_runtime_policy
+from tests.cfo_decision_fakes import execute
 
 
 def _artifact(*, as_of: date = date(2026, 7, 21)):
@@ -146,7 +148,7 @@ def test_postgres_retriever_returns_explicit_no_match(monkeypatch):
     )
 
 
-def test_planner_selects_knowledge_but_not_for_ledger_or_market_queries():
+def test_planner_executes_only_requested_knowledge_ledger_or_market_capabilities():
     base_policy = RuntimePolicyResult(
         complexity="moderate",
         risk_level="low",
@@ -154,32 +156,17 @@ def test_planner_selects_knowledge_but_not_for_ledger_or_market_queries():
         audit_required=True,
         max_tool_calls=6,
     )
+    runtime = FinanceRuntime()
     knowledge = build_execution_plan(
-        AgentContext(
-            request_id="knowledge",
-            user_id="demo",
-            entrypoint="chat",
-            message="应急基金应该准备多少",
-        ),
-        base_policy,
+        ["knowledge.lexical_search"], base_policy, runtime.capability_catalog
     )
     ledger = build_execution_plan(
-        AgentContext(
-            request_id="ledger",
-            user_id="demo",
-            entrypoint="chat",
-            message="6 月餐饮花了多少",
-        ),
-        base_policy,
+        ["finance.query_transactions"], base_policy, runtime.capability_catalog
     )
     market = build_execution_plan(
-        AgentContext(
-            request_id="market",
-            user_id="demo",
-            entrypoint="chat",
-            message="最近市场新闻如何",
-        ),
+        ["market.context_review"],
         base_policy.model_copy(update={"required_specialists": ["market_context"]}),
+        runtime.capability_catalog,
     )
 
     assert "knowledge.lexical_search" in knowledge.tool_capability_ids
@@ -188,7 +175,11 @@ def test_planner_selects_knowledge_but_not_for_ledger_or_market_queries():
 
 
 def test_emergency_fund_is_budget_guidance_not_investment_research():
-    policy = evaluate_runtime_policy("我的应急基金应该存多少")
+    runtime = FinanceRuntime()
+    policy = evaluate_runtime_policy(
+        ["finance.budget_coaching", "knowledge.lexical_search"],
+        runtime.capability_catalog,
+    )
 
     assert "budget_coach" in policy.required_specialists
     assert "investment_research" not in policy.required_specialists
@@ -221,7 +212,12 @@ async def test_runtime_uses_bounded_knowledge_and_records_citations(monkeypatch)
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(knowledge_retriever=retriever)
+    runtime = FinanceRuntime(
+        knowledge_retriever=retriever,
+        decision_engine=execute(
+            "knowledge.lexical_search", "finance.budget_coaching"
+        ),
+    )
     runtime.llm_client = None
 
     result = await runtime.handle(
@@ -255,7 +251,10 @@ async def test_runtime_states_no_match_without_fabricating_guidance(monkeypatch)
     monkeypatch.setattr(runtime_module, "list_latest_quality_reports_db", lambda _user: [])
     monkeypatch.setattr(runtime_module, "write_session_context", lambda **_kwargs: None)
     monkeypatch.setattr(runtime_module, "save_agent_run_record_db", lambda _record: True)
-    runtime = FinanceRuntime(knowledge_retriever=NoMatchRetriever())
+    runtime = FinanceRuntime(
+        knowledge_retriever=NoMatchRetriever(),
+        decision_engine=execute("knowledge.lexical_search"),
+    )
     runtime.llm_client = None
 
     result = await runtime.handle(

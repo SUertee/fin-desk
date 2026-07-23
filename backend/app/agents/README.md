@@ -4,8 +4,10 @@ CFO-first agent definitions for the FinDesk server.
 
 ## Current Shape
 
-The default `/chat` path runs the self-hosted deterministic runtime: the CFO
-owns the final user-facing answer, and specialists execute as
+The default `/chat` path runs the self-hosted CFO agent loop. The CFO chooses
+conversation, clarification, or registered capabilities through a strict
+decision contract. The runtime owns policy, binding, and execution;
+specialists execute as
 `run(SpecialistInput) -> SpecialistAgentOutput` modules resolved from
 `specialists.REGISTRY` by the runtime's `SpecialistRunner`. The `/analyze`
 path is backed by a dedicated Analysis Specialist agent on the OpenAI Agents
@@ -22,11 +24,7 @@ SDK adapter with a typed output contract.
 | `specialists/contracts.py` | `SpecialistInput` / `SpecialistAgentOutput` typed contracts |
 | `specialists/__init__.py` | `REGISTRY` mapping specialist names to run-modules |
 | `specialists/analysis_agent.py` | OpenAI Agents SDK specialist for `/analyze` JSON output |
-| `specialists/*_agent.py` | SDK builder variants used only by the `runtime/llm` adapter path |
-| `cfo/agent.py` | OpenAI Agents SDK CFO factory (adapter path only) |
-| `cfo/prompt.md` | CFO system instructions for the SDK adapter |
-| `cfo/schema.py` | CFO output schema helpers |
-| `orchestrator.py` | Legacy entrypoint shell (routes no longer use it) |
+| `cfo/decision.py` | Strict CFO turn-decision contract and model boundary |
 
 ## Runtime Boundary
 

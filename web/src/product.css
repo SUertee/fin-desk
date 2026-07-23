@@ -402,7 +402,6 @@ body {
 }
 
 .agent-team-subtitle,
-.agent-team-active-summary,
 .agent-team-empty,
 .agent-team-sending {
   color: var(--finance-muted);
@@ -441,94 +440,6 @@ body {
 .agent-team-collapse svg {
   width: 16px;
   height: 16px;
-}
-
-.agent-team-selector {
-  display: none;
-}
-
-.agent-team-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.agent-team-agent-button {
-  min-width: 0;
-  border: 1px solid var(--finance-line);
-  border-radius: 16px;
-  background: white;
-  padding: 9px 8px;
-  text-align: left;
-  transition: 160ms ease;
-}
-
-.agent-team-agent-button:hover,
-.agent-team-agent-button-active {
-  border-color: #7da49a;
-  background: #eef5f2;
-}
-
-.agent-team-badge {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  place-items: center;
-  border-radius: 12px;
-  color: white;
-}
-
-.agent-team-badge svg {
-  width: 16px;
-  height: 16px;
-}
-
-.agent-team-badge-cfo {
-  background: var(--finance-ink);
-}
-
-.agent-team-badge-expense_analyst {
-  background: #4b8078;
-}
-
-.agent-team-badge-budget_coach {
-  background: #6f7f62;
-}
-
-.agent-team-badge-auditor {
-  background: #5f6f78;
-}
-
-.agent-team-badge-market_scout {
-  background: #7b6f58;
-}
-
-.agent-team-agent-label {
-  overflow: hidden;
-  margin-top: 6px;
-  color: var(--finance-ink-2);
-  font-size: 11px;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-team-active-card {
-  margin-top: 12px;
-  border: 1px solid var(--finance-line);
-  border-radius: 16px;
-  background: #f8faf8;
-  padding: 11px 12px;
-}
-
-.agent-team-active-title {
-  color: var(--finance-ink-2);
-  font-size: 13px;
-  font-weight: 740;
-}
-
-.agent-team-active-summary {
-  margin-top: 3px;
 }
 
 .agent-team-messages {
@@ -2921,32 +2832,6 @@ body {
   white-space: nowrap;
 }
 
-.office-rail-secondary {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--finance-line);
-}
-
-.office-rail-subrow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 7px 12px;
-  border-radius: 10px;
-  color: var(--finance-ink-2);
-  font-size: 13px;
-  font-weight: 640;
-}
-
-.office-rail-subrow-note {
-  color: var(--finance-muted);
-  font-size: 12px;
-  font-weight: 500;
-}
-
 .office-rail-toggle {
   display: none;
   align-items: center;
@@ -3014,29 +2899,6 @@ body {
   letter-spacing: -0.02em;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.office-memo-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 7px 13px;
-  border: 1px solid var(--finance-line);
-  border-radius: 999px;
-  background: var(--finance-surface);
-  color: var(--finance-ink-2);
-  font-size: 12.5px;
-  font-weight: 660;
-}
-
-.office-memo-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-
-.office-memo-button svg {
-  width: 15px;
-  height: 15px;
 }
 
 .office-messages {
@@ -3311,15 +3173,9 @@ body {
   background: #f6f9ea;
 }
 
-.office-chip-disabled,
 .office-chip:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-.office-chip-disabled:hover {
-  border-color: #d9dfd7;
-  background: #fff;
 }
 
 /* Composer */

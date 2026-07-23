@@ -91,7 +91,10 @@ class WebResearchTool:
                 error_message="A run-scoped web research budget is required",
             )
 
-        query = sanitize_web_research_query(context.message, profile=context.profile)
+        query = sanitize_web_research_query(
+            context.effective_message,
+            profile=context.profile,
+        )
         try:
             tool_input = WebResearchToolInput(query=query, topic="news")
             result = self.service.search(

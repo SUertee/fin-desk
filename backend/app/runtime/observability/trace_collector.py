@@ -180,7 +180,7 @@ class TraceCollector:
     def add_usage(self, usage: AgentRunUsage | dict[str, Any] | None) -> None:
         """Accumulate one LLM stage's usage into the run total.
 
-        Multiple stages (route_classify, turn_contextualize, llm_compose)
+        Multiple stages (cfo_decide, turn_contextualize, llm_compose)
         each add their share; None or empty payloads are safe no-ops.
         """
 

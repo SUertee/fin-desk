@@ -1,7 +1,4 @@
-"""
-models - Pydantic models for request/response payloads.
-Re-exports all models for backwards-compatible imports.
-"""
+"""Public Pydantic request and response contracts."""
 
 from app.models.analysis import AnalysisAgentOutput, AnalyzeRequest, AnalyzeResponse
 from app.models.agent_data import (
@@ -13,8 +10,8 @@ from app.models.agent_data import (
     normalize_finance_agent_data,
 )
 from app.models.chat import ChatRequest, ChatResponse
-from app.models.routing import ConversationRoute
 from app.models.runtime import RuntimePolicyResult
+from app.models.turn_execution import TurnExecutionFacts
 from app.models.user import AssetSnapshot, ProfileUpdateRequest, UserProfile
 
 __all__ = [
@@ -27,11 +24,11 @@ __all__ = [
     "AssetSnapshot",
     "ChatRequest",
     "ChatResponse",
-    "ConversationRoute",
     "FinanceAgentData",
     "ProfileUpdateRequest",
     "RuntimePolicyResult",
     "SummaryCard",
+    "TurnExecutionFacts",
     "UserProfile",
     "normalize_finance_agent_data",
 ]

@@ -1,7 +1,7 @@
-"""Per-run LLM usage/cost accounting across router, intake, and compose.
+"""Per-run LLM usage/cost accounting across decision, intake, and compose.
 
 One CFO run may spend tokens in up to three stages (turn_contextualize,
-route_classify, llm_compose). The trace usage must be the SUM of all
+cfo_decide, llm_compose). The trace usage must be the SUM of all
 stages — never the last stage overwriting the rest — and the run ledger
 must expose a bounded per-stage projection at policy.llm_usage_by_stage.
 """
@@ -13,6 +13,7 @@ import pytest
 from app.models.runtime import AgentRunUsage
 from app.runtime.llm.client import LLMResponse
 from app.runtime.orchestration import finance_runtime as fr
+from tests.cfo_decision_fakes import execute
 
 
 def _usage(input_tokens, output_tokens):
@@ -26,19 +27,21 @@ def _usage(input_tokens, output_tokens):
 
 
 class ThreeStageFakeLLM:
-    """Serves the contextualizer, the intent classifier, and compose."""
+    """Serves the contextualizer, the CFO decision, and compose."""
 
-    def __init__(self, *, contextualizer_data=None, classifier_data=None):
+    def __init__(self, *, contextualizer_data=None, decision_data=None):
         self.contextualizer_data = contextualizer_data or {
             "effective_message": "帮我盘一盘最近的情况",
             "resolution_status": "resolved",
             "resolved_slots": [],
             "confidence": 0.8,
         }
-        self.classifier_data = classifier_data or {
-            "intent": "finance_question",
-            "confidence": 0.9,
-            "reason_code": "colloquial_finance",
+        self.decision_data = decision_data or {
+            "action": "execute",
+            "reply": None,
+            "capability_requests": [
+                {"capability_id": "finance.expense_review"}
+            ],
         }
 
     def available(self, profile="chat"):
@@ -52,7 +55,7 @@ class ThreeStageFakeLLM:
                 model_name="deepseek-v4-flash",
             )
         return SimpleNamespace(
-            data=self.classifier_data,
+            data=self.decision_data,
             usage=_usage(20, 10),
             model_name="deepseek-v4-flash",
         )
@@ -65,12 +68,18 @@ class ThreeStageFakeLLM:
         )
 
 
-async def _run(monkeypatch, llm_client, message, memory_context=None):
+async def _run(
+    monkeypatch,
+    llm_client,
+    message,
+    memory_context=None,
+    decision_engine=None,
+):
     records = []
     monkeypatch.setattr(
         fr, "save_agent_run_record_db", lambda record: records.append(record) or True
     )
-    runtime = fr.FinanceRuntime()
+    runtime = fr.FinanceRuntime(decision_engine=decision_engine)
     runtime.llm_client = llm_client
 
     result = await runtime.handle(
@@ -89,8 +98,8 @@ async def _run(monkeypatch, llm_client, message, memory_context=None):
 async def test_three_stage_usage_accumulates_not_overwrites(monkeypatch):
     # "那个呢？" with no memory: deterministic resolver cannot resolve it, so
     # the model contextualizer rewrites it; the rewritten text is ambiguous
-    # for the rules, so the intent classifier runs; the pipeline then
-    # composes with the LLM. Three billed stages in one run.
+    # for execution, so the CFO decision runs; the pipeline then composes
+    # with the LLM. Three billed stages in one run.
     result, record = await _run(monkeypatch, ThreeStageFakeLLM(), "那个呢？")
 
     assert result["reply"] == "这是 CFO 的回复。"
@@ -102,7 +111,7 @@ async def test_three_stage_usage_accumulates_not_overwrites(monkeypatch):
     assert record.usage.model_response_count == 3
 
     stages = record.policy["llm_usage_by_stage"]
-    assert set(stages) == {"turn_contextualize", "route_classify", "llm_compose"}
+    assert set(stages) == {"turn_contextualize", "cfo_decide", "llm_compose"}
     for name, entry in stages.items():
         assert entry["status"] == "called", name
         assert entry["model_name"] == "deepseek-v4-flash"
@@ -118,23 +127,31 @@ async def test_three_stage_usage_accumulates_not_overwrites(monkeypatch):
     assert stages["llm_compose"]["profile"] == "chat"
     # All three appear in the tool timeline as well.
     tool_names = {c.name for c in record.tool_calls}
-    assert {"turn_contextualize", "route_classify", "llm_compose"} <= tool_names
+    assert {"turn_contextualize", "cfo_decide", "llm_compose"} <= tool_names
     assert record.cost.status == "complete"
     assert {stage.stage for stage in record.cost.stages} == {
-        "turn_contextualize", "route_classify", "llm_compose"
+        "turn_contextualize", "cfo_decide", "llm_compose"
     }
     assert record.cost.billing_totals[0].currency == "USD"
     assert str(record.cost.billing_totals[0].amount) == "0.000019600000"
 
 
 @pytest.mark.asyncio
-async def test_deterministic_run_reports_zero_usage(monkeypatch):
-    result, record = await _run(monkeypatch, None, "这个月购物支出占比多少？")
+async def test_injected_decision_reports_zero_usage(monkeypatch):
+    result, record = await _run(
+        monkeypatch,
+        None,
+        "这个月购物支出占比多少？",
+        decision_engine=execute("finance.expense_review"),
+    )
 
-    assert result["route"]["execution_path"] == "cfo_analysis"
+    assert result["execution"]["outcome"] == "executed"
     assert record.usage.total_tokens == 0
     assert record.usage.request_count == 0
-    assert "llm_usage_by_stage" not in record.policy
+    stages = record.policy["llm_usage_by_stage"]
+    assert set(stages) == {"cfo_decide"}
+    assert stages["cfo_decide"]["status"] == "called"
+    assert stages["cfo_decide"]["total_tokens"] == 0
     assert record.cost.status == "not_applicable"
 
 
@@ -145,18 +162,17 @@ async def test_invalid_model_output_still_counts_billed_usage(monkeypatch):
     # tokens — they must appear in the totals, flagged as invalid_output.
     llm = ThreeStageFakeLLM(
         contextualizer_data={"resolution_status": "run_pipeline"},
-        classifier_data={"intent": "run_sql"},
+        decision_data={"action": "run_sql"},
     )
     result, record = await _run(monkeypatch, llm, "那个呢？")
 
-    # Deterministic fallback: unresolvable reference → clarification.
-    assert result["route"]["execution_path"] == "clarification"
+    assert result["execution"]["outcome"] == "failed"
     stages = record.policy["llm_usage_by_stage"]
     assert stages["turn_contextualize"]["status"] == "invalid_output"
-    assert stages["route_classify"]["status"] == "invalid_output"
+    assert stages["cfo_decide"]["status"] == "invalid_output"
     assert stages["turn_contextualize"]["total_tokens"] == 15
-    assert stages["route_classify"]["total_tokens"] == 30
-    # Usage accumulated from both rejected responses; no compose (light route).
+    assert stages["cfo_decide"]["total_tokens"] == 30
+    # Usage accumulated from both rejected responses; no compose.
     assert record.usage.total_tokens == 45
     assert "llm_compose" not in stages
     assert record.cost.status == "complete"
@@ -177,8 +193,8 @@ async def test_provider_failure_adds_no_fake_usage(monkeypatch):
 
     result, record = await _run(monkeypatch, ExplodingLLM(), "那个呢？")
 
-    # Request still succeeds deterministically; zero usage recorded.
-    assert result["route"]["execution_path"] == "clarification"
+    # Request returns an explicit failed decision without fabricating usage.
+    assert result["execution"]["outcome"] == "failed"
     assert record.usage.total_tokens == 0
     stages = record.policy["llm_usage_by_stage"]
     assert stages["turn_contextualize"]["status"] == "failed"

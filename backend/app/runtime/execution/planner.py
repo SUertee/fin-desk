@@ -1,29 +1,17 @@
-"""Policy-driven execution planner for CFO-first finance runs."""
+"""Deterministic execution plan for validated capability requests."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from app.models.runtime import RuntimePolicyResult
-from app.knowledge.retrieval import should_retrieve_knowledge
-from app.runtime.execution.context import AgentContext
-from app.tools.query_tools import has_query_intent
-from app.tools.mcp_market_data import (
-    EXTERNAL_MARKET_HISTORY_CAPABILITY,
-    has_external_market_data_intent,
-)
+
+if TYPE_CHECKING:
+    from app.runtime.capabilities.catalog import CapabilityCatalog
 
 
 PlanStepType = Literal["tool", "handoff", "compose"]
-
-SPECIALIST_CAPABILITY_BY_NAME = {
-    "expense_analyst": "finance.expense_review",
-    "budget_coach": "finance.budget_coaching",
-    "auditor": "finance.audit_review",
-    "market_context": "market.context_review",
-    "investment_research": "investment.research_review",
-}
 
 
 @dataclass(frozen=True)
@@ -60,131 +48,43 @@ class ExecutionPlan:
 
 
 def build_execution_plan(
-    context: AgentContext,
+    capability_ids: tuple[str, ...] | list[str],
     policy: RuntimePolicyResult,
-    *,
-    available_capabilities: frozenset[str] | set[str] | None = None,
+    catalog: "CapabilityCatalog",
 ) -> ExecutionPlan:
+    """Expand agent evidence dependencies without interpreting user text."""
+
+    requested = tuple(dict.fromkeys(capability_ids))
+    tools: list[str] = []
+    agents: list[str] = []
+    for capability_id in requested:
+        entry = catalog.get(capability_id)
+        if entry is None:
+            raise ValueError(f"Unknown capability id: {capability_id}")
+        if entry.descriptor.kind == "tool":
+            tools.append(capability_id)
+        elif entry.descriptor.kind == "agent":
+            agents.append(capability_id)
+            dependencies = entry.descriptor.requires
+            if (
+                capability_id == "investment.research_review"
+                and "investment.external_market_history" in requested
+            ):
+                dependencies = ()
+            tools.extend(dependencies)
+        else:
+            raise ValueError(f"Unsupported executable capability kind: {capability_id}")
+
+    if policy.audit_required and "finance.audit_review" not in agents:
+        agents.append("finance.audit_review")
+
     steps = [
-        PlanStep(
-            step_type="tool",
-            capability_id="finance.context",
-            reason="baseline_finance_context",
-        ),
-        PlanStep(
-            step_type="tool",
-            capability_id="finance.import_quality",
-            reason="data_quality_evidence",
-        ),
+        PlanStep("tool", capability_id, reason="capability_dependency")
+        for capability_id in dict.fromkeys(tools)
     ]
-
-    if has_query_intent(context.message):
-        steps.append(
-            PlanStep(
-                step_type="tool",
-                capability_id="finance.query_transactions",
-                reason="typed_query_intent",
-            )
-        )
-    elif should_retrieve_knowledge(
-        context.message,
-        has_market_context="market_context" in policy.required_specialists,
-        has_investment_research="investment_research" in policy.required_specialists,
-    ):
-        steps.append(
-            PlanStep(
-                step_type="tool",
-                capability_id="knowledge.lexical_search",
-                reason="reviewed_guidance_query",
-            )
-        )
-
-    if context.transactions:
-        steps.extend(
-            [
-                PlanStep(
-                    step_type="tool",
-                    capability_id="finance.expense_snapshot",
-                    reason="transaction_data_available",
-                ),
-                PlanStep(
-                    step_type="tool",
-                    capability_id="finance.anomaly_summary",
-                    reason="transaction_data_available",
-                ),
-            ]
-        )
-
-    if context.monthly_totals:
-        steps.append(
-            PlanStep(
-                step_type="tool",
-                capability_id="finance.cashflow_summary",
-                reason="monthly_totals_available",
-            )
-        )
-
-    if "budget_coach" in policy.required_specialists:
-        steps.append(
-            PlanStep(
-                step_type="tool",
-                capability_id="finance.budget_snapshot",
-                reason="budget_specialist_required",
-            )
-        )
-
-    if "investment_research" in policy.required_specialists:
-        external_requested = has_external_market_data_intent(context.message)
-        external_available = (
-            available_capabilities is not None
-            and EXTERNAL_MARKET_HISTORY_CAPABILITY in available_capabilities
-        )
-        if external_requested and external_available:
-            steps.append(
-                PlanStep(
-                    step_type="tool",
-                    capability_id=EXTERNAL_MARKET_HISTORY_CAPABILITY,
-                    reason="explicit_external_market_data_request",
-                )
-            )
-        elif not external_requested:
-            steps.append(
-                PlanStep(
-                    step_type="tool",
-                    capability_id="investment.research_context",
-                    reason="investment_research_specialist_required",
-                )
-            )
-
-    if "market_context" in policy.required_specialists:
-        steps.append(
-            PlanStep(
-                step_type="tool",
-                capability_id="market.web_research",
-                reason="market_context_specialist_required",
-            )
-        )
-
-    for specialist in policy.required_specialists:
-        capability_id = SPECIALIST_CAPABILITY_BY_NAME.get(specialist)
-        if capability_id is None:
-            raise ValueError(f"Unknown specialist capability: {specialist}")
-        steps.append(
-            PlanStep(
-                step_type="handoff",
-                capability_id=capability_id,
-                reason="runtime_policy_required_specialist",
-            )
-        )
-
-    if policy.audit_required:
-        steps.append(
-            PlanStep(
-                step_type="handoff",
-                capability_id=SPECIALIST_CAPABILITY_BY_NAME["auditor"],
-                reason="runtime_policy_audit_required",
-            )
-        )
-
-    steps.append(PlanStep(step_type="compose"))
+    steps.extend(
+        PlanStep("handoff", capability_id, reason="cfo_capability_request")
+        for capability_id in dict.fromkeys(agents)
+    )
+    steps.append(PlanStep("compose"))
     return ExecutionPlan(steps=steps)

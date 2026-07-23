@@ -40,6 +40,7 @@ class CapabilityDescriptor(BaseModel):
     execution_mode: CapabilityExecutionMode
     input_contract: str = Field(min_length=1, max_length=100)
     output_contract: str = Field(min_length=1, max_length=100)
+    requires: tuple[str, ...] = ()
 
 
 class CapabilityRuntimeStatus(BaseModel):
