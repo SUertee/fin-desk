@@ -280,6 +280,37 @@ class FinanceInboxSettings:
 
 
 @dataclass(frozen=True)
+class StatementIngestionSettings:
+    inbox_path: Path = Path("storage/import-inbox")
+    storage_path: Path = Path("storage/statement-imports")
+    poll_seconds: int = 10
+    stable_seconds: int = 5
+    max_file_bytes: int = 20_000_000
+    email_poll_seconds: int = 300
+    email_host: str = ""
+    email_port: int = 993
+    email_username: str = ""
+    email_password: str = field(default="", repr=False)
+    email_use_ssl: bool = True
+
+    def __post_init__(self) -> None:
+        if self.poll_seconds < 2:
+            raise ValueError("statement poll interval must be at least 2 seconds")
+        if self.stable_seconds < 1:
+            raise ValueError("statement stable interval must be positive")
+        if self.max_file_bytes < 1:
+            raise ValueError("statement maximum file size must be positive")
+        if self.email_poll_seconds < 30:
+            raise ValueError("statement email poll interval must be at least 30 seconds")
+        if not 1 <= self.email_port <= 65535:
+            raise ValueError("statement email port is invalid")
+
+    @property
+    def email_available(self) -> bool:
+        return bool(self.email_host and self.email_username and self.email_password)
+
+
+@dataclass(frozen=True)
 class McpSettings:
     enabled: bool = False
     transport: Literal["stdio", "sse"] = "stdio"
@@ -416,6 +447,7 @@ class AppSettings:
     web_research: WebResearchSettings = WebResearchSettings()
     knowledge: KnowledgeSettings = KnowledgeSettings()
     finance_inbox: FinanceInboxSettings = FinanceInboxSettings()
+    statement_ingestion: StatementIngestionSettings = StatementIngestionSettings()
     mcp: McpSettings = McpSettings()
 
 
@@ -653,6 +685,27 @@ def get_settings() -> AppSettings:
                 "FINANCE_INBOX_ALLOW_PROXY_FAKE_IPS",
                 False,
             ),
+        ),
+        statement_ingestion=StatementIngestionSettings(
+            inbox_path=Path(
+                os.getenv("STATEMENT_INBOX_PATH", "storage/import-inbox")
+            ),
+            storage_path=Path(
+                os.getenv("STATEMENT_STORAGE_PATH", "storage/statement-imports")
+            ),
+            poll_seconds=int(os.getenv("STATEMENT_POLL_SECONDS", "10")),
+            stable_seconds=int(os.getenv("STATEMENT_STABLE_SECONDS", "5")),
+            max_file_bytes=int(
+                os.getenv("STATEMENT_MAX_FILE_BYTES", "20000000")
+            ),
+            email_poll_seconds=int(
+                os.getenv("STATEMENT_EMAIL_POLL_SECONDS", "300")
+            ),
+            email_host=os.getenv("STATEMENT_EMAIL_HOST", ""),
+            email_port=int(os.getenv("STATEMENT_EMAIL_PORT", "993")),
+            email_username=os.getenv("STATEMENT_EMAIL_USERNAME", ""),
+            email_password=os.getenv("STATEMENT_EMAIL_PASSWORD", ""),
+            email_use_ssl=_env_bool("STATEMENT_EMAIL_USE_SSL", True),
         ),
         mcp=McpSettings(
             enabled=_env_bool("MCP_VIBE_ENABLED", False),

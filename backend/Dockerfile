@@ -9,7 +9,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN chown -R app:app /app
+RUN mkdir -p /data/statement-inbox /data/statement-imports \
+    && chown -R app:app /app /data
 USER app
 
 EXPOSE 8000

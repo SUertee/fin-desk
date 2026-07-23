@@ -43,6 +43,7 @@ class ParseReport:
     total_rows: int = 0
     parsed_rows: int = 0
     skipped: list[SkippedRow] = field(default_factory=list)
+    source_summary: dict[str, Any] = field(default_factory=dict)
 
     def skip(self, line_no: int, reason_code: str, snippet: str) -> None:
         self.skipped.append(
@@ -61,6 +62,7 @@ class ParseReport:
             "encoding_or_format": self.encoding_or_format,
             "total_rows": self.total_rows,
             "parsed_rows": self.parsed_rows,
+            "source_summary": self.source_summary,
             "skipped": [
                 {
                     "line_no": row.line_no,

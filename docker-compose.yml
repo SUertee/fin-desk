@@ -45,6 +45,7 @@ services:
     restart: unless-stopped
 
   backend:
+    image: findesk-backend:local
     build:
       context: ./backend
     depends_on:
@@ -60,8 +61,37 @@ services:
       POSTGRES_DSN: postgresql://${POSTGRES_USER:-personal_finance_user}:${POSTGRES_PASSWORD:-personal_finance_password}@db:5432/${POSTGRES_DB:-personal_finance}
       REDIS_URL: redis://redis:6379/0
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:18001,http://127.0.0.1:18001}
+      STATEMENT_INBOX_PATH: /data/statement-inbox
+      STATEMENT_STORAGE_PATH: /data/statement-imports
+    volumes:
+      - ${FINDESK_STATEMENT_INBOX_HOST:-./storage/import-inbox}:/data/statement-inbox
+      - statement_imports_data:/data/statement-imports
+    restart: unless-stopped
+
+  statement-worker:
+    image: findesk-backend:local
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.workers.statement_inbox"]
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - path: ./backend/.env
+        required: false
+    environment:
+      APP_ENV: docker
+      POSTGRES_DSN: postgresql://${POSTGRES_USER:-personal_finance_user}:${POSTGRES_PASSWORD:-personal_finance_password}@db:5432/${POSTGRES_DB:-personal_finance}
+      REDIS_URL: redis://redis:6379/0
+      STATEMENT_INBOX_PATH: /data/statement-inbox
+      STATEMENT_STORAGE_PATH: /data/statement-imports
+    volumes:
+      - ${FINDESK_STATEMENT_INBOX_HOST:-./storage/import-inbox}:/data/statement-inbox
+      - statement_imports_data:/data/statement-imports
     restart: unless-stopped
 
 volumes:
   finance_postgres_data:
     name: personal-finance-team-data
+  statement_imports_data:
+    name: personal-finance-team-statements

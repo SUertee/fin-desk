@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -74,7 +75,14 @@ def _parse_rows(
         raise StatementImportError("WeChat statement header row not found")
 
     header = [str(cell or "").strip() for cell in rows[header_index]]
-    report = ParseReport(detected_source="wechat", encoding_or_format=fmt)
+    preamble = "\n".join(
+        " ".join(str(cell or "") for cell in row) for row in rows[:header_index]
+    )
+    report = ParseReport(
+        detected_source="wechat",
+        encoding_or_format=fmt,
+        source_summary=_extract_source_summary(preamble),
+    )
     transactions: list[NormalizedTransaction] = []
 
     for offset, cells in enumerate(rows[header_index + 1 :]):
@@ -102,6 +110,21 @@ def _parse_rows(
     if not transactions and not report.skipped:
         raise StatementImportError("No transaction rows found in WeChat statement")
     return transactions, report
+
+
+def _extract_source_summary(preamble: str) -> dict[str, float | int]:
+    summary: dict[str, float | int] = {}
+    count_match = re.search(r"共\s*(\d+)\s*笔记录", preamble)
+    if count_match:
+        summary["reported_record_count"] = int(count_match.group(1))
+    for label, key in (("收入", "reported_income"), ("支出", "reported_expense")):
+        match = re.search(
+            rf"{label}[：:]\s*\d+\s*笔\s*[¥￥]?\s*([\d,.]+)\s*元?",
+            preamble,
+        )
+        if match:
+            summary[key] = float(match.group(1).replace(",", ""))
+    return summary
 
 
 def _clean(value: Any) -> Any:

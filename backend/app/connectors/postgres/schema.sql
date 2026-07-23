@@ -191,14 +191,43 @@ CREATE TABLE IF NOT EXISTS statement_import_records (
     error          TEXT NOT NULL DEFAULT '',
     sample         JSONB NOT NULL DEFAULT '[]'::jsonb,
     quality_report JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    ingestion_channel TEXT NOT NULL DEFAULT 'upload',
+    content_hash   TEXT NOT NULL DEFAULT '',
+    stored_path    TEXT NOT NULL DEFAULT '',
+    detected_source TEXT NOT NULL DEFAULT '',
+    origin_key     TEXT NOT NULL DEFAULT '',
+    origin_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- Quality report column for databases created before specialist-runtime-convergence
 ALTER TABLE statement_import_records ADD COLUMN IF NOT EXISTS quality_report JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE statement_import_records ADD COLUMN IF NOT EXISTS ingestion_channel TEXT NOT NULL DEFAULT 'upload';
+ALTER TABLE statement_import_records ADD COLUMN IF NOT EXISTS content_hash TEXT NOT NULL DEFAULT '';
+ALTER TABLE statement_import_records ADD COLUMN IF NOT EXISTS stored_path TEXT NOT NULL DEFAULT '';
+ALTER TABLE statement_import_records ADD COLUMN IF NOT EXISTS detected_source TEXT NOT NULL DEFAULT '';
+ALTER TABLE statement_import_records ADD COLUMN IF NOT EXISTS origin_key TEXT NOT NULL DEFAULT '';
+ALTER TABLE statement_import_records ADD COLUMN IF NOT EXISTS origin_metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE statement_import_records ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS idx_statement_import_records_user_created_at
     ON statement_import_records (user_id, created_at DESC);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_statement_import_records_user_hash
+    ON statement_import_records (user_id, content_hash)
+    WHERE content_hash <> '';
+
+CREATE TABLE IF NOT EXISTS statement_import_settings (
+    user_id             TEXT PRIMARY KEY,
+    folder_enabled      BOOLEAN NOT NULL DEFAULT TRUE,
+    folder_subdirectory TEXT NOT NULL DEFAULT '',
+    auto_commit         BOOLEAN NOT NULL DEFAULT TRUE,
+    email_enabled       BOOLEAN NOT NULL DEFAULT FALSE,
+    email_mailbox       TEXT NOT NULL DEFAULT 'INBOX',
+    email_allowed_senders JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
 
 -- Analysis snapshots for frontend reporting
 CREATE TABLE IF NOT EXISTS analysis_runs (

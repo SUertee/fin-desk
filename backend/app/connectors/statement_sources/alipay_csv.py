@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import csv
 import io
+import re
 
 from app.connectors.statement_sources.contracts import (
     NormalizedTransaction,
@@ -48,7 +49,11 @@ def parse_alipay_csv(
 
     reader = csv.reader(io.StringIO("\n".join(lines[header_index:])))
     header = [cell.strip() for cell in next(reader)]
-    report = ParseReport(detected_source="alipay", encoding_or_format=encoding)
+    report = ParseReport(
+        detected_source="alipay",
+        encoding_or_format=encoding,
+        source_summary=_extract_source_summary("\n".join(lines[:header_index])),
+    )
     transactions: list[NormalizedTransaction] = []
 
     for offset, cells in enumerate(reader):
@@ -76,6 +81,21 @@ def parse_alipay_csv(
     if not transactions and not report.skipped:
         raise StatementImportError("No transaction rows found in Alipay statement")
     return transactions, report
+
+
+def _extract_source_summary(preamble: str) -> dict[str, float | int]:
+    summary: dict[str, float | int] = {}
+    count_match = re.search(r"共\s*(\d+)\s*笔记录", preamble)
+    if count_match:
+        summary["reported_record_count"] = int(count_match.group(1))
+    for label, key in (("收入", "reported_income"), ("支出", "reported_expense")):
+        match = re.search(
+            rf"{label}[：:]\s*\d+\s*笔\s*([\d,.]+)\s*元",
+            preamble,
+        )
+        if match:
+            summary[key] = float(match.group(1).replace(",", ""))
+    return summary
 
 
 def _normalize_row(row: dict[str, str]) -> NormalizedTransaction | str:

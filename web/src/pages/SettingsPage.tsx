@@ -18,14 +18,12 @@ import {
   Save,
   ShieldCheck,
   SlidersHorizontal,
-  UploadCloud,
   UserRound,
   WalletCards,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import {
-  importStatement,
   fetchCapabilities,
   updateProfile,
   type CapabilityCatalogItem,
@@ -33,6 +31,7 @@ import {
   type ProfileUpdatePayload,
 } from "../services/financeApi";
 import { SubscriptionManager } from "../components/inbox/SubscriptionManager";
+import { StatementImportManager } from "../components/statements/StatementImportManager";
 
 type SettingsPageProps = {
   userId: string;
@@ -108,7 +107,6 @@ export function SettingsPage({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [isImporting, setIsImporting] = useState(false);
 
   useEffect(() => {
     const next = buildProfileForm(profile, profileName, monthlyIncome);
@@ -180,44 +178,12 @@ export function SettingsPage({
     }
   };
 
-  const handleImport = async (file: File) => {
-    setIsImporting(true);
-    setSaveError(null);
-    try {
-      const result = await importStatement(userId, file);
-      const parts = [
-        `Imported ${result.imported_count} rows` +
-          (result.detected_source ? ` from ${result.detected_source}` : ""),
-      ];
-      if (result.duplicates?.length) {
-        parts.push(`${result.duplicates.length} cross-source duplicates flagged`);
-      }
-      if (result.already_imported_count) {
-        parts.push(`${result.already_imported_count} already imported`);
-      }
-      const skippedCount = result.parse_report?.skipped?.length ?? 0;
-      if (skippedCount) {
-        parts.push(`${skippedCount} rows skipped`);
-      }
-      setSaveMessage(parts.join(" · "));
-      await onProfileSaved?.();
-    } catch (error: any) {
-      setSaveError(error?.message ?? "Statement import failed");
-    } finally {
-      setIsImporting(false);
-    }
-  };
-
   const content = useMemo(() => {
     if (activeSection === "dataSources") {
       return (
         <DataSourcesPanel
           userId={userId}
-          dataSourceStatus={dataSourceStatus}
-          transactionCount={loadedTransactionCount}
-          latestImport={latestImport}
-          isImporting={isImporting}
-          onImport={handleImport}
+          onChanged={onProfileSaved}
         />
       );
     }
@@ -247,9 +213,9 @@ export function SettingsPage({
     apiBaseUrl,
     dataSourceStatus,
     form,
-    isImporting,
     latestImport,
     loadedTransactionCount,
+    onProfileSaved,
     showDeveloperTools,
     userId,
   ]);
@@ -493,63 +459,14 @@ function ProfilePanel({
 
 function DataSourcesPanel({
   userId,
-  dataSourceStatus,
-  transactionCount,
-  latestImport,
-  isImporting,
-  onImport,
+  onChanged,
 }: {
   userId: string;
-  dataSourceStatus?: DataSourceStatus | null;
-  transactionCount: number;
-  latestImport: DataSourceStatus["latest_import"] | null;
-  isImporting: boolean;
-  onImport: (file: File) => void;
+  onChanged?: () => Promise<void> | void;
 }) {
   return (
     <div className="settings-v2-grid">
-      <SettingsPanelCard icon={<UploadCloud />} title="Import options" wide>
-        <div className="settings-v2-source-list">
-          {[
-            ["Alipay statement (CSV)", "Ready", "Upload"],
-            ["WeChat statement (XLSX)", "Ready", "Upload"],
-            ["Bank statement (ICBC PDF)", "Ready", "Upload"],
-          ].map(([label, status, action]) => (
-            <div key={label} className="settings-v2-source-row">
-              <div>
-                <strong>{label}</strong>
-                <span>{status}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => openCsvPicker(onImport)}
-                disabled={isImporting}
-              >
-                {isImporting ? "Uploading" : action}
-              </button>
-            </div>
-          ))}
-        </div>
-      </SettingsPanelCard>
-      <SettingsPanelCard icon={<Database />} title="Data quality">
-        <StatusLine label="Transactions loaded" value={transactionCount.toLocaleString()} />
-        <StatusLine label="Latest import" value={latestImport?.source_file ?? "None"} />
-        <StatusLine label="Import status" value={latestImport?.status ?? "No import yet"} />
-      </SettingsPanelCard>
-      <SettingsPanelCard icon={<FileText />} title="Import history">
-        <div className="settings-v2-history">
-          {(dataSourceStatus?.import_history ?? []).length > 0 ? (
-            dataSourceStatus?.import_history.map((item) => (
-              <div key={item.import_id}>
-                <strong>{item.source_file}</strong>
-                <span>{item.imported_count} rows · {item.status}</span>
-              </div>
-            ))
-          ) : (
-            <p>No imports yet. Upload a CSV statement to start.</p>
-          )}
-        </div>
-      </SettingsPanelCard>
+      <div className="settings-v2-wide"><StatementImportManager userId={userId} onChanged={onChanged} /></div>
       <SettingsPanelCard icon={<Database />} title="Finance content subscriptions" wide>
         <p className="settings-v2-card-note settings-v2-card-note-leading">
           RSS sources are refreshed only when you request it. Inbox content remains
@@ -1097,15 +1014,4 @@ function sectionSubtitle(section: SettingsSection): string {
     privacy: "Review data handling and safety controls.",
     developer: "Inspect runtime, eval, replay, and API configuration.",
   }[section];
-}
-
-function openCsvPicker(onImport: (file: File) => void) {
-  const input = document.createElement("input");
-  input.type = "file";
-  input.accept = ".csv,.xlsx,.pdf";
-  input.onchange = (event) => {
-    const file = (event.target as HTMLInputElement).files?.[0];
-    if (file) onImport(file);
-  };
-  input.click();
 }

@@ -123,33 +123,32 @@ class StatementPersistenceUnavailable(RuntimeError):
     """Raised when parsed import rows cannot be persisted."""
 
 
-def import_statement_file(
+@dataclass
+class PreparedStatementImport:
+    user_id: str
+    source_file: str
+    report: ParseReport
+    rows: list[dict[str, Any]]
+    duplicates: list[dict[str, Any]]
+    already_imported_count: int
+    quality_report: dict[str, Any]
+
+
+def prepare_statement_file(
     *,
     user_id: str,
     filename: str,
     content: bytes,
-) -> StatementImportResult:
-    """Detect, parse, dedup, and persist one uploaded statement file."""
+) -> PreparedStatementImport:
+    """Parse and validate a statement without writing transaction rows."""
 
     clean_filename = filename or "statement.csv"
     if not clean_filename.lower().endswith(SUPPORTED_EXTENSIONS):
-        _record_failed_import(
-            user_id=user_id,
-            source_file=clean_filename,
-            error="Only CSV and XLSX statements are supported.",
-        )
-        raise StatementImportError("Only CSV and XLSX statements are supported.")
+        raise StatementImportError("Only CSV, XLSX, and PDF statements are supported.")
 
-    try:
-        source_key = detect_source(clean_filename, content)
-        normalized, report = _PARSERS[source_key](content)
-    except StatementImportError as exc:
-        _record_failed_import(
-            user_id=user_id,
-            source_file=clean_filename,
-            error=str(exc),
-        )
-        raise
+    source_key = detect_source(clean_filename, content)
+    normalized, report = _PARSERS[source_key](content)
+
 
     # Idempotent re-import: rows whose source_reference is already stored.
     existing_ids = list_external_ids_db(user_id)
@@ -183,18 +182,6 @@ def import_statement_file(
     rows = [_to_store_row(tx, user_id=user_id, source_file=clean_filename) for tx in fresh]
     duplicates = _mark_cross_source_duplicates(user_id, fresh, rows)
 
-    if rows:
-        saved = insert_transactions_db(user_id, rows)
-        if not saved:
-            _record_failed_import(
-                user_id=user_id,
-                source_file=clean_filename,
-                error="Transaction persistence is not available.",
-            )
-            raise StatementPersistenceUnavailable(
-                "Transaction persistence is not available."
-            )
-
     quality_report = _build_quality_report(
         report=report,
         rows=rows,
@@ -202,30 +189,82 @@ def import_statement_file(
         already_imported=already_imported,
     )
 
-    sample = rows[:3]
-    import_record = save_statement_import_record_db(
+    return PreparedStatementImport(
         user_id=user_id,
         source_file=clean_filename,
-        source_format=report.detected_source,
-        imported_count=len(rows),
-        status="succeeded",
-        sample=sample,
-        quality_report=quality_report,
-    )
-
-    return StatementImportResult(
-        ok=True,
-        user_id=user_id,
-        source_file=clean_filename,
-        imported_count=len(rows),
-        detected_source=report.detected_source,
-        parse_report=report.model_dump(),
+        report=report,
+        rows=rows,
         duplicates=duplicates,
         already_imported_count=already_imported,
         quality_report=quality_report,
+    )
+
+
+def commit_prepared_statement(
+    prepared: PreparedStatementImport,
+    *,
+    persist_import_record: bool = True,
+) -> StatementImportResult:
+    """Persist rows produced by :func:`prepare_statement_file`."""
+
+    if prepared.rows:
+        saved = insert_transactions_db(prepared.user_id, prepared.rows)
+        if not saved:
+            raise StatementPersistenceUnavailable(
+                "Transaction persistence is not available."
+            )
+
+    sample = prepared.rows[:3]
+    import_record = None
+    if persist_import_record:
+        import_record = save_statement_import_record_db(
+            user_id=prepared.user_id,
+            source_file=prepared.source_file,
+            source_format=prepared.report.detected_source,
+            imported_count=len(prepared.rows),
+            status="succeeded",
+            sample=sample,
+            quality_report=prepared.quality_report,
+        )
+
+    return StatementImportResult(
+        ok=True,
+        user_id=prepared.user_id,
+        source_file=prepared.source_file,
+        imported_count=len(prepared.rows),
+        detected_source=prepared.report.detected_source,
+        parse_report=prepared.report.model_dump(),
+        duplicates=prepared.duplicates,
+        already_imported_count=prepared.already_imported_count,
+        quality_report=prepared.quality_report,
         import_record=import_record,
         sample=sample,
     )
+
+
+def import_statement_file(
+    *,
+    user_id: str,
+    filename: str,
+    content: bytes,
+) -> StatementImportResult:
+    """Immediate upload path retained for existing workspace callers."""
+
+    clean_filename = filename or "statement.csv"
+    try:
+        prepared = prepare_statement_file(
+            user_id=user_id,
+            filename=clean_filename,
+            content=content,
+        )
+        return commit_prepared_statement(prepared)
+    except (StatementImportError, StatementPersistenceUnavailable) as exc:
+        _record_failed_import(
+            user_id=user_id,
+            source_file=clean_filename,
+            error=str(exc),
+        )
+        raise
 
 
 def _build_quality_report(
@@ -274,7 +313,73 @@ def _build_quality_report(
         },
         "category_confidence": round(confident / len(rows), 3) if rows else None,
         "date_range": {"from": dates[0], "to": dates[-1]} if dates else None,
+        "reconciliation": _build_reconciliation(report=report, rows=rows),
         "warnings": warnings,
+    }
+
+
+def _build_reconciliation(
+    *,
+    report: ParseReport,
+    rows: list[dict[str, Any]],
+) -> dict[str, Any]:
+    source_summary = report.source_summary
+    if not source_summary:
+        return {"status": "not_available", "checks": []}
+
+    checks: list[dict[str, Any]] = []
+    amount_checks: list[bool] = []
+    has_amount_summary = any(
+        source_summary.get(key) is not None
+        for key in ("reported_expense", "reported_income")
+    )
+    row_count = source_summary.get("reported_record_count")
+    if row_count is not None:
+        checks.append(
+            {
+                "metric": "record_count",
+                "reported": int(row_count),
+                "calculated": report.total_rows,
+                "matched": int(row_count) == report.total_rows,
+                "blocking": not has_amount_summary,
+            }
+        )
+
+    directions = [
+        str((row.get("raw") or {}).get("row", {}).get("收/支") or "")
+        for row in rows
+    ]
+    calculated_expense = round(
+        sum(-float(row["amount"]) for row, direction in zip(rows, directions) if direction == "支出"),
+        2,
+    )
+    calculated_income = round(
+        sum(float(row["amount"]) for row, direction in zip(rows, directions) if direction == "收入"),
+        2,
+    )
+    for metric, calculated in (
+        ("expense", calculated_expense),
+        ("income", calculated_income),
+    ):
+        reported = source_summary.get(f"reported_{metric}")
+        if reported is None:
+            continue
+        matched = abs(float(reported) - calculated) <= 0.01
+        amount_checks.append(matched)
+        checks.append(
+            {
+                "metric": metric,
+                "reported": round(float(reported), 2),
+                "calculated": calculated,
+                "matched": matched,
+                "blocking": True,
+            }
+        )
+
+    decisive_checks = amount_checks or [check["matched"] for check in checks]
+    return {
+        "status": "matched" if decisive_checks and all(decisive_checks) else "mismatch",
+        "checks": checks,
     }
 
 
