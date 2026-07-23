@@ -19,6 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routes.analyze import router as analyze_router
 from app.routes.agent_gateway import router as agent_gateway_router
+from app.integrations.agenthub import router as agenthub_router
 from app.routes.ai_costs import router as ai_costs_router
 from app.routes.chat import router as chat_router
 from app.routes.capabilities import router as capabilities_router
@@ -90,6 +91,7 @@ app.include_router(office_router)
 app.include_router(statement_import_router)
 app.include_router(agent_runs_router)
 app.include_router(agent_gateway_router)
+app.include_router(agenthub_router)
 app.include_router(ai_costs_router)
 app.include_router(investments_router)
 app.include_router(market_router)
