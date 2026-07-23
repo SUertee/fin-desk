@@ -328,6 +328,8 @@ class TestLastQueryMemory:
 class TestRuntimeIntegration:
     async def _run(self, monkeypatch, message, memory_context, decision_engine):
         from app.runtime.orchestration import finance_runtime as fr
+        from app.runtime.execution import finance_toolset
+        from app.runtime.orchestration.factory import build_finance_runtime
 
         records = []
         monkeypatch.setattr(
@@ -339,9 +341,11 @@ class TestRuntimeIntegration:
             captured_filters.append(filters)
             return {"filters": filters.model_dump(exclude_none=True), "total": 1234.5, "count": 7, "groups": []}
 
-        monkeypatch.setattr(fr, "run_transaction_query", fake_query)
-        runtime = fr.FinanceRuntime(decision_engine=decision_engine)
-        runtime.llm_client = None
+        monkeypatch.setattr(finance_toolset, "run_transaction_query", fake_query)
+        runtime = build_finance_runtime(
+            decision_engine=decision_engine,
+            llm_client=None,
+        )
 
         result = await runtime.handle(
             user_id="demo",
@@ -425,6 +429,7 @@ class TestRuntimeIntegration:
         from app.routes import chat as chat_route
         from app.services import memory as memory_service
         from app.runtime.orchestration import finance_runtime as fr
+        from app.runtime.orchestration.factory import build_finance_runtime
 
         memory_service._history.clear()
         memory_service._loaded_from_db.clear()
@@ -463,11 +468,13 @@ class TestRuntimeIntegration:
             ]
         )
         monkeypatch.setattr(chat_route, "get_latest_analysis_run_db", lambda u: None)
-        monkeypatch.setattr(chat_route._runtime, "llm_client", None)
         monkeypatch.setattr(
-            chat_route._runtime,
-            "decision_engine",
-            execute("finance.query_transactions"),
+            chat_route,
+            "_runtime",
+            build_finance_runtime(
+                llm_client=None,
+                decision_engine=execute("finance.query_transactions"),
+            ),
         )
 
         await chat_route.chat(ChatRequest(user_id="demo", message="那餐饮呢？"))

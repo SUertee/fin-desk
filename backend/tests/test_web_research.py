@@ -134,9 +134,9 @@ def test_exhausted_budget_blocks_provider_call():
 
 
 def test_market_plan_searches_before_specialist_handoff():
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
-    runtime = FinanceRuntime()
+    runtime = build_finance_runtime()
     policy = RuntimePolicyResult(
         complexity="moderate",
         risk_level="medium",
@@ -165,7 +165,7 @@ def test_market_plan_searches_before_specialist_handoff():
 @pytest.mark.asyncio
 async def test_runtime_injects_research_before_market_specialist(monkeypatch):
     from app.runtime.orchestration import finance_runtime
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
     records = []
     monkeypatch.setattr(
@@ -173,11 +173,11 @@ async def test_runtime_injects_research_before_market_specialist(monkeypatch):
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         web_research_service=_service(),
         decision_engine=execute("market.context_review"),
+        llm_client=None,
     )
-    runtime.llm_client = None
 
     result = await runtime.handle(
         user_id="demo",
@@ -203,7 +203,7 @@ async def test_runtime_injects_research_before_market_specialist(monkeypatch):
 @pytest.mark.asyncio
 async def test_light_conversation_never_calls_web_research(monkeypatch):
     from app.runtime.orchestration import finance_runtime
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
     provider = FakeProvider()
     records = []
@@ -212,11 +212,11 @@ async def test_light_conversation_never_calls_web_research(monkeypatch):
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         web_research_service=_service(provider),
         decision_engine=direct("你好，我在。"),
+        llm_client=None,
     )
-    runtime.llm_client = None
 
     result = await runtime.handle(
         user_id="demo",
@@ -236,7 +236,7 @@ async def test_light_conversation_never_calls_web_research(monkeypatch):
 async def test_direct_cfo_reply_does_not_call_external_search(monkeypatch):
     from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
     provider = FakeProvider()
     records = []
@@ -251,13 +251,13 @@ async def test_direct_cfo_reply_does_not_call_external_search(monkeypatch):
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         web_research_service=_service(provider),
         decision_engine=direct(
             "I can run sourced market research when the question requires it."
         ),
+        llm_client=None,
     )
-    runtime.llm_client = None
 
     await runtime.handle(
         user_id="demo",

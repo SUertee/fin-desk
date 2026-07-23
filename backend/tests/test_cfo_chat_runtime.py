@@ -2,7 +2,7 @@ import logging
 
 import pytest
 
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 from tests.cfo_decision_fakes import direct, execute
 
 
@@ -16,7 +16,7 @@ async def test_runtime_uses_self_hosted_multi_agent_path(monkeypatch, caplog):
         "save_agent_run_record_db",
         lambda record: saved_records.append(record) or True,
     )
-    runtime = FinanceRuntime(decision_engine=execute("finance.expense_review"))
+    runtime = build_finance_runtime(decision_engine=execute("finance.expense_review"))
     caplog.set_level(logging.INFO, logger="app.runtime.orchestration.finance_runtime")
 
     result = await runtime.handle(
@@ -97,11 +97,11 @@ async def test_runtime_binds_all_capabilities_before_execution(monkeypatch):
     )
     # The first planned capability is granted and the second is denied. The
     # first tool must still not run because binding is an all-or-nothing phase.
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         granted_capabilities={"finance.context"},
         decision_engine=execute("finance.expense_review"),
+        llm_client=None,
     )
-    runtime.llm_client = None
 
     result = await runtime.handle(
         user_id="demo",
@@ -190,8 +190,10 @@ async def test_runtime_runs_sourced_read_only_investment_team(monkeypatch):
         lambda record: saved_records.append(record) or True,
     )
 
-    runtime = FinanceRuntime(decision_engine=execute("investment.research_review"))
-    runtime.llm_client = None
+    runtime = build_finance_runtime(
+        decision_engine=execute("investment.research_review"),
+        llm_client=None,
+    )
     result = await runtime.handle(
         user_id="demo",
         message="请分析股票 AAPL",
@@ -255,8 +257,10 @@ async def test_runtime_degrades_without_fabricating_unavailable_market_data(
         lambda record: saved_records.append(record) or True,
     )
 
-    runtime = FinanceRuntime(decision_engine=execute("investment.research_review"))
-    runtime.llm_client = None
+    runtime = build_finance_runtime(
+        decision_engine=execute("investment.research_review"),
+        llm_client=None,
+    )
     result = await runtime.handle(
         user_id="demo",
         message="Analyze stock AAPL",
@@ -288,7 +292,7 @@ async def test_runtime_persists_output_validation_failure(monkeypatch, caplog):
         "save_agent_run_record_db",
         lambda record: saved_records.append(record) or True,
     )
-    runtime = FinanceRuntime(decision_engine=execute("finance.expense_review"))
+    runtime = build_finance_runtime(decision_engine=execute("finance.expense_review"))
     monkeypatch.setattr(
         runtime.response_builder,
         "build",
@@ -323,7 +327,7 @@ async def test_runtime_short_circuits_acknowledgement_without_pipeline(monkeypat
         "save_agent_run_record_db",
         lambda record: saved_records.append(record) or True,
     )
-    runtime = FinanceRuntime(decision_engine=direct("好的，我们继续。"))
+    runtime = build_finance_runtime(decision_engine=direct("好的，我们继续。"))
     steps = []
 
     async def on_steps(payload):

@@ -7,44 +7,28 @@ from datetime import date
 from typing import Any
 
 from app.agents.cfo import CfoDecisionEngine
-from app.connectors.postgres.exchange_rate_store import get_exchange_rate_snapshot_db
+from app.config.settings import get_settings
 from app.connectors.postgres.run_ledger_store import save_agent_run_record_db
 from app.models.chat import ChatResponse
 from app.models.turn_execution import TurnExecutionFacts
-from app.knowledge import KnowledgeRetriever
-from app.knowledge.factory import build_knowledge_retriever
 from app.models.runtime import AgentRunUsage
 from app.runtime.capabilities import (
     CapabilityBindingError,
     CapabilityCatalog,
-    CapabilityHealthService,
-    CapabilityResolver,
-    get_capability_health_service,
 )
-from app.runtime.capabilities.contracts import CapabilityRuntimeStatus
 from app.runtime.contracts.output_validation import validate_output_contract
 from app.runtime.execution import (
     AgentContext,
     ToolRegistry,
 )
-from app.runtime.execution.finance_toolset import FinanceToolset
 from app.runtime.execution.finance_turn_executor import FinanceTurnExecutor
-from app.runtime.execution.specialist_runner import SpecialistRunner
 from app.runtime.memory.finance_memory_extractor import extract_finance_memory
 from app.runtime.memory.session_context import write_session_context
 from app.runtime.observability.trace_collector import TraceCollector
-from app.runtime.orchestration.intake import ModelTurnContextualizer, TurnContextualizer
+from app.runtime.orchestration.intake import TurnContextualizer
 from app.runtime.costing import CostingService
-from app.config.settings import get_settings
-from app.runtime.llm.deepseek_client import DeepSeekTextClient
 from app.runtime.response.cfo_reply_generator import CfoReplyGenerator
 from app.runtime.response.finance_response_builder import FinanceResponseBuilder
-from app.services.web_research import WebResearchService, build_web_research_service
-from app.tools.web_research import WebResearchTool
-from app.tools.mcp_market_data import (
-    VibeMarketDataTool,
-    build_vibe_market_data_tool,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -57,97 +41,26 @@ class FinanceRuntime:
 
     def __init__(
         self,
-        tool_registry: ToolRegistry | None = None,
-        specialist_runner: SpecialistRunner | None = None,
-        llm_client: Any | None = None,
-        costing_service: CostingService | None = None,
-        web_research_service: WebResearchService | None = None,
-        web_research_tool: WebResearchTool | None = None,
-        mcp_market_data_tool: VibeMarketDataTool | None = None,
-        capability_health_service: CapabilityHealthService | None = None,
-        granted_capabilities: set[str] | None = None,
-        knowledge_retriever: KnowledgeRetriever | None = None,
-        decision_engine: CfoDecisionEngine | None = None,
-        response_builder: FinanceResponseBuilder | None = None,
-        reply_generator: CfoReplyGenerator | None = None,
-        toolset: FinanceToolset | None = None,
-        turn_executor: FinanceTurnExecutor | None = None,
-    ):
-        self.web_research_tool = web_research_tool or WebResearchTool(
-            web_research_service or build_web_research_service()
-        )
-        mcp_settings = get_settings().mcp
-        injected_mcp_tool = mcp_market_data_tool is not None
-        self.mcp_market_data_tool = mcp_market_data_tool
-        if self.mcp_market_data_tool is None and mcp_settings.enabled:
-            self.mcp_market_data_tool = build_vibe_market_data_tool(mcp_settings)
-        self.capability_health_service = capability_health_service
-        if (
-            self.capability_health_service is None
-            and self.mcp_market_data_tool is not None
-            and not injected_mcp_tool
-        ):
-            self.capability_health_service = get_capability_health_service()
-        self.knowledge_retriever = (
-            knowledge_retriever or build_knowledge_retriever()
-        )
-        self.toolset = toolset or FinanceToolset(
-            knowledge_retriever=self.knowledge_retriever,
-            web_research_tool=self.web_research_tool,
-            mcp_market_data_tool=self.mcp_market_data_tool,
-        )
-        self.tool_registry = tool_registry or self.toolset.build_registry()
-        self.specialist_runner = specialist_runner or SpecialistRunner()
-        optional_statuses = None
-        if self.mcp_market_data_tool is None and not injected_mcp_tool:
-            optional_statuses = {
-                "get_vibe_market_data": CapabilityRuntimeStatus(
-                    enabled=False,
-                    available=False,
-                    reason="Disabled by configuration",
-                )
-            }
-        self.capability_catalog = CapabilityCatalog.from_registries(
-            self.tool_registry,
-            self.specialist_runner.registry,
-            optional_tool_statuses=optional_statuses,
-        )
-        self.capability_resolver = CapabilityResolver(self.capability_catalog)
-        self.available_capabilities = frozenset(
-            item.descriptor.capability_id
-            for item in self.capability_catalog.list()
-            if item.status.enabled and item.status.available
-        )
-        self.granted_capabilities = frozenset(
-            granted_capabilities
-            if granted_capabilities is not None
-            else self.available_capabilities
-        )
-        self.llm_client = llm_client if llm_client is not None else DeepSeekTextClient()
-        self.costing_service = costing_service or CostingService(
-            exchange_rate_lookup=get_exchange_rate_snapshot_db
-        )
-        self.decision_engine = decision_engine or CfoDecisionEngine(
-            lambda: self.llm_client
-        )
-        self.turn_contextualizer = TurnContextualizer(
-            model=ModelTurnContextualizer(lambda: self.llm_client)
-        )
-        self.response_builder = response_builder or FinanceResponseBuilder()
-        self.reply_generator = reply_generator or CfoReplyGenerator(
-            lambda: self.llm_client,
-            self.response_builder.resolve_language,
-        )
-        self.turn_executor = turn_executor or FinanceTurnExecutor(
-            capability_catalog=self.capability_catalog,
-            capability_resolver=self.capability_resolver,
-            granted_capabilities=self.granted_capabilities,
-            tool_registry=self.tool_registry,
-            toolset=self.toolset,
-            specialist_runner=self.specialist_runner,
-            web_research_tool=self.web_research_tool,
-            capability_health_service=self.capability_health_service,
-        )
+        *,
+        tool_registry: ToolRegistry,
+        capability_catalog: CapabilityCatalog,
+        granted_capabilities: frozenset[str],
+        turn_contextualizer: TurnContextualizer,
+        decision_engine: CfoDecisionEngine,
+        turn_executor: FinanceTurnExecutor,
+        response_builder: FinanceResponseBuilder,
+        reply_generator: CfoReplyGenerator,
+        costing_service: CostingService,
+    ) -> None:
+        self.tool_registry = tool_registry
+        self.capability_catalog = capability_catalog
+        self.granted_capabilities = granted_capabilities
+        self.turn_contextualizer = turn_contextualizer
+        self.decision_engine = decision_engine
+        self.turn_executor = turn_executor
+        self.response_builder = response_builder
+        self.reply_generator = reply_generator
+        self.costing_service = costing_service
 
     async def handle(
         self,

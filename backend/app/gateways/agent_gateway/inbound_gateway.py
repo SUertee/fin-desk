@@ -16,6 +16,7 @@ from app.gateways.agent_gateway.task_contracts import (
 )
 from app.gateways.agent_gateway.task_store import AgentTaskStore
 from app.runtime.memory import build_memory_context
+from app.runtime.orchestration.factory import build_finance_runtime
 from app.runtime.orchestration.finance_runtime import FinanceRuntime
 from app.services.memory import get_chat_history
 from app.services.user_store import get_profile
@@ -55,7 +56,7 @@ class InboundAgentGateway:
         analysis_run_loader: AnalysisRunLoader = get_latest_analysis_run_db,
         chat_history_loader: ChatHistoryLoader = get_chat_history,
     ) -> None:
-        self.runtime = runtime or FinanceRuntime()
+        self.runtime = runtime or build_finance_runtime()
         self.task_store = task_store or AgentTaskStore()
         self.profile_loader = profile_loader
         self.transactions_loader = transactions_loader

@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.specialists import auditor, investment_research
 from app.agents.specialists.contracts import SpecialistInput
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 from app.runtime.policy.runtime_policy import evaluate_runtime_policy
 
 
@@ -52,7 +52,7 @@ def evaluate_investment_research_case(
     case: InvestmentResearchEvalCase,
 ) -> InvestmentResearchEvalResult:
     failures: list[str] = []
-    catalog = FinanceRuntime().capability_catalog
+    catalog = build_finance_runtime().capability_catalog
     policy = evaluate_runtime_policy(["investment.research_review"], catalog)
     if "investment_research" not in policy.required_specialists:
         failures.append("investment_research specialist was not selected")

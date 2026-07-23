@@ -31,7 +31,7 @@ from app.runtime.execution import (
     ToolSpec,
     build_execution_plan,
 )
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 
 
 def _descriptor(capability_id: str, *, kind: str = "tool") -> CapabilityDescriptor:
@@ -151,7 +151,7 @@ def test_registry_order_does_not_change_catalog_order():
 
 def test_current_registry_definitions_have_exact_coverage():
     runtime_tool_names = {
-        spec.name for spec in FinanceRuntime().tool_registry.available()
+        spec.name for spec in build_finance_runtime().tool_registry.available()
     }
 
     assert runtime_tool_names <= set(TOOL_CAPABILITY_DEFINITIONS)
@@ -242,7 +242,7 @@ def test_plan_binding_resolves_semantic_ids_to_existing_registry_names():
 
 
 def test_planner_emits_semantic_capability_ids_only():
-    runtime = FinanceRuntime()
+    runtime = build_finance_runtime()
     plan = build_execution_plan(
         ["finance.expense_review"],
         RuntimePolicyResult(
@@ -340,7 +340,7 @@ async def test_developer_route_is_read_only_and_secret_free(monkeypatch):
     monkeypatch.setattr(
         capabilities_route,
         "get_capability_runtime",
-        lambda: FinanceRuntime(),
+        lambda: build_finance_runtime(),
     )
     monkeypatch.setattr(
         capabilities_route,

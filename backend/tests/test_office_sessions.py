@@ -9,6 +9,7 @@ from app.models.office import CreateSessionRequest, UpdateSessionRequest
 from app.routes import chat as chat_route
 from app.routes import office as office_route
 from app.runtime.observability.steps_projection import project_steps
+from app.runtime.orchestration.factory import build_finance_runtime
 from app.services import memory as memory_service
 from tests.cfo_decision_fakes import execute
 
@@ -204,11 +205,13 @@ class TestStepsEvent:
                     await on_delta(chunk)
                 return LLMResponse(content="你好", usage=AgentRunUsage(requests=1), model_name="deepseek-chat")
 
-        monkeypatch.setattr(chat_route._runtime, "llm_client", FakeLLM())
         monkeypatch.setattr(
-            chat_route._runtime,
-            "decision_engine",
-            execute("finance.expense_review"),
+            chat_route,
+            "_runtime",
+            build_finance_runtime(
+                llm_client=FakeLLM(),
+                decision_engine=execute("finance.expense_review"),
+            ),
         )
         session = office_route.create_session(CreateSessionRequest(user_id="demo"))
 
@@ -386,11 +389,13 @@ class TestSessionMemoryIsolation:
             ),
         )
         # Deterministic replies only: keep the LLM composer out of the way.
-        monkeypatch.setattr(chat_route._runtime, "llm_client", None)
         monkeypatch.setattr(
-            chat_route._runtime,
-            "decision_engine",
-            execute("finance.expense_review"),
+            chat_route,
+            "_runtime",
+            build_finance_runtime(
+                llm_client=None,
+                decision_engine=execute("finance.expense_review"),
+            ),
         )
         monkeypatch.setattr(chat_route, "list_transactions_db", lambda u, limit=2000: [
             {"amount": -10, "date": "2026-06-01", "month": "2026-06"}

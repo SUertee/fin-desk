@@ -1,6 +1,6 @@
 from app.models.runtime import RuntimePolicyResult
 from app.runtime.execution.planner import build_execution_plan
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 from app.tools.investment_research_tools import extract_instrument_reference
 
 
@@ -12,7 +12,7 @@ def test_extracts_explicit_stock_and_etf_symbols_only():
 
 
 def test_investment_specialist_plan_fetches_bounded_research_before_handoff():
-    runtime = FinanceRuntime()
+    runtime = build_finance_runtime()
     policy = RuntimePolicyResult(
         complexity="complex",
         risk_level="high",

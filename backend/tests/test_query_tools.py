@@ -4,7 +4,7 @@ from datetime import date
 
 import pytest
 
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 from app.tools import query_tools
 from app.tools.query_tools import (
     QueryFilters,
@@ -98,7 +98,7 @@ class TestEndToEnd:
 
         monkeypatch.setattr(query_tools, "aggregate_transactions_db", fake_aggregate)
 
-        runtime = FinanceRuntime(
+        runtime = build_finance_runtime(
             decision_engine=execute("finance.query_transactions")
         )
         result = await runtime.handle(

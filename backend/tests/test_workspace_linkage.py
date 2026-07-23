@@ -5,7 +5,7 @@ import pytest
 from app.models.user import UserPreferences, UserProfile
 from app.routes import workspace as workspace_route
 from app.routes.health import health
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 from tests.cfo_decision_fakes import execute
 
 TRANSACTIONS = [
@@ -41,7 +41,7 @@ def _profile(**preferences) -> dict:
 
 
 async def _run(message: str, *, preferences: dict | None = None, **kwargs) -> dict:
-    runtime = FinanceRuntime(decision_engine=execute("finance.expense_review"))
+    runtime = build_finance_runtime(decision_engine=execute("finance.expense_review"))
     return await runtime.handle(
         user_id="demo",
         message=message,

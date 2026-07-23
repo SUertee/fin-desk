@@ -1,10 +1,10 @@
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 from app.runtime.policy.audit_runner import should_run_audit
 from app.runtime.policy.runtime_policy import evaluate_runtime_policy
 
 
 def _policy(*capability_ids: str):
-    runtime = FinanceRuntime()
+    runtime = build_finance_runtime()
     return evaluate_runtime_policy(list(capability_ids), runtime.capability_catalog)
 
 
@@ -48,7 +48,7 @@ def test_investment_research_is_a_distinct_medium_risk_specialist():
 
 
 def test_unknown_capability_is_rejected_before_execution():
-    runtime = FinanceRuntime()
+    runtime = build_finance_runtime()
 
     try:
         evaluate_runtime_policy(["unknown.capability"], runtime.capability_catalog)

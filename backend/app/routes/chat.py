@@ -15,14 +15,14 @@ from app.connectors.postgres.transactions_store import (
 )
 from app.models.chat import ChatRequest, ChatResponse
 from app.runtime.memory import build_memory_context
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 from app.connectors.postgres.office_store import get_session_db, update_session_db
 from app.services.memory import clear_history, get_chat_history, save_message
 from app.services.user_store import get_profile
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-_runtime = FinanceRuntime()
+_runtime = build_finance_runtime()
 
 
 def _resolve_session(req: ChatRequest) -> tuple[str, JSONResponse | None]:

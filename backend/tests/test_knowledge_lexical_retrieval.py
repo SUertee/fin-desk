@@ -15,7 +15,7 @@ from app.knowledge.markdown_ingestion import DEFAULT_CORPUS, parse_markdown_file
 from app.knowledge.retrieval import lexical_terms
 from app.models.runtime import RuntimePolicyResult
 from app.runtime.execution import build_execution_plan
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 from app.runtime.policy.runtime_policy import evaluate_runtime_policy
 from tests.cfo_decision_fakes import execute
 
@@ -156,7 +156,7 @@ def test_planner_executes_only_requested_knowledge_ledger_or_market_capabilities
         audit_required=True,
         max_tool_calls=6,
     )
-    runtime = FinanceRuntime()
+    runtime = build_finance_runtime()
     knowledge = build_execution_plan(
         ["knowledge.lexical_search"], base_policy, runtime.capability_catalog
     )
@@ -175,7 +175,7 @@ def test_planner_executes_only_requested_knowledge_ledger_or_market_capabilities
 
 
 def test_emergency_fund_is_budget_guidance_not_investment_research():
-    runtime = FinanceRuntime()
+    runtime = build_finance_runtime()
     policy = evaluate_runtime_policy(
         ["finance.budget_coaching", "knowledge.lexical_search"],
         runtime.capability_catalog,
@@ -189,7 +189,7 @@ def test_emergency_fund_is_budget_guidance_not_investment_research():
 async def test_runtime_uses_bounded_knowledge_and_records_citations(monkeypatch):
     from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime as runtime_module
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
     class FakeRetriever:
         def __init__(self):
@@ -217,13 +217,13 @@ async def test_runtime_uses_bounded_knowledge_and_records_citations(monkeypatch)
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         knowledge_retriever=retriever,
         decision_engine=execute(
             "knowledge.lexical_search", "finance.budget_coaching"
         ),
+        llm_client=None,
     )
-    runtime.llm_client = None
 
     result = await runtime.handle(
         user_id="demo",
@@ -246,7 +246,7 @@ async def test_runtime_uses_bounded_knowledge_and_records_citations(monkeypatch)
 async def test_runtime_states_no_match_without_fabricating_guidance(monkeypatch):
     from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime as runtime_module
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
     class NoMatchRetriever:
         def retrieve(self, query):
@@ -261,11 +261,11 @@ async def test_runtime_states_no_match_without_fabricating_guidance(monkeypatch)
     )
     monkeypatch.setattr(runtime_module, "write_session_context", lambda **_kwargs: None)
     monkeypatch.setattr(runtime_module, "save_agent_run_record_db", lambda _record: True)
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         knowledge_retriever=NoMatchRetriever(),
         decision_engine=execute("knowledge.lexical_search"),
+        llm_client=None,
     )
-    runtime.llm_client = None
 
     result = await runtime.handle(
         user_id="demo",

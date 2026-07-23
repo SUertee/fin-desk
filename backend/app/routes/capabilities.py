@@ -11,6 +11,7 @@ from app.runtime.capabilities import (
     get_capability_health_service,
 )
 from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 
 
 router = APIRouter(prefix="/developer/capabilities", tags=["developer"])
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/developer/capabilities", tags=["developer"])
 
 @lru_cache(maxsize=1)
 def get_capability_runtime() -> FinanceRuntime:
-    return FinanceRuntime()
+    return build_finance_runtime()
 
 
 @router.get("", response_model=CapabilityCatalogResponse)

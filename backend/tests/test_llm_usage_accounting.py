@@ -13,6 +13,7 @@ import pytest
 from app.models.runtime import AgentRunUsage
 from app.runtime.llm.client import LLMResponse
 from app.runtime.orchestration import finance_runtime as fr
+from app.runtime.orchestration.factory import build_finance_runtime
 from tests.cfo_decision_fakes import execute
 
 
@@ -79,8 +80,10 @@ async def _run(
     monkeypatch.setattr(
         fr, "save_agent_run_record_db", lambda record: records.append(record) or True
     )
-    runtime = fr.FinanceRuntime(decision_engine=decision_engine)
-    runtime.llm_client = llm_client
+    runtime = build_finance_runtime(
+        decision_engine=decision_engine,
+        llm_client=llm_client,
+    )
 
     result = await runtime.handle(
         user_id="demo",

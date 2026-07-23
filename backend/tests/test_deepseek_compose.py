@@ -4,7 +4,7 @@ import pytest
 
 from app.models.runtime import AgentRunUsage
 from app.runtime.llm.client import LLMResponse
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 from tests.cfo_decision_fakes import execute
 
 TRANSACTIONS = [
@@ -54,7 +54,7 @@ class StreamingFakeDeepSeek(FakeDeepSeek):
 
 
 async def _run(client, message="帮我分析这个月消费"):
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         llm_client=client,
         decision_engine=execute("finance.expense_review"),
     )
@@ -192,7 +192,7 @@ class TestLLMCompose:
         async def on_delta(text):
             deltas.append(text)
 
-        runtime = FinanceRuntime(
+        runtime = build_finance_runtime(
             llm_client=client,
             decision_engine=execute("investment.research_review"),
         )

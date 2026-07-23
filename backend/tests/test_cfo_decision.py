@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from app.agents.cfo.decision import CfoDecisionEngine
 from app.models.chat import ChatRequest, ChatResponse
 from app.models.runtime import AgentRunUsage
-from app.runtime.orchestration.finance_runtime import FinanceRuntime
+from app.runtime.orchestration.factory import build_finance_runtime
 
 
 class FakeDecisionClient:
@@ -31,7 +31,7 @@ class FakeDecisionClient:
 def _capabilities():
     return tuple(
         item.descriptor
-        for item in FinanceRuntime().capability_catalog.list()
+        for item in build_finance_runtime().capability_catalog.list()
         if item.status.enabled and item.status.available
     )
 

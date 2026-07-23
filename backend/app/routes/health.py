@@ -7,10 +7,10 @@ from functools import lru_cache
 from fastapi import APIRouter
 
 from app.connectors.cache.redis_cache import redis_cache_status
-from app.runtime.orchestration.finance_runtime import (
-    FinanceRuntime,
+from app.runtime.execution.finance_turn_executor import (
     SPECIALIST_TOOL_BY_AGENT,
 )
+from app.runtime.orchestration.factory import build_finance_runtime
 from app.services.schema import FINANCE_ANALYSIS_SCHEMA
 
 router = APIRouter()
@@ -20,7 +20,7 @@ router = APIRouter()
 def _self_hosted_tool_names() -> tuple[str, ...]:
     """Resolve once from the actual chat runtime registry to prevent drift."""
 
-    runtime = FinanceRuntime()
+    runtime = build_finance_runtime()
     return tuple(spec.name for spec in runtime.tool_registry.available())
 
 

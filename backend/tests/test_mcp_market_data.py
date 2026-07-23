@@ -429,7 +429,7 @@ async def test_vibe_tool_failure_is_explicit_and_has_no_fallback():
 
 
 def test_planner_selects_external_or_internal_market_evidence_exclusively():
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
     policy = RuntimePolicyResult(
         complexity="complex",
@@ -441,7 +441,7 @@ def test_planner_selects_external_or_internal_market_evidence_exclusively():
     tool = VibeMarketDataTool(
         FakeMcpClient(response=_valid_response()), _settings(), clock=lambda: NOW
     )
-    runtime = FinanceRuntime(mcp_market_data_tool=tool)
+    runtime = build_finance_runtime(mcp_market_data_tool=tool)
     external = build_execution_plan(
         [EXTERNAL_MARKET_HISTORY_CAPABILITY, "investment.research_review"],
         policy,
@@ -494,7 +494,7 @@ def test_mcp_tool_binds_through_capability_catalog():
 async def test_runtime_uses_mcp_artifact_without_internal_provider_fallback(monkeypatch):
     from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
     records = []
     client = FakeMcpClient(response=_valid_response())
@@ -508,14 +508,14 @@ async def test_runtime_uses_mcp_artifact_without_internal_provider_fallback(monk
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         mcp_market_data_tool=tool,
         decision_engine=execute(
             EXTERNAL_MARKET_HISTORY_CAPABILITY,
             "investment.research_review",
         ),
+        llm_client=None,
     )
-    runtime.llm_client = None
 
     result = await runtime.handle(
         user_id="demo",
@@ -538,7 +538,7 @@ async def test_runtime_uses_mcp_artifact_without_internal_provider_fallback(monk
 async def test_runtime_mcp_failure_remains_external_and_reports_unavailable(monkeypatch):
     from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
     records = []
     client = FakeMcpClient(error=McpInvocationError("provider failed"))
@@ -552,14 +552,14 @@ async def test_runtime_mcp_failure_remains_external_and_reports_unavailable(monk
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         mcp_market_data_tool=tool,
         decision_engine=execute(
             EXTERNAL_MARKET_HISTORY_CAPABILITY,
             "investment.research_review",
         ),
+        llm_client=None,
     )
-    runtime.llm_client = None
 
     result = await runtime.handle(
         user_id="demo",
@@ -580,7 +580,7 @@ async def test_runtime_mcp_failure_remains_external_and_reports_unavailable(monk
 async def test_runtime_does_not_plan_unhealthy_external_capability(monkeypatch):
     from app.runtime.execution import finance_toolset
     from app.runtime.orchestration import finance_runtime
-    from app.runtime.orchestration.finance_runtime import FinanceRuntime
+    from app.runtime.orchestration.factory import build_finance_runtime
 
     class FakeHealth:
         def __init__(self):
@@ -606,15 +606,15 @@ async def test_runtime_does_not_plan_unhealthy_external_capability(monkeypatch):
         "save_agent_run_record_db",
         lambda record: records.append(record) or True,
     )
-    runtime = FinanceRuntime(
+    runtime = build_finance_runtime(
         mcp_market_data_tool=tool,
         capability_health_service=health,
         decision_engine=execute(
             EXTERNAL_MARKET_HISTORY_CAPABILITY,
             "investment.research_review",
         ),
+        llm_client=None,
     )
-    runtime.llm_client = None
 
     result = await runtime.handle(
         user_id="demo",
