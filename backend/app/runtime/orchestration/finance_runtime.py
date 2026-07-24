@@ -278,7 +278,6 @@ class FinanceRuntime:
                 context=finance_context,
                 message=message,
                 effective_message=effective_message,
-                chat_history=chat_history,
                 response_payload=response_payload,
                 on_reply_delta=on_reply_delta,
             )

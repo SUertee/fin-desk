@@ -41,7 +41,6 @@ class CfoReplyGenerator:
         context: dict[str, Any],
         message: str,
         effective_message: str,
-        chat_history: list[dict[str, Any]],
         response_payload: dict[str, Any],
         on_reply_delta=None,
     ) -> CfoReplyResult:
@@ -68,6 +67,8 @@ class CfoReplyGenerator:
                 "Answer ONLY from the evidence digest — never invent numbers, "
                 "dates, or merchants that are not present in it. If the "
                 "evidence cannot answer the question, say so plainly. "
+                "When share_of_scope is null, say the percentage is unavailable; "
+                "never report it as 0%. "
                 "Reviewed knowledge is general guidance; never present it as "
                 "the user's ledger data or individualized financial advice. "
                 "No investment, tax, or legal advice. "
@@ -89,10 +90,6 @@ class CfoReplyGenerator:
                     "Keep it focused: lead with the answer, then one insight.",
                 )
             )
-            recent = "\n".join(
-                f"{turn.get('role')}: {str(turn.get('content'))[:200]}"
-                for turn in (chat_history or [])[-6:]
-            )
             interpreted = (
                 f"Interpreted as: {effective_message}\n\n"
                 if effective_message and effective_message != message
@@ -102,11 +99,6 @@ class CfoReplyGenerator:
                 f"User message: {message}\n\n"
                 + interpreted
                 + f"Evidence digest:\n{digest}\n\n"
-                + (
-                    f"Recent conversation:\n{recent}\n\n"
-                    if recent
-                    else ""
-                )
                 + "Compose the CFO reply."
             )
             investment_guard_enabled = bool(

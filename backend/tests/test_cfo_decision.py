@@ -54,6 +54,11 @@ async def test_model_selects_conversation_without_execution_fields():
     assert result.decision.action == "direct_response"
     assert "execution path" not in client.prompt.lower()
     assert "execution paths" in client.system.lower()
+    assert (
+        "conversation context may resolve meaning but is never evidence"
+        in client.system.lower()
+    )
+    assert "amounts, or percentages must use execute" in client.system.lower()
 
 
 @pytest.mark.asyncio

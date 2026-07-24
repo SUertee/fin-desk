@@ -145,7 +145,7 @@ class TestLLMCompose:
         assert result["reply"] == "六月房租是最大支出，建议关注弹性类目。"
         assert len(client.calls) == 1
 
-    async def test_prompt_carries_evidence_and_history(self):
+    async def test_prompt_uses_evidence_without_chat_history(self):
         client = FakeDeepSeek()
 
         await _run(client, message="6月房租多少")
@@ -153,8 +153,10 @@ class TestLLMCompose:
         call = client.calls[0]
         assert "expense_snapshot" in call["prompt"]
         assert "audit" in call["prompt"]
-        assert "之前的问题" in call["prompt"]  # recent turns included
+        assert "之前的问题" not in call["prompt"]
+        assert "Recent conversation" not in call["prompt"]
         assert "never invent numbers" in call["system"]
+        assert "share_of_scope is null" in call["system"]
 
     async def test_provider_failure_falls_back_to_template(self):
         client = FakeDeepSeek(fail=True)

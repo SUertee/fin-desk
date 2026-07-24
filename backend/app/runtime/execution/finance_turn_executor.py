@@ -227,11 +227,21 @@ class FinanceTurnExecutor:
         }
         result = {**result, "reply_language": reply_language}
 
+        for artifact_name, context_key in (
+            ("get_expense_snapshot", "expense_snapshot"),
+            ("get_budget_snapshot", "budget_snapshot"),
+            ("get_anomaly_summary", "anomaly_summary"),
+            ("get_cashflow_summary", "cashflow_summary"),
+        ):
+            artifact = artifacts.get(artifact_name)
+            if artifact is not None:
+                result = {**result, context_key: artifact}
+
         import_quality = artifacts.get("get_import_quality_report")
         if import_quality and import_quality.get("reports"):
             result = {**result, "import_quality": import_quality}
         query_result = artifacts.get("query_transactions")
-        if query_result and query_result.get("count"):
+        if query_result is not None:
             result = {**result, "transaction_query": query_result}
         investment_research = artifacts.get(
             "get_investment_research_context"

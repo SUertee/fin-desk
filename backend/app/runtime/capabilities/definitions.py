@@ -69,7 +69,14 @@ def _tool(
 
 TOOL_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
     "get_finance_context": _tool("finance.context", "Finance context"),
-    "get_expense_snapshot": _tool("finance.expense_snapshot", "Expense snapshot"),
+    "get_expense_snapshot": _tool(
+        "finance.expense_snapshot",
+        "Expense snapshot",
+        description=(
+            "Summarize the full loaded ledger. Do not use for a specific "
+            "month, category, merchant, or scoped total."
+        ),
+    ),
     "get_budget_snapshot": _tool("finance.budget_snapshot", "Budget snapshot"),
     "get_anomaly_summary": _tool("finance.anomaly_summary", "Anomaly summary"),
     "get_cashflow_summary": _tool("finance.cashflow_summary", "Cash-flow summary"),
@@ -77,7 +84,12 @@ TOOL_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
         "finance.import_quality", "Statement import quality"
     ),
     "query_transactions": _tool(
-        "finance.query_transactions", "Typed transaction query"
+        "finance.query_transactions",
+        "Typed transaction query",
+        description=(
+            "Use for questions scoped by month, date, category, merchant, "
+            "amount, count, or share of spending."
+        ),
     ),
     "search_knowledge": _tool(
         "knowledge.lexical_search",

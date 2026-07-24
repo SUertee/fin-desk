@@ -355,3 +355,34 @@ async def test_runtime_short_circuits_acknowledgement_without_pipeline(monkeypat
     assert [call.name for call in record.tool_calls] == ["cfo_decide"]
     assert record.handoffs == []
     assert record.policy["turn_execution"]["outcome"] == "direct_response"
+
+
+@pytest.mark.asyncio
+async def test_runtime_projects_direct_expense_snapshot_evidence(monkeypatch):
+    from app.runtime.orchestration import finance_runtime
+
+    monkeypatch.setattr(finance_runtime, "write_session_context", lambda **_: None)
+    monkeypatch.setattr(
+        finance_runtime,
+        "save_agent_run_record_db",
+        lambda record: True,
+    )
+    runtime = build_finance_runtime(
+        decision_engine=execute("finance.expense_snapshot"),
+        llm_client=None,
+    )
+
+    result = await runtime.handle(
+        user_id="demo",
+        message="Summarize my loaded expenses",
+        profile={},
+        transactions=[
+            {"amount": -125.5, "category": "shopping", "is_duplicate": False}
+        ],
+        monthly_totals=[],
+        chat_history=[],
+    )
+
+    assert result["execution"]["evidence_available"] is True
+    assert result["data"]["summary_cards"][1]["value"] == "125.50"
+    assert result["data"]["summary_cards"][1]["note"] == "1 active transactions"

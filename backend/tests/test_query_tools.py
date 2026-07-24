@@ -70,11 +70,12 @@ class TestQueryIntent:
 
 class TestRunQuery:
     def test_user_id_injected_and_filters_passed(self, monkeypatch):
-        captured = {}
+        captured = []
 
         def fake_aggregate(user_id, **kwargs):
-            captured["user_id"] = user_id
-            captured.update(kwargs)
+            captured.append({"user_id": user_id, **kwargs})
+            if kwargs["category"] is None:
+                return {"total": 19433.92, "count": 300, "groups": []}
             return {"total": 7234.82, "count": 203, "groups": []}
 
         monkeypatch.setattr(query_tools, "aggregate_transactions_db", fake_aggregate)
@@ -83,10 +84,13 @@ class TestRunQuery:
             QueryFilters(date_from="2026-06-01", date_to="2026-06-30", category="dining"),
         )
 
-        assert captured["user_id"] == "demo"
-        assert captured["category"] == "dining"
+        assert captured[0]["user_id"] == "demo"
+        assert captured[0]["category"] == "dining"
+        assert captured[1]["category"] is None
         assert result["total"] == 7234.82
         assert result["filters"]["category"] == "dining"
+        assert result["scope_total"] == 19433.92
+        assert result["share_of_scope"] == 0.3723
 
 
 @pytest.mark.asyncio
@@ -113,3 +117,10 @@ class TestEndToEnd:
 
         assert "1,234.50" in result["reply"]
         assert "42 笔" in result["reply"]
+        assert [card["label"] for card in result["data"]["summary_cards"]] == [
+            "匹配金额",
+            "交易笔数",
+            "同期占比",
+        ]
+        assert result["data"]["summary_cards"][0]["value"] == "1,234.50"
+        assert result["data"]["audit"]["status"] == "verified"

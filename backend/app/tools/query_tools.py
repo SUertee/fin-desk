@@ -53,7 +53,8 @@ CATEGORY_ALIASES = {
 
 _QUERY_MARKERS = (
     "花了多少", "花了", "多少钱", "支出多少", "收入多少", "总共", "合计",
-    "how much", "total spent", "spend on", "spent on",
+    "占比", "比例", "how much", "total spent", "spend on", "spent on",
+    "percentage", "share of",
 )
 
 _MONTH_CN = re.compile(r"(?:(\d{4})\s*年)?\s*(\d{1,2})\s*月")
@@ -139,9 +140,27 @@ def run_transaction_query(
         direction=filters.direction,
         group_by=filters.group_by,
     )
-    return {
+    payload = {
         "filters": filters.model_dump(exclude_none=True),
         "total": result["total"],
         "count": result["count"],
         "groups": result["groups"],
     }
+    if filters.category:
+        scope = aggregate_transactions_db(
+            user_id,
+            date_from=filters.date_from,
+            date_to=filters.date_to,
+            category=None,
+            merchant_contains=filters.merchant_contains,
+            direction=filters.direction,
+            group_by=None,
+        )
+        scope_total = float(scope["total"])
+        payload["scope_total"] = scope_total
+        payload["share_of_scope"] = (
+            round(float(result["total"]) / scope_total, 4)
+            if scope_total > 0
+            else None
+        )
+    return payload

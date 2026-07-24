@@ -81,6 +81,39 @@ def _summary_cards(context: dict[str, Any]) -> list[SummaryCard]:
 
 
 def _response_summary_cards(context: dict[str, Any]) -> list[SummaryCard]:
+    query = context.get("transaction_query")
+    if query is not None:
+        zh = context.get("reply_language") == "zh"
+        share = query.get("share_of_scope")
+        return [
+            SummaryCard(
+                label="匹配金额" if zh else "Matched amount",
+                value=f"{_round_money(query.get('total')):,.2f}",
+                status="neutral",
+                note="类型化账本查询" if zh else "Typed ledger query",
+            ),
+            SummaryCard(
+                label="交易笔数" if zh else "Transactions",
+                value=str(int(query.get("count") or 0)),
+                status="neutral",
+                note="符合当前筛选条件" if zh else "Matching current filters",
+            ),
+            SummaryCard(
+                label="同期占比" if zh else "Share of scope",
+                value=(
+                    f"{float(share) * 100:.1f}%"
+                    if share is not None
+                    else "—"
+                ),
+                status="good" if share is not None else "neutral",
+                note=(
+                    "占同期同方向总额"
+                    if zh
+                    else "Of the scoped direction total"
+                ),
+            ),
+        ]
+
     research = context.get("investment_research") or {}
     status = research.get("status")
     if status in {"symbol_required", "unavailable"}:
@@ -222,11 +255,16 @@ class FinanceResponseBuilder:
         audit_status = (
             "needs_review" if policy.audit_required or warnings else "verified"
         )
+        has_scoped_query_evidence = context.get("transaction_query") is not None
         has_investment_evidence = (
             (context.get("investment_research") or {}).get("status")
             == "available"
         )
-        if not context.get("transactions_sample") and not has_investment_evidence:
+        if (
+            not context.get("transactions_sample")
+            and not has_scoped_query_evidence
+            and not has_investment_evidence
+        ):
             audit_status = "data_limited"
         audit = AgentAudit(
             confidence=audit_output.confidence if audit_output else 0.68,
@@ -294,6 +332,11 @@ class FinanceResponseBuilder:
                     f"{scope}{kind}合计 {query['total']:,.2f}"
                     f"（{query['count']} 笔）。"
                 )
+                if query.get("share_of_scope") is not None:
+                    query_line += (
+                        f"占同期总{kind}的 "
+                        f"{float(query['share_of_scope']) * 100:.1f}%。"
+                    )
             else:
                 kind = (
                     "income"
@@ -304,6 +347,12 @@ class FinanceResponseBuilder:
                     f"{scope} {kind} totals {query['total']:,.2f} "
                     f"across {query['count']} transactions. "
                 )
+                if query.get("share_of_scope") is not None:
+                    query_line += (
+                        f"It represents "
+                        f"{float(query['share_of_scope']) * 100:.1f}% "
+                        f"of scoped {kind}. "
+                    )
 
         investment = context.get("investment_research") or {}
         if investment.get("status") == "available":
