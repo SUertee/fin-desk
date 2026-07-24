@@ -1,0 +1,459 @@
+{
+  "cases": [
+    {
+      "case_id": "conversation_greeting_zh",
+      "category": "conversation",
+      "input": {
+        "message": "你好",
+        "profile": {"preferences": {"preferred_language": "zh"}}
+      },
+      "decision": {
+        "action": "direct_response",
+        "reply": "你好，我是你的 CFO。"
+      },
+      "expected": {
+        "outcome": "direct_response",
+        "data_present": false,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": ["get_finance_context", "consult_auditor"],
+        "reply_contains": ["CFO"]
+      }
+    },
+    {
+      "case_id": "conversation_greeting_en",
+      "category": "conversation",
+      "input": {"message": "Hello"},
+      "decision": {
+        "action": "direct_response",
+        "reply": "Hello. I am your personal CFO."
+      },
+      "expected": {
+        "outcome": "direct_response",
+        "data_present": false,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": ["get_finance_context"],
+        "reply_contains": ["personal CFO"]
+      }
+    },
+    {
+      "case_id": "conversation_acknowledgement",
+      "category": "conversation",
+      "input": {
+        "message": "好的",
+        "chat_history": [
+          {"role": "assistant", "content": "需要我继续解释吗？"}
+        ]
+      },
+      "decision": {
+        "action": "direct_response",
+        "reply": "好的，我们继续。"
+      },
+      "expected": {
+        "outcome": "direct_response",
+        "data_present": false,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": ["get_finance_context", "query_transactions"],
+        "reply_contains": ["继续"]
+      }
+    },
+    {
+      "case_id": "conversation_capability_question",
+      "category": "conversation",
+      "input": {"message": "你能做什么？"},
+      "decision": {
+        "action": "direct_response",
+        "reply": "我可以核对现金流、分析支出、协助预算，并解释引用证据。"
+      },
+      "expected": {
+        "outcome": "direct_response",
+        "data_present": false,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": [
+          "get_finance_context",
+          "consult_expense_analyst"
+        ],
+        "reply_contains": ["现金流", "预算"]
+      }
+    },
+    {
+      "case_id": "clarification_missing_time_scope",
+      "category": "clarification",
+      "input": {"message": "帮我看看花了多少"},
+      "decision": {
+        "action": "ask_clarification",
+        "reply": "你想查看哪个时间范围？"
+      },
+      "expected": {
+        "outcome": "clarification",
+        "data_present": false,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": ["query_transactions"],
+        "reply_contains": ["时间范围"]
+      }
+    },
+    {
+      "case_id": "clarification_missing_investment_symbol",
+      "category": "clarification",
+      "input": {"message": "帮我分析这只股票"},
+      "decision": {
+        "action": "ask_clarification",
+        "reply": "请提供明确的股票或 ETF 代码。"
+      },
+      "expected": {
+        "outcome": "clarification",
+        "data_present": false,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": ["get_investment_research_context"],
+        "reply_contains": ["ETF"]
+      }
+    },
+    {
+      "case_id": "clarification_unresolved_reference",
+      "category": "clarification",
+      "input": {"message": "那个呢？"},
+      "decision": {
+        "action": "ask_clarification",
+        "reply": "你指的是哪一笔交易或哪段时间？"
+      },
+      "expected": {
+        "outcome": "clarification",
+        "data_present": false,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": ["get_finance_context"],
+        "reply_contains": ["哪一笔交易"]
+      }
+    },
+    {
+      "case_id": "finance_context_with_transactions",
+      "category": "finance_execution",
+      "input": {
+        "message": "概览我的财务情况",
+        "profile": {
+          "monthly_income": 5000,
+          "preferences": {"preferred_language": "zh"}
+        },
+        "transactions": [
+          {"description": "Salary", "amount": 5000, "category": "income"},
+          {"description": "Rent", "amount": -1800, "category": "housing"}
+        ],
+        "monthly_totals": [{"month": "2026-06", "net": 3200}]
+      },
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.context"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": true,
+        "process_available": true,
+        "selected_agents": ["cfo"],
+        "required_tool_calls": ["get_finance_context"],
+        "audit_status": "verified",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "finance_context_without_transactions",
+      "category": "finance_execution",
+      "input": {
+        "message": "检查我的财务情况",
+        "profile": {"preferences": {"preferred_language": "zh"}}
+      },
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.context"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": true,
+        "process_available": true,
+        "selected_agents": ["cfo"],
+        "required_tool_calls": ["get_finance_context"],
+        "audit_status": "data_limited",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "finance_expense_snapshot_tool",
+      "category": "finance_execution",
+      "input": {
+        "message": "汇总当前支出",
+        "transactions": [
+          {"description": "Food", "amount": -120, "category": "dining"},
+          {"description": "Metro", "amount": -30, "category": "transport"}
+        ]
+      },
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.expense_snapshot"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": true,
+        "process_available": true,
+        "selected_agents": ["cfo"],
+        "required_tool_calls": ["get_expense_snapshot"],
+        "audit_status": "data_limited",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "finance_budget_snapshot_tool",
+      "category": "finance_execution",
+      "input": {
+        "message": "预算状态怎么样",
+        "profile": {"monthly_income": 6000},
+        "transactions": [
+          {"description": "Rent", "amount": -2000, "category": "housing"}
+        ]
+      },
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.budget_snapshot"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": true,
+        "process_available": true,
+        "selected_agents": ["cfo"],
+        "required_tool_calls": ["get_budget_snapshot"],
+        "audit_status": "data_limited",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "finance_cashflow_summary_tool",
+      "category": "finance_execution",
+      "input": {
+        "message": "查看现金流趋势",
+        "monthly_totals": [
+          {"month": "2026-05", "income": 5000, "expenses": 3000, "net": 2000},
+          {"month": "2026-06", "income": 5200, "expenses": 3400, "net": 1800}
+        ]
+      },
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.cashflow_summary"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": true,
+        "process_available": true,
+        "selected_agents": ["cfo"],
+        "required_tool_calls": ["get_cashflow_summary"],
+        "audit_status": "data_limited",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "specialist_expense_review_with_data",
+      "category": "specialist",
+      "input": {
+        "message": "分析异常支出",
+        "transactions": [
+          {"description": "Dinner", "amount": -80, "category": "dining"},
+          {"description": "Luxury dinner", "amount": -600, "category": "dining"}
+        ]
+      },
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.expense_review"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": true,
+        "specialist_findings_available": true,
+        "process_available": true,
+        "selected_agents": ["cfo", "expense_analyst", "auditor"],
+        "required_tool_calls": [
+          "get_finance_context",
+          "get_expense_snapshot",
+          "get_anomaly_summary",
+          "consult_expense_analyst",
+          "consult_auditor"
+        ],
+        "audit_status": "needs_review",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "specialist_expense_review_without_data",
+      "category": "specialist",
+      "input": {"message": "分析我的支出"},
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.expense_review"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": true,
+        "specialist_findings_available": false,
+        "process_available": true,
+        "selected_agents": ["cfo", "expense_analyst", "auditor"],
+        "required_tool_calls": [
+          "get_finance_context",
+          "consult_expense_analyst",
+          "consult_auditor"
+        ],
+        "audit_status": "data_limited",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "specialist_budget_review_with_data",
+      "category": "specialist",
+      "input": {
+        "message": "帮我做预算规划",
+        "profile": {"monthly_income": 8000},
+        "transactions": [
+          {"description": "Rent", "amount": -3000, "category": "housing"},
+          {"description": "Food", "amount": -1000, "category": "dining"}
+        ]
+      },
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.budget_coaching"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": true,
+        "specialist_findings_available": true,
+        "process_available": true,
+        "selected_agents": ["cfo", "budget_coach", "auditor"],
+        "required_tool_calls": [
+          "get_finance_context",
+          "get_budget_snapshot",
+          "get_cashflow_summary",
+          "consult_budget_coach",
+          "consult_auditor"
+        ],
+        "audit_status": "needs_review",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "specialist_budget_review_without_data",
+      "category": "specialist",
+      "input": {"message": "帮我做预算规划"},
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.budget_coaching"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": true,
+        "specialist_findings_available": true,
+        "process_available": true,
+        "selected_agents": ["cfo", "budget_coach", "auditor"],
+        "required_tool_calls": [
+          "get_finance_context",
+          "consult_budget_coach",
+          "consult_auditor"
+        ],
+        "audit_status": "data_limited",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "specialist_audit_only",
+      "category": "specialist",
+      "input": {
+        "message": "只审核现有结论",
+        "transactions": [
+          {"description": "Food", "amount": -50, "category": "dining"}
+        ]
+      },
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.audit_review"]
+      },
+      "expected": {
+        "outcome": "executed",
+        "data_present": true,
+        "evidence_available": false,
+        "specialist_findings_available": false,
+        "process_available": true,
+        "selected_agents": ["cfo", "auditor"],
+        "required_tool_calls": ["consult_auditor"],
+        "audit_status": "data_limited",
+        "enforce_numeric_grounding": true
+      }
+    },
+    {
+      "case_id": "policy_block_context",
+      "category": "policy",
+      "input": {"message": "概览我的财务情况"},
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.context"]
+      },
+      "granted_capabilities": [],
+      "expected": {
+        "outcome": "blocked",
+        "data_present": false,
+        "policy_blocked": true,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": ["get_finance_context"],
+        "reply_contains": ["未启用"]
+      }
+    },
+    {
+      "case_id": "policy_block_expense_team_atomically",
+      "category": "policy",
+      "input": {
+        "message": "分析支出",
+        "transactions": [
+          {"description": "Food", "amount": -50, "category": "dining"}
+        ]
+      },
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.expense_review"]
+      },
+      "granted_capabilities": ["finance.context"],
+      "expected": {
+        "outcome": "blocked",
+        "data_present": false,
+        "policy_blocked": true,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": [
+          "get_finance_context",
+          "get_expense_snapshot",
+          "consult_expense_analyst"
+        ],
+        "reply_contains": ["未启用"]
+      }
+    },
+    {
+      "case_id": "policy_block_budget_team_atomically",
+      "category": "policy",
+      "input": {"message": "做预算计划"},
+      "decision": {
+        "action": "execute",
+        "capability_ids": ["finance.budget_coaching"]
+      },
+      "granted_capabilities": ["finance.context", "finance.expense_snapshot"],
+      "expected": {
+        "outcome": "blocked",
+        "data_present": false,
+        "policy_blocked": true,
+        "selected_agents": ["cfo"],
+        "forbidden_tool_calls": [
+          "get_finance_context",
+          "get_expense_snapshot",
+          "consult_budget_coach"
+        ],
+        "reply_contains": ["未启用"]
+      }
+    }
+  ]
+}

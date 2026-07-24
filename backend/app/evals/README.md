@@ -16,6 +16,7 @@ facts required for debugging, audit, and regression review.
 | `replay_run.py` | CLI/admin helper for replaying persisted run records by request ID |
 | `trace_export.py` | Typed JSON/JSONL trace export reader and CI regression report CLI |
 | `memory_eval.py` | Deterministic multi-turn memory-window and reference-resolution eval |
+| `cfo_runtime_acceptance.py` | Cross-layer response and run-ledger acceptance evaluator |
 
 Run the memory regression set without a model or infrastructure dependency:
 
@@ -23,18 +24,24 @@ Run the memory regression set without a model or infrastructure dependency:
 python -m app.evals.memory_eval
 ```
 
+Run the complete offline CFO runtime acceptance set:
+
+```bash
+pytest tests/test_cfo_runtime_acceptance_eval.py -q
+```
+
 ## What The Harness Verifies
 
 - selected agents for the scenario
 - expected deterministic tool calls
-- observed SDK tool calls when `RunResult.new_items` includes them
+- response execution facts used by the product UI
 - output contract validation facts for `ChatResponse`
-- specialist `SpecialistAgentOutput` validation facts when SDK tool output
-  items expose the agent-tool payload
+- specialist `SpecialistAgentOutput` validation facts from typed handoffs
 - usage totals from normalized provider responses
 - output contract name
 - audit status when required
 - entrypoint and user identity consistency
+- response and run-ledger execution-fact consistency
 
 The current v1 harness intentionally records input summaries instead of full
 financial payloads in logs. Full scenario payloads live in fixtures where they
