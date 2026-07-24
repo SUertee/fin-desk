@@ -9,7 +9,6 @@ Pydantic models for all request/response payloads, organized by domain.
 | `user.py` | `UserProfile`, `AssetSnapshot`, `ProfileUpdateRequest` - user identity, assets, and profile update schema |
 | `chat.py` | `ChatRequest`, `ChatResponse` - multi-agent chat payloads |
 | `agent_data.py` | `FinanceAgentData`, `SummaryCard`, `AgentFinding`, `AgentAction`, `AgentAudit` - structured finance agent response data |
-| `analysis.py` | `AnalyzeRequest`, `AnalysisAgentOutput`, `AnalyzeResponse` - analysis agent and route contracts |
 | `runtime.py` | `AgentRunRecord` and harness facts for policy, tools, handoffs, output validation, usage, cost, and errors |
 | `__init__.py` | Re-exports all models for `from app.models import X` |
 

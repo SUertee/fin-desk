@@ -78,8 +78,6 @@ User
 
 ```text
 GET    /health                          runtime identity and component status
-GET    /schema                          analysis output schema
-POST   /analyze                         transaction analysis (typed output contract)
 POST   /chat                            CFO chat (returns request_id for trace lookup)
 GET    /workspace/brief/{user_id}       agent-generated workspace brief
 GET    /profile/{user_id}               profile + preferences
@@ -143,9 +141,7 @@ cd web && npm run build
 | `REDIS_URL` | optional Redis cache URL; empty disables Redis without changing application behavior |
 | `REDIS_CHAT_HISTORY_TTL_SECONDS` | recent chat-history cache TTL (default `3600`) |
 | `REDIS_SESSION_MEMORY_TTL_SECONDS` | session-memory cache TTL (default `86400`) |
-| `OPENAI_API_KEY` | optional — enables the OpenAI Agents SDK path for `/analyze` |
-| `OPENAI_AGENT_MODEL`, `OPENAI_AGENT_MAX_TURNS` | OpenAI adapter tuning |
-| `OPENAI_*_COST_PER_1M` | run-ledger cost estimation rates |
+| `DEEPSEEK_API_KEY` | enables model-backed CFO decisions and evidence-bounded reply composition |
 | `MARKET_CONTEXT_ENABLED` | config gate for the Market Context specialist (default off) |
 | `NEWS_API_KEY` | optional — market/news lookups when the gate is on |
 | `VITE_API_BASE_URL` | client → backend base URL (default `http://localhost:18000`) |

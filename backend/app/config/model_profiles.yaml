@@ -49,20 +49,6 @@ audit:
   pricing_source: deepseek_official_pricing
   pricing_effective_date: 2026-07-15
 
-analysis:
-  provider: openai
-  model: gpt-4o
-  api_key_env: OPENAI_API_KEY
-  api_base_url: https://api.openai.com/v1
-  temperature: 0.2
-  max_tokens: 1400
-  timeout_seconds: 45
-  input_cost_per_1m: 2.50
-  output_cost_per_1m: 10.00
-  billing_currency: USD
-  pricing_source: openai_model_page
-  pricing_effective_date: 2026-07-13
-
 # CFO turn decisions and ambiguous-reference resolution use a small,
 # fast-fail profile. Invalid decisions fail explicitly and never select tools.
 router:

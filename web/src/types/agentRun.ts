@@ -85,7 +85,7 @@ export type AgentOutputValidation = {
 export type AgentRunSummary = {
   request_id: string;
   user_id: string;
-  entrypoint: "chat" | "analyze";
+  entrypoint: "chat" | "workspace_brief";
   runtime_requested: string;
   runtime_used?: string | null;
   model_name?: string | null;
@@ -123,7 +123,7 @@ export type AgentRunTimelineItem = {
 export type AgentRunProjection = {
   summary: {
     request_id: string;
-    entrypoint: "chat" | "analyze";
+    entrypoint: "chat" | "workspace_brief";
     user_id: string;
     runtime_requested: string;
     runtime_used?: string | null;
@@ -148,7 +148,7 @@ export type AgentRunProjection = {
 export type AgentRunRecordSummary = {
   request_id: string;
   user_id: string;
-  entrypoint: "chat" | "analyze";
+  entrypoint: "chat" | "workspace_brief";
   runtime_used?: string | null;
   model_name?: string | null;
   selected_agents: string[];
@@ -163,7 +163,7 @@ export type AgentRunRecordSummary = {
 };
 
 export type AgentRunFilters = {
-  entrypoint?: "chat" | "analyze" | "";
+  entrypoint?: "chat" | "workspace_brief" | "";
   hasError?: boolean | null;
   createdFrom?: string;
   createdTo?: string;
@@ -187,7 +187,7 @@ export type ReplayRunReport = {
 
 export type EvalCaseSummary = {
   case_id: string;
-  entrypoint: "chat" | "analyze";
+  entrypoint: "chat" | "workspace_brief";
   user_id: string;
   expected: {
     selected_agents: string[];

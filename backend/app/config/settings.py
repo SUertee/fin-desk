@@ -439,7 +439,6 @@ class AppSettings:
     chat_model_profile: str = "chat"
     specialist_model_profile: str = "specialist"
     audit_model_profile: str = "audit"
-    analysis_model_profile: str = "analysis"
     cost: CostSettings = CostSettings()
     investment: InvestmentSettings = InvestmentSettings()
     market_data: MarketDataSettings = MarketDataSettings()
@@ -508,7 +507,6 @@ def load_model_profiles() -> dict[str, ModelProfile]:
         profiles["chat"] = ModelProfile(name="chat")
         profiles["specialist"] = ModelProfile(name="specialist")
         profiles["audit"] = ModelProfile(name="audit")
-        profiles["analysis"] = ModelProfile(name="analysis")
     return profiles
 
 
@@ -556,7 +554,6 @@ def get_settings() -> AppSettings:
             "specialist",
         ),
         audit_model_profile=os.getenv("FINANCE_AUDIT_MODEL_PROFILE", "audit"),
-        analysis_model_profile=os.getenv("FINANCE_ANALYSIS_MODEL_PROFILE", "analysis"),
         cost=CostSettings(
             reporting_currency=os.getenv("FINANCE_REPORTING_CURRENCY", "USD"),
         ),

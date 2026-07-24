@@ -11,7 +11,6 @@ from app.runtime.execution.finance_turn_executor import (
     SPECIALIST_TOOL_BY_AGENT,
 )
 from app.runtime.orchestration.factory import build_finance_runtime
-from app.services.schema import FINANCE_ANALYSIS_SCHEMA
 
 router = APIRouter()
 
@@ -31,7 +30,6 @@ def health():
         "version": "2.0.0",
         "architecture": "cfo_first",
         "agent_runtime": "self_hosted_cfo_agent",
-        "analysis_runtime": "openai_agents_sdk",
         "user_facing_agent": "cfo",
         "controlled_tools": list(_self_hosted_tool_names()),
         "specialist_agent_tools": list(SPECIALIST_TOOL_BY_AGENT.values()),
@@ -48,7 +46,6 @@ def health():
         "runtime_components": [
             "orchestration.finance_runtime",
             "agents.cfo.decision",
-            "providers.openai_analysis_runtime",
             "capabilities.catalog",
             "capabilities.resolver",
             "policy.runtime_policy",
@@ -64,8 +61,3 @@ def health():
             "evals.replay",
         ],
     }
-
-
-@router.get("/schema")
-def schema():
-    return FINANCE_ANALYSIS_SCHEMA

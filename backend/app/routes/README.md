@@ -6,8 +6,7 @@ FastAPI route handlers, organized by domain. Each file defines an `APIRouter` th
 
 | File | Description |
 |------|-------------|
-| `health.py` | `GET /health` and `GET /schema` - health check + JSON schema for frontend |
-| `analyze.py` | `POST /analyze` - original transaction analysis pipeline |
+| `health.py` | `GET /health` - runtime and dependency health facts |
 | `chat.py` | `POST /chat`, `GET /chat/history/{user_id}`, `DELETE /chat/history/{user_id}` - multi-agent chat |
 | `profile.py` | `GET /profile/{user_id}`, `PUT /profile/{user_id}` - user profile CRUD |
 | `transactions.py` | `GET /transactions/{user_id}`, `GET /analysis-runs/latest/{user_id}` - dashboard data from local Postgres |
@@ -18,8 +17,6 @@ FastAPI route handlers, organized by domain. Each file defines an `APIRouter` th
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/health` | Returns backend status, version, and available runtime components |
-| GET | `/schema` | JSON Schema for the analysis response format |
-| POST | `/analyze` | Run full analysis pipeline on transactions |
 | POST | `/chat` | Send a message to the multi-agent system |
 | GET | `/chat/history/{user_id}` | Retrieve chat history |
 | DELETE | `/chat/history/{user_id}` | Clear chat history |

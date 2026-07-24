@@ -143,7 +143,8 @@ class TestHealthTruth:
         payload = health()
 
         assert payload["agent_runtime"] == "self_hosted_cfo_agent"
-        assert payload["analysis_runtime"] == "openai_agents_sdk"
+        assert "analysis_runtime" not in payload
+        assert payload["runtime_components"].count("orchestration.finance_runtime") == 1
         assert "get_investment_research_context" in payload["controlled_tools"]
         assert "consult_investment_research" in payload["specialist_agent_tools"]
         assert payload["capabilities"] == {

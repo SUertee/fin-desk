@@ -17,7 +17,6 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes.analyze import router as analyze_router
 from app.routes.agent_gateway import router as agent_gateway_router
 from app.integrations.agenthub import router as agenthub_router
 from app.routes.ai_costs import router as ai_costs_router
@@ -79,7 +78,6 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
-app.include_router(analyze_router)
 app.include_router(chat_router)
 app.include_router(capabilities_router)
 app.include_router(data_sources_router)

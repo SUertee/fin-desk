@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 
-RuntimeEntrypoint = Literal["chat", "analyze", "workspace_brief"]
+RuntimeEntrypoint = Literal["chat", "workspace_brief"]
 
 
 @dataclass(frozen=True)

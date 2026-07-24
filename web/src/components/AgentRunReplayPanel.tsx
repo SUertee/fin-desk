@@ -26,7 +26,6 @@ const EVAL_CASES = [
   { id: "", label: "Replay only" },
   { id: "chat_spending_review", label: "Chat: spending review" },
   { id: "chat_budget_plan", label: "Chat: budget plan" },
-  { id: "analyze_cashflow_snapshot", label: "Analyze: cashflow snapshot" },
 ] as const;
 
 const PAGE_SIZE = 10;
@@ -90,8 +89,8 @@ function StatusPill({ status }: { status?: string | null }) {
 function EmptyState() {
   return (
     <div className="text-sm text-gray-500" style={{ padding: "18px 0" }}>
-      No persisted agent runs yet. Send a chat message or run `/analyze` with
-      Postgres enabled, then refresh this panel.
+      No persisted agent runs yet. Send a CFO message with Postgres enabled,
+      then refresh this panel.
     </div>
   );
 }
@@ -213,7 +212,7 @@ export function AgentRunReplayPanel({ userId }: AgentRunReplayPanelProps) {
   const [selectedRequestId, setSelectedRequestId] = useState("");
   const [caseId, setCaseId] = useState("");
   const [entrypointFilter, setEntrypointFilter] = useState<
-    "" | "chat" | "analyze"
+    "" | "chat" | "workspace_brief"
   >("");
   const [errorFilter, setErrorFilter] = useState<"all" | "error" | "success">("all");
   const [createdFrom, setCreatedFrom] = useState("");
@@ -343,7 +342,9 @@ export function AgentRunReplayPanel({ userId }: AgentRunReplayPanelProps) {
                 <select
                   value={entrypointFilter}
                   onChange={(event) => {
-                    setEntrypointFilter(event.target.value as "" | "chat" | "analyze");
+                    setEntrypointFilter(
+                      event.target.value as "" | "chat" | "workspace_brief"
+                    );
                     setPagination((current) => ({ ...current, offset: 0 }));
                   }}
                   className="border rounded-lg text-xs text-slate-700 bg-white"
@@ -351,7 +352,7 @@ export function AgentRunReplayPanel({ userId }: AgentRunReplayPanelProps) {
                 >
                   <option value="">All entrypoints</option>
                   <option value="chat">Chat</option>
-                  <option value="analyze">Analyze</option>
+                  <option value="workspace_brief">Workspace brief</option>
                 </select>
                 <select
                   value={errorFilter}

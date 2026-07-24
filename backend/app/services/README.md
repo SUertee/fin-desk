@@ -10,11 +10,10 @@ Business logic layer: transaction processing, external APIs, and state managemen
 | `anomalies.py` | Statistical + rule-based anomaly detection (large expenses, fees, new merchants) |
 | `summaries.py` | Builds category/month/merchant summary structures for the frontend |
 | `news_api.py` | NewsAPI.org client for fetching financial news |
-| `schema.py` | JSON Schema definition for the `/analyze` response format |
 | `memory.py` | Conversation memory with in-memory cache + PostgreSQL persistence |
 | `user_store.py` | User profile management with in-memory cache + PostgreSQL persistence |
 
-Agent model configuration lives in `runtime/` and is OpenAI Agents SDK-only.
+Agent model configuration and provider adapters live behind `runtime/llm/`.
 
 ## Transaction Categorization
 

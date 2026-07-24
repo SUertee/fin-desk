@@ -12,7 +12,7 @@ from app.models.runtime_usage import AgentRunUsage
 
 ComplexityLevel = Literal["simple", "moderate", "complex"]
 RiskLevel = Literal["low", "medium", "high"]
-RuntimeEntrypoint = Literal["chat", "analyze", "workspace_brief"]
+RuntimeEntrypoint = Literal["chat", "workspace_brief"]
 ToolCallStatus = Literal["expected", "called", "failed", "skipped"]
 HandoffStatus = Literal["planned", "completed", "failed"]
 ValidationStatus = Literal["passed", "failed"]

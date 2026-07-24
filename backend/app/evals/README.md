@@ -10,7 +10,7 @@ facts required for debugging, audit, and regression review.
 
 | Path | Purpose |
 |------|---------|
-| `fixtures/*.json` | Golden scenarios for chat and analysis entrypoints |
+| `fixtures/*.json` | Golden scenarios for CFO chat entrypoints |
 | `samples/ci_traces.jsonl` | Deterministic trace export sample used by harness CI |
 | `replay.py` | Loader and matcher for `AgentRunRecord` replay checks |
 | `replay_run.py` | CLI/admin helper for replaying persisted run records by request ID |
@@ -28,11 +28,10 @@ python -m app.evals.memory_eval
 - selected agents for the scenario
 - expected deterministic tool calls
 - observed SDK tool calls when `RunResult.new_items` includes them
-- output contract validation facts for `ChatResponse` and `AnalyzeResponse`
+- output contract validation facts for `ChatResponse`
 - specialist `SpecialistAgentOutput` validation facts when SDK tool output
   items expose the agent-tool payload
-- usage totals from SDK context or raw responses
-- live `HarnessRunHooks` local tool timing when the SDK invokes local tools
+- usage totals from normalized provider responses
 - output contract name
 - audit status when required
 - entrypoint and user identity consistency
@@ -41,19 +40,11 @@ The current v1 harness intentionally records input summaries instead of full
 financial payloads in logs. Full scenario payloads live in fixtures where they
 can be reviewed, versioned, and replayed safely during tests.
 
-`_run_observations` is an internal runtime metadata key used to pass normalized
-SDK observations from the OpenAI runtime to the trace collector. It is removed
-before route responses are returned.
-The OpenAI runtime passes `HarnessRunHooks` into `Runner.run`, then merges hook
-events with `RunResult.new_items` observations before the trace collector sees
-the run facts.
-
 Contract validation failures are stored as structured `output_validations`
 entries instead of raw exception text. This makes replay useful for debugging
 broken agent responses without logging the full financial payload.
-Specialist validations are only derived from `consult_*` agent-tool outputs,
-so deterministic evidence tools are not accidentally interpreted as agent
-contracts.
+Specialist validations are derived from typed `consult_*` tool outputs, so
+deterministic evidence tools are not interpreted as agent contracts.
 
 ## Replay A Persisted Run
 
