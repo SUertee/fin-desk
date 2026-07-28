@@ -1,0 +1,114 @@
+{
+  "cases": [
+    {
+      "case_id": "independent_parallel_speedup",
+      "max_concurrency": 3,
+      "workers": [
+        {
+          "task_id": "expense",
+          "specialist": "expense_analyst",
+          "delay_ms": 80,
+          "parallel_safe": true
+        },
+        {
+          "task_id": "budget",
+          "specialist": "budget_coach",
+          "delay_ms": 80,
+          "parallel_safe": true
+        },
+        {
+          "task_id": "market",
+          "specialist": "market_context",
+          "delay_ms": 80,
+          "parallel_safe": true
+        }
+      ],
+      "expected_statuses": {
+        "expense": "completed",
+        "budget": "completed",
+        "market": "completed"
+      },
+      "min_speedup": 1.5,
+      "min_observed_concurrency": 2
+    },
+    {
+      "case_id": "dependency_chain",
+      "max_concurrency": 3,
+      "workers": [
+        {
+          "task_id": "expense",
+          "specialist": "expense_analyst",
+          "delay_ms": 20,
+          "parallel_safe": true
+        },
+        {
+          "task_id": "budget",
+          "specialist": "budget_coach",
+          "delay_ms": 20,
+          "depends_on": ["expense"],
+          "parallel_safe": true
+        },
+        {
+          "task_id": "market",
+          "specialist": "market_context",
+          "delay_ms": 20,
+          "depends_on": ["budget"],
+          "parallel_safe": true
+        }
+      ],
+      "expected_statuses": {
+        "expense": "completed",
+        "budget": "completed",
+        "market": "completed"
+      },
+      "max_observed_concurrency": 1
+    },
+    {
+      "case_id": "timeout_isolation",
+      "max_concurrency": 2,
+      "workers": [
+        {
+          "task_id": "expense",
+          "specialist": "expense_analyst",
+          "delay_ms": 180,
+          "timeout_ms": 100,
+          "parallel_safe": true
+        },
+        {
+          "task_id": "budget",
+          "specialist": "budget_coach",
+          "delay_ms": 20,
+          "parallel_safe": true
+        }
+      ],
+      "expected_statuses": {
+        "expense": "timed_out",
+        "budget": "completed"
+      },
+      "min_observed_concurrency": 2
+    },
+    {
+      "case_id": "non_parallel_tasks",
+      "max_concurrency": 3,
+      "workers": [
+        {
+          "task_id": "expense",
+          "specialist": "expense_analyst",
+          "delay_ms": 30,
+          "parallel_safe": false
+        },
+        {
+          "task_id": "budget",
+          "specialist": "budget_coach",
+          "delay_ms": 30,
+          "parallel_safe": false
+        }
+      ],
+      "expected_statuses": {
+        "expense": "completed",
+        "budget": "completed"
+      },
+      "max_observed_concurrency": 1
+    }
+  ]
+}

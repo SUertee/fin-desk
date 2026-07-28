@@ -17,6 +17,7 @@ facts required for debugging, audit, and regression review.
 | `trace_export.py` | Typed JSON/JSONL trace export reader and CI regression report CLI |
 | `memory_eval.py` | Deterministic multi-turn memory-window and reference-resolution eval |
 | `cfo_runtime_acceptance.py` | Cross-layer response and run-ledger acceptance evaluator |
+| `specialist_execution_eval.py` | Offline concurrency, dependency, timeout, and partial-success eval |
 
 Run the memory regression set without a model or infrastructure dependency:
 
@@ -29,6 +30,15 @@ Run the complete offline CFO runtime acceptance set:
 ```bash
 pytest tests/test_cfo_runtime_acceptance_eval.py -q
 ```
+
+Run the specialist scheduling regression set:
+
+```bash
+python -m app.evals.specialist_execution_eval
+```
+
+Its latency and speedup values compare deterministic local fixtures. They detect
+accidental serialization but are not production performance claims.
 
 ## What The Harness Verifies
 
