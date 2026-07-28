@@ -17,6 +17,7 @@ from app.runtime.capabilities import (
     get_capability_health_service,
 )
 from app.runtime.capabilities.contracts import CapabilityRuntimeStatus
+from app.runtime.capabilities.definitions import TEAM_CAPABILITY_DEFINITIONS
 from app.runtime.costing import CostingService
 from app.runtime.execution import ToolRegistry
 from app.runtime.execution.finance_toolset import FinanceToolset
@@ -103,6 +104,7 @@ def build_finance_runtime(
     catalog = CapabilityCatalog.from_registries(
         registry,
         runner.registry,
+        team_definitions=TEAM_CAPABILITY_DEFINITIONS,
         optional_tool_statuses=optional_statuses,
     )
     resolver = CapabilityResolver(catalog)

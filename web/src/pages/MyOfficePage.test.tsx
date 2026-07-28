@@ -109,6 +109,11 @@ describe("MyOfficePage", () => {
     expect(screen.queryByText("引用与执行")).toBeNull();
     // Grounded analysis answers carry the「CFO 判断」semantic label.
     expect(screen.getByText("CFO 判断")).toBeTruthy();
+    expect(
+      screen
+        .getByText("我核对完了。shopping 本月支出 ¥11,348，占总支出 22.7%。")
+        .closest(".office-bubble-cfo-analysis")
+    ).toBeTruthy();
     // Answer-level chips are the only evidence entrypoint.
     expect(screen.getByRole("button", { name: "引用来源" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "团队发现" })).toBeTruthy();
@@ -177,7 +182,7 @@ describe("MyOfficePage", () => {
     );
 
     render(<MyOfficePage userId="demo" userName="Harry" />);
-    await screen.findByText(/这里是你和 CFO 的会议室/);
+    await screen.findByText(/直接说出你想了解的财务问题/);
 
     fireEvent.change(screen.getByPlaceholderText("向 CFO 提问…"), {
       target: { value: "你好" },
@@ -185,10 +190,50 @@ describe("MyOfficePage", () => {
     fireEvent.click(screen.getByTitle("发送"));
 
     await screen.findByText("你好，我在。你可以直接问我财务问题。");
+    expect(
+      screen
+        .getByText("你好，我在。你可以直接问我财务问题。")
+        .closest(".office-bubble-cfo-conversation")
+    ).toBeTruthy();
     expect(screen.queryByRole("button", { name: "引用来源" })).toBeNull();
     expect(screen.queryByRole("button", { name: "团队发现" })).toBeNull();
     expect(screen.queryByText(/CFO 已完成/)).toBeNull();
     // Plain chat never carries the analysis semantic label.
     expect(screen.queryByText("CFO 判断")).toBeNull();
+  });
+
+  it("sends with Enter and preserves Shift+Enter for multiline prompts", async () => {
+    vi.mocked(fetchOfficeSessionMessages).mockResolvedValueOnce([]);
+    vi.mocked(sendOfficeChatMessageStream).mockImplementationOnce(
+      async (_userId, _sessionId, message, onEvent) => {
+        expect(message).toBe("帮我看一下本月预算");
+        onEvent({
+          type: "done",
+          response: {
+            reply: "可以，我先核对预算和支出。",
+            request_id: "req-enter",
+            data: null,
+            execution: directExecution,
+          },
+        });
+      }
+    );
+
+    render(<MyOfficePage userId="demo" userName="Harry" />);
+    const composer = await screen.findByPlaceholderText("向 CFO 提问…");
+
+    fireEvent.change(composer, { target: { value: "输入法候选" } });
+    fireEvent.keyDown(composer, { key: "Enter", isComposing: true });
+    expect(sendOfficeChatMessageStream).not.toHaveBeenCalled();
+
+    fireEvent.change(composer, { target: { value: "第一行" } });
+    fireEvent.keyDown(composer, { key: "Enter", shiftKey: true });
+    expect((composer as HTMLTextAreaElement).value).toBe("第一行");
+
+    fireEvent.change(composer, { target: { value: "帮我看一下本月预算" } });
+    fireEvent.keyDown(composer, { key: "Enter" });
+
+    await screen.findByText("可以，我先核对预算和支出。");
+    expect(sendOfficeChatMessageStream).toHaveBeenCalledTimes(1);
   });
 });

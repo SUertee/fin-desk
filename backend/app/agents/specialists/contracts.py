@@ -41,6 +41,14 @@ class SpecialistRecommendation(BaseModel):
     next_step: str
 
 
+class SpecialistExecutionBudget(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    max_tool_calls: int = Field(default=0, ge=0, le=8)
+    max_output_tokens: int = Field(default=1200, ge=1, le=8000)
+    timeout_ms: int = Field(default=5000, ge=100, le=60000)
+
+
 class SpecialistAgentOutput(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
@@ -58,6 +66,11 @@ class SpecialistInput(BaseModel):
 
     task: str = ""
     evidence: dict[str, Any] = Field(default_factory=dict)
+    artifact_refs: tuple[str, ...] = ()
+    allowed_tools: tuple[str, ...] = ()
     constraints: list[str] = Field(default_factory=list)
+    budget: SpecialistExecutionBudget = Field(
+        default_factory=SpecialistExecutionBudget
+    )
     policy: dict[str, Any] = Field(default_factory=dict)
     prior_outputs: dict[str, SpecialistAgentOutput] = Field(default_factory=dict)

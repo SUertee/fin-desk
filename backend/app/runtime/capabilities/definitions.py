@@ -195,3 +195,49 @@ SPECIALIST_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
         requires=("investment.research_context",),
     ),
 }
+
+
+def _team(
+    capability_id: str,
+    title: str,
+    description: str,
+    *,
+    members: tuple[str, ...],
+    risk_level: CapabilityRiskLevel = "low",
+) -> CapabilityDefinition:
+    return CapabilityDefinition(
+        capability_id=capability_id,
+        kind="team",
+        title=title,
+        description=description,
+        owner="cfo",
+        risk_level=risk_level,
+        execution_mode="analysis",
+        input_contract="TeamTask",
+        output_contract="SpecialistArtifactBundle",
+        requires=members,
+    )
+
+
+TEAM_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
+    "team.monthly_finance_review": _team(
+        "team.monthly_finance_review",
+        "Monthly finance review team",
+        "Combine expense and budget specialists for a cross-domain finance review.",
+        members=(
+            "finance.expense_review",
+            "finance.budget_coaching",
+        ),
+    ),
+    "team.investment_research_review": _team(
+        "team.investment_research_review",
+        "Investment research team",
+        "Combine personal affordability, market context, and investment research.",
+        members=(
+            "finance.budget_coaching",
+            "market.context_review",
+            "investment.research_review",
+        ),
+        risk_level="medium",
+    ),
+}

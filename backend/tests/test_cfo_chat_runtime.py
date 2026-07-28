@@ -2,6 +2,13 @@ import logging
 
 import pytest
 
+from app.agents.specialists import REGISTRY
+from app.agents.specialists.contracts import (
+    SpecialistAgentOutput,
+    SpecialistFinding,
+    SpecialistInput,
+)
+from app.runtime.execution.specialist_runner import SpecialistRunner
 from app.runtime.orchestration.factory import build_finance_runtime
 from tests.cfo_decision_fakes import direct, execute
 
@@ -83,6 +90,192 @@ async def test_runtime_uses_self_hosted_multi_agent_path(monkeypatch, caplog):
     assert saved_records[0].entrypoint == "chat"
     assert saved_records[0].runtime_used == "self_hosted"
     assert saved_records[0].selected_agents == ["cfo", "expense_analyst", "auditor"]
+
+
+@pytest.mark.asyncio
+async def test_runtime_expands_composed_team_into_existing_specialists(
+    monkeypatch,
+    caplog,
+):
+    from app.runtime.orchestration import finance_runtime
+
+    saved_records = []
+    captured_inputs: dict[str, SpecialistInput] = {}
+
+    def capture(specialist):
+        implementation = REGISTRY[specialist]
+
+        def run(input: SpecialistInput):
+            captured_inputs[specialist] = input
+            return implementation(input)
+
+        return run
+
+    specialist_runner = SpecialistRunner(
+        registry={
+            **REGISTRY,
+            "expense_analyst": capture("expense_analyst"),
+            "budget_coach": capture("budget_coach"),
+            "auditor": capture("auditor"),
+        }
+    )
+    monkeypatch.setattr(
+        finance_runtime,
+        "save_agent_run_record_db",
+        lambda record: saved_records.append(record) or True,
+    )
+    runtime = build_finance_runtime(
+        decision_engine=execute("team.monthly_finance_review"),
+        specialist_runner=specialist_runner,
+    )
+    caplog.set_level(logging.INFO, logger="app.runtime.orchestration.finance_runtime")
+
+    result = await runtime.handle(
+        user_id="demo",
+        message="Review my monthly spending and budget",
+        profile={"name": "Demo", "monthly_income": 5000},
+        transactions=[{"amount": -100, "category": "Dining"}],
+        monthly_totals=[{"month": "2026-06", "net": 4200}],
+        chat_history=[],
+    )
+
+    finding_agents = {item["agent"] for item in result["data"]["findings"]}
+    assert {"expense_analyst", "budget_coach"} <= finding_agents
+    assert saved_records[0].selected_agents == [
+        "cfo",
+        "expense_analyst",
+        "budget_coach",
+        "auditor",
+    ]
+    assert [
+        handoff.to_agent for handoff in saved_records[0].handoffs
+    ] == ["expense_analyst", "budget_coach", "auditor"]
+    assert all(
+        not handoff.to_agent.startswith("team.")
+        for handoff in saved_records[0].handoffs
+    )
+    assert set(captured_inputs["expense_analyst"].evidence) == {
+        "reply_language",
+        "expense_snapshot",
+    }
+    assert set(captured_inputs["budget_coach"].evidence) == {
+        "reply_language",
+        "budget_snapshot",
+    }
+    assert set(captured_inputs["auditor"].evidence) == {
+        "reply_language",
+        "transaction_evidence_available",
+    }
+    for specialist_input in captured_inputs.values():
+        assert not {
+            "profile",
+            "chat_history",
+            "memory_context",
+            "transactions_sample",
+        }.intersection(specialist_input.evidence)
+        assert specialist_input.allowed_tools == ()
+        assert specialist_input.budget.max_tool_calls == 0
+    assert captured_inputs["expense_analyst"].artifact_refs == (
+        "artifact://get_expense_snapshot",
+    )
+    assert captured_inputs["budget_coach"].artifact_refs == (
+        "artifact://get_budget_snapshot",
+    )
+    assert set(captured_inputs["auditor"].prior_outputs) == {
+        "expense_analyst",
+        "budget_coach",
+    }
+    assert saved_records[0].policy["evidence_validation"] == {
+        "stage": "evidence_validation",
+        "status": "validated",
+        "accepted_specialists": ["expense_analyst", "budget_coach"],
+        "rejected_specialists": [],
+        "reason_codes": [],
+    }
+    execution = saved_records[0].policy["specialist_execution"]
+    assert execution["stage"] == "specialist_execution"
+    assert [
+        (task["task_id"], task["specialist"], task["status"])
+        for task in execution["tasks"]
+    ] == [
+        (
+            "finance.expense_review",
+            "expense_analyst",
+            "completed",
+        ),
+        (
+            "finance.budget_coaching",
+            "budget_coach",
+            "completed",
+        ),
+    ]
+    assert all(task["parallel_safe"] for task in execution["tasks"])
+
+
+@pytest.mark.asyncio
+async def test_runtime_isolates_invalid_specialist_evidence_before_audit(
+    monkeypatch,
+):
+    from app.runtime.orchestration import finance_runtime
+
+    saved_records = []
+    captured_audit_input: list[SpecialistInput] = []
+
+    def invalid_expense(_: SpecialistInput) -> SpecialistAgentOutput:
+        return SpecialistAgentOutput(
+            specialist="expense_analyst",
+            confidence=0.9,
+            findings=[
+                SpecialistFinding(
+                    title="Unsupported expense claim",
+                    evidence=[],
+                )
+            ],
+        )
+
+    def capture_auditor(input: SpecialistInput) -> SpecialistAgentOutput:
+        captured_audit_input.append(input)
+        return REGISTRY["auditor"](input)
+
+    specialist_runner = SpecialistRunner(
+        registry={
+            **REGISTRY,
+            "expense_analyst": invalid_expense,
+            "auditor": capture_auditor,
+        }
+    )
+    monkeypatch.setattr(
+        finance_runtime,
+        "save_agent_run_record_db",
+        lambda record: saved_records.append(record) or True,
+    )
+    runtime = build_finance_runtime(
+        decision_engine=execute("team.monthly_finance_review"),
+        specialist_runner=specialist_runner,
+    )
+
+    result = await runtime.handle(
+        user_id="demo",
+        message="Review my monthly spending and budget",
+        profile={"name": "Demo", "monthly_income": 5000},
+        transactions=[{"amount": -100, "category": "Dining"}],
+        monthly_totals=[{"month": "2026-06", "net": 4200}],
+        chat_history=[],
+    )
+
+    finding_agents = {item["agent"] for item in result["data"]["findings"]}
+    assert "expense_analyst" not in finding_agents
+    assert "budget_coach" in finding_agents
+    assert set(captured_audit_input[0].prior_outputs) == {"budget_coach"}
+    assert saved_records[0].policy["evidence_validation"] == {
+        "stage": "evidence_validation",
+        "status": "limited",
+        "accepted_specialists": ["budget_coach"],
+        "rejected_specialists": ["expense_analyst"],
+        "reason_codes": [
+            "finding_without_evidence:expense_analyst:0"
+        ],
+    }
 
 
 @pytest.mark.asyncio

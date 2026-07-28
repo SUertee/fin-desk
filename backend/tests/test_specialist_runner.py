@@ -17,6 +17,7 @@ from app.agents.specialists import (
 )
 from app.agents.specialists.contracts import (
     SpecialistAgentOutput,
+    SpecialistExecutionBudget,
     SpecialistInput,
 )
 from app.models.runtime import RuntimePolicyResult
@@ -33,6 +34,7 @@ FINANCE_CONTEXT = {
     },
     "budget_snapshot": {"status": "watch", "expense_ratio": 0.82},
     "transactions_sample": [{"description": "地铁", "amount": -4.0}],
+    "transaction_evidence_available": True,
 }
 
 
@@ -48,13 +50,34 @@ class TestRegistry:
 
 
 class TestRunnerDispatch:
+    def test_handoff_rejects_unsupported_contract_before_execution(self):
+        with pytest.raises(ValueError, match="Unsupported handoff output contract"):
+            HandoffRequest(
+                from_agent="cfo",
+                to_agent="expense_analyst",
+                task="review",
+                output_contract="UnknownOutput",
+            )
+
+    def test_budget_rejects_invalid_limits_before_execution(self):
+        with pytest.raises(ValueError):
+            SpecialistExecutionBudget(max_tool_calls=9)
+
     def test_completed_handoff_carries_contract_fields(self):
         runner = SpecialistRunner()
         request = HandoffRequest(
             from_agent="cfo",
             to_agent="expense_analyst",
             task="Produce expense review",
+            output_contract="SpecialistAgentOutput",
             evidence=FINANCE_CONTEXT,
+            artifact_refs=("artifact://get_expense_snapshot",),
+            allowed_tools=("query_transactions",),
+            budget=SpecialistExecutionBudget(
+                max_tool_calls=1,
+                max_output_tokens=900,
+                timeout_ms=2500,
+            ),
         )
 
         result = runner.run(request)
@@ -64,10 +87,19 @@ class TestRunnerDispatch:
         output = SpecialistAgentOutput.model_validate(result.output)
         assert output.specialist == "expense_analyst"
         assert result.confidence == output.confidence
+        captured = runner._assemble_input(request, None)
+        assert captured.artifact_refs == ("artifact://get_expense_snapshot",)
+        assert captured.allowed_tools == ("query_transactions",)
+        assert captured.budget.max_tool_calls == 1
 
     def test_unknown_specialist_fails_typed(self):
         runner = SpecialistRunner()
-        request = HandoffRequest(from_agent="cfo", to_agent="tax_advisor", task="x")
+        request = HandoffRequest(
+            from_agent="cfo",
+            to_agent="tax_advisor",
+            task="x",
+            output_contract="SpecialistAgentOutput",
+        )
 
         result = runner.run(request)
 
@@ -79,7 +111,14 @@ class TestRunnerDispatch:
             return {"specialist": "nonsense", "confidence": 5}
 
         runner = SpecialistRunner(registry={"broken": broken})
-        result = runner.run(HandoffRequest(from_agent="cfo", to_agent="broken", task="x"))
+        result = runner.run(
+            HandoffRequest(
+                from_agent="cfo",
+                to_agent="broken",
+                task="x",
+                output_contract="SpecialistAgentOutput",
+            )
+        )
 
         assert result.status == "failed"
 
@@ -96,6 +135,7 @@ class TestRunnerDispatch:
             from_agent="cfo",
             to_agent="auditor",
             task="audit",
+            output_contract="SpecialistAgentOutput",
             evidence={
                 "finance_context": FINANCE_CONTEXT,
                 "specialists": {"expense_analyst": peer.model_dump()},

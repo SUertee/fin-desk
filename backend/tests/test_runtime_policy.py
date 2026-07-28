@@ -27,6 +27,15 @@ def test_specialist_requests_require_audit():
     assert should_run_audit(policy, specialists_used=policy.required_specialists) is True
 
 
+def test_team_policy_is_derived_from_atomic_specialists():
+    policy = _policy("team.monthly_finance_review")
+
+    assert policy.complexity == "moderate"
+    assert policy.required_specialists == ["expense_analyst", "budget_coach"]
+    assert policy.audit_required is True
+    assert policy.max_deliberation_rounds == 1
+
+
 def test_market_context_is_enabled_only_by_explicit_capability():
     unrelated = _policy("finance.expense_review")
     market = _policy("market.context_review")

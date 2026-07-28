@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-CapabilityKind = Literal["tool", "agent", "skill"]
+CapabilityKind = Literal["tool", "agent", "skill", "team"]
 CapabilitySource = Literal["internal", "mcp"]
 CapabilityRiskLevel = Literal["low", "medium", "high"]
 CapabilityExecutionMode = Literal["read_only", "analysis"]

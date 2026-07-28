@@ -21,6 +21,7 @@ from app.runtime.capabilities import (
 )
 from app.runtime.capabilities.definitions import (
     SPECIALIST_CAPABILITY_DEFINITIONS,
+    TEAM_CAPABILITY_DEFINITIONS,
     TOOL_CAPABILITY_DEFINITIONS,
 )
 from app.runtime.execution import (
@@ -32,6 +33,7 @@ from app.runtime.execution import (
     build_execution_plan,
 )
 from app.runtime.orchestration.factory import build_finance_runtime
+from app.runtime.policy.runtime_policy import evaluate_runtime_policy
 
 
 def _descriptor(capability_id: str, *, kind: str = "tool") -> CapabilityDescriptor:
@@ -150,15 +152,19 @@ def test_registry_order_does_not_change_catalog_order():
 
 
 def test_current_registry_definitions_have_exact_coverage():
-    runtime_tool_names = {
-        spec.name for spec in build_finance_runtime().tool_registry.available()
-    }
+    runtime = build_finance_runtime()
+    runtime_tool_names = {spec.name for spec in runtime.tool_registry.available()}
 
     assert runtime_tool_names <= set(TOOL_CAPABILITY_DEFINITIONS)
     assert set(TOOL_CAPABILITY_DEFINITIONS) - runtime_tool_names == {
         "get_vibe_market_data"
     }
     assert set(SPECIALIST_CAPABILITY_DEFINITIONS) == set(REGISTRY)
+    assert {
+        item.descriptor.capability_id
+        for item in runtime.capability_catalog.list()
+        if item.descriptor.kind == "team"
+    } == set(TEAM_CAPABILITY_DEFINITIONS)
 
 
 def test_duplicate_capability_ids_are_rejected():
@@ -215,7 +221,12 @@ def test_plan_binding_resolves_semantic_ids_to_existing_registry_names():
     plan = ExecutionPlan(
         steps=[
             PlanStep(step_type="tool", capability_id="test.query"),
-            PlanStep(step_type="handoff", capability_id="test.review"),
+            PlanStep(
+                step_type="handoff",
+                capability_id="test.review",
+                depends_on=("test.query",),
+                parallel_safe=True,
+            ),
             PlanStep(step_type="compose"),
         ],
     )
@@ -239,6 +250,8 @@ def test_plan_binding_resolves_semantic_ids_to_existing_registry_names():
     assert bound.tool_names == ["query_transactions"]
     assert bound.handoff_names == ["expense_analyst"]
     assert bound.selected_agents == ("cfo", "expense_analyst")
+    assert bound.handoff_steps[0].depends_on == ("test.query",)
+    assert bound.handoff_steps[0].parallel_safe is True
 
 
 def test_planner_emits_semantic_capability_ids_only():
@@ -271,6 +284,52 @@ def test_planner_emits_semantic_capability_ids_only():
     )
     assert plan.steps[-1].step_type == "compose"
     assert plan.steps[-1].capability_id is None
+
+
+def test_planner_expands_team_into_existing_specialist_plan():
+    runtime = build_finance_runtime()
+    policy = evaluate_runtime_policy(
+        ["team.monthly_finance_review"],
+        runtime.capability_catalog,
+    )
+
+    plan = build_execution_plan(
+        ["team.monthly_finance_review"],
+        policy,
+        runtime.capability_catalog,
+    )
+
+    assert plan.handoff_capability_ids == [
+        "finance.expense_review",
+        "finance.budget_coaching",
+        "finance.audit_review",
+    ]
+    assert "team.monthly_finance_review" not in plan.capability_ids
+    assert "finance.expense_snapshot" in plan.tool_capability_ids
+    assert "finance.budget_snapshot" in plan.tool_capability_ids
+    expense, budget, audit = [
+        step for step in plan.steps if step.step_type == "handoff"
+    ]
+    assert expense.depends_on == (
+        "finance.context",
+        "finance.expense_snapshot",
+        "finance.anomaly_summary",
+        "finance.import_quality",
+    )
+    assert budget.depends_on == (
+        "finance.context",
+        "finance.expense_snapshot",
+        "finance.budget_snapshot",
+        "finance.cashflow_summary",
+        "finance.import_quality",
+    )
+    assert expense.parallel_safe is True
+    assert budget.parallel_safe is True
+    assert audit.depends_on == (
+        "finance.expense_review",
+        "finance.budget_coaching",
+    )
+    assert audit.parallel_safe is False
 
 
 @pytest.mark.parametrize(

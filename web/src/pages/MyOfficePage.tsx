@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent, KeyboardEvent, ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -312,6 +312,18 @@ export function MyOfficePage({
     void sendPrompt(input);
   };
 
+  const handleComposerKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (
+      event.nativeEvent.isComposing ||
+      event.key !== "Enter" ||
+      event.shiftKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    void sendPrompt(input);
+  };
+
   return (
     <main className="office-shell">
       <div className={`office-layout${drawer ? " office-layout-with-drawer" : ""}`}>
@@ -378,7 +390,7 @@ export function MyOfficePage({
               <MessagesSquare /> 会话档案
             </button>
             <div className="office-thread-head-copy">
-              <div className="office-thread-kicker">CFO Meeting Thread</div>
+              <div className="office-thread-kicker">与 CFO 对话</div>
               <div className="office-thread-title">
                 {activeSession?.title || "新会议"}
               </div>
@@ -393,10 +405,10 @@ export function MyOfficePage({
             ) : messages.length === 0 ? (
               <div className="office-thread-empty">
                 <div className="office-greeting">
-                  <strong>{userName ? `你好，${userName}` : "你好"} 👋</strong>
+                  <strong>{userName ? `你好，${userName}` : "你好"}</strong>
                   <span>
-                    这里是你和 CFO 的会议室。提出一个问题，CFO
-                    会在需要时调用团队完成分析，并在回答里附上依据。
+                    直接说出你想了解的财务问题。需要核对账本时，CFO
+                    会调用合适的工具和团队，并在回答后附上依据。
                   </span>
                 </div>
                 <div className="office-suggestions">
@@ -440,12 +452,13 @@ export function MyOfficePage({
           </div>
 
           <form className="office-composer" onSubmit={handleSubmit}>
-            <input
-              type="text"
+            <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
               placeholder="向 CFO 提问…"
               className="office-input"
+              rows={1}
             />
             <button
               type="submit"
@@ -549,6 +562,8 @@ function CfoBubble({
 }) {
   const display = buildCfoDisplayPolicy(message, evidence);
   const hasChipRow = display.showSourcesChip || display.showFindingsChip;
+  const presentation =
+    message.execution?.outcome === "executed" ? "analysis" : "conversation";
 
   return (
     <div className="office-msg office-msg-cfo">
@@ -580,7 +595,9 @@ function CfoBubble({
           </div>
         )}
 
-        <div className="office-bubble office-bubble-cfo">
+        <div
+          className={`office-bubble office-bubble-cfo office-bubble-cfo-${presentation}`}
+        >
           {display.showJudgementLabel && (
             <div className="office-bubble-eyebrow">CFO 判断</div>
           )}
