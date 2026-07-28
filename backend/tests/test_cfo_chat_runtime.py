@@ -192,6 +192,24 @@ async def test_runtime_expands_composed_team_into_existing_specialists(
         "rejected_specialists": [],
         "reason_codes": [],
     }
+    execution = saved_records[0].policy["specialist_execution"]
+    assert execution["stage"] == "specialist_execution"
+    assert [
+        (task["task_id"], task["specialist"], task["status"])
+        for task in execution["tasks"]
+    ] == [
+        (
+            "finance.expense_review",
+            "expense_analyst",
+            "completed",
+        ),
+        (
+            "finance.budget_coaching",
+            "budget_coach",
+            "completed",
+        ),
+    ]
+    assert all(task["parallel_safe"] for task in execution["tasks"])
 
 
 @pytest.mark.asyncio

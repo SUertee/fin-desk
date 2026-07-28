@@ -221,7 +221,12 @@ def test_plan_binding_resolves_semantic_ids_to_existing_registry_names():
     plan = ExecutionPlan(
         steps=[
             PlanStep(step_type="tool", capability_id="test.query"),
-            PlanStep(step_type="handoff", capability_id="test.review"),
+            PlanStep(
+                step_type="handoff",
+                capability_id="test.review",
+                depends_on=("test.query",),
+                parallel_safe=True,
+            ),
             PlanStep(step_type="compose"),
         ],
     )
@@ -245,6 +250,8 @@ def test_plan_binding_resolves_semantic_ids_to_existing_registry_names():
     assert bound.tool_names == ["query_transactions"]
     assert bound.handoff_names == ["expense_analyst"]
     assert bound.selected_agents == ("cfo", "expense_analyst")
+    assert bound.handoff_steps[0].depends_on == ("test.query",)
+    assert bound.handoff_steps[0].parallel_safe is True
 
 
 def test_planner_emits_semantic_capability_ids_only():
@@ -300,6 +307,29 @@ def test_planner_expands_team_into_existing_specialist_plan():
     assert "team.monthly_finance_review" not in plan.capability_ids
     assert "finance.expense_snapshot" in plan.tool_capability_ids
     assert "finance.budget_snapshot" in plan.tool_capability_ids
+    expense, budget, audit = [
+        step for step in plan.steps if step.step_type == "handoff"
+    ]
+    assert expense.depends_on == (
+        "finance.context",
+        "finance.expense_snapshot",
+        "finance.anomaly_summary",
+        "finance.import_quality",
+    )
+    assert budget.depends_on == (
+        "finance.context",
+        "finance.expense_snapshot",
+        "finance.budget_snapshot",
+        "finance.cashflow_summary",
+        "finance.import_quality",
+    )
+    assert expense.parallel_safe is True
+    assert budget.parallel_safe is True
+    assert audit.depends_on == (
+        "finance.expense_review",
+        "finance.budget_coaching",
+    )
+    assert audit.parallel_safe is False
 
 
 @pytest.mark.parametrize(

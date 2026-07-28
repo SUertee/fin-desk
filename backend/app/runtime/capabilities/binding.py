@@ -30,6 +30,8 @@ class BoundCapabilityStep:
     registry_name: str
     agent: str = "cfo"
     reason: str = ""
+    depends_on: tuple[str, ...] = ()
+    parallel_safe: bool = False
 
 
 @dataclass(frozen=True)
@@ -46,6 +48,12 @@ class BoundExecutionPlan:
         return [
             step.registry_name for step in self.steps if step.step_type == "handoff"
         ]
+
+    @property
+    def handoff_steps(self) -> tuple[BoundCapabilityStep, ...]:
+        return tuple(
+            step for step in self.steps if step.step_type == "handoff"
+        )
 
 
 def bind_execution_plan(
@@ -83,6 +91,8 @@ def bind_execution_plan(
                 registry_name=resolution.reference.registry_name,
                 agent=step.agent,
                 reason=step.reason,
+                depends_on=step.depends_on,
+                parallel_safe=step.parallel_safe,
             )
         )
     selected_agents = tuple(

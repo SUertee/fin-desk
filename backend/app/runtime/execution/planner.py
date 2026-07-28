@@ -21,6 +21,8 @@ class PlanStep:
     capability_id: str | None = None
     agent: str = "cfo"
     reason: str = ""
+    depends_on: tuple[str, ...] = ()
+    parallel_safe: bool = False
 
 
 @dataclass(frozen=True)
@@ -58,6 +60,7 @@ def build_execution_plan(
     requested = expand_team_capabilities(capability_ids, catalog)
     tools: list[str] = []
     agents: list[str] = []
+    agent_dependencies: dict[str, tuple[str, ...]] = {}
     for capability_id in requested:
         entry = catalog.get(capability_id)
         if entry is None:
@@ -71,21 +74,36 @@ def build_execution_plan(
                 capability_id == "investment.research_review"
                 and "investment.external_market_history" in requested
             ):
-                dependencies = ()
+                dependencies = ("investment.external_market_history",)
+            agent_dependencies[capability_id] = dependencies
             tools.extend(dependencies)
         else:
             raise ValueError(f"Unsupported executable capability kind: {capability_id}")
 
     if policy.audit_required and "finance.audit_review" not in agents:
         agents.append("finance.audit_review")
+        agent_dependencies["finance.audit_review"] = tuple(
+            item for item in agents if item != "finance.audit_review"
+        )
 
     steps = [
         PlanStep("tool", capability_id, reason="capability_dependency")
         for capability_id in dict.fromkeys(tools)
     ]
     steps.extend(
-        PlanStep("handoff", capability_id, reason="cfo_capability_request")
+        PlanStep(
+            "handoff",
+            capability_id,
+            reason="cfo_capability_request",
+            depends_on=agent_dependencies.get(capability_id, ()),
+            parallel_safe=capability_id != "finance.audit_review",
+        )
         for capability_id in dict.fromkeys(agents)
     )
-    steps.append(PlanStep("compose"))
+    steps.append(
+        PlanStep(
+            "compose",
+            depends_on=tuple(dict.fromkeys(agents)),
+        )
+    )
     return ExecutionPlan(steps=steps)
