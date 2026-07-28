@@ -22,6 +22,12 @@ from app.runtime.contracts.output_validation import validate_output_contract
 from app.runtime.execution.artifact_registry import ArtifactRegistry
 from app.runtime.execution.context import AgentContext
 from app.runtime.execution.context_projector import ContextProjector
+from app.runtime.execution.evidence_validation import (
+    EvidenceJoiner,
+    EvidenceValidationResult,
+    EvidenceValidator,
+    SpecialistArtifact,
+)
 from app.runtime.execution.finance_toolset import FinanceToolset
 from app.runtime.execution.handoff import HandoffRequest, HandoffResult
 from app.runtime.execution.planner import build_execution_plan
@@ -54,6 +60,7 @@ class FinanceTurnExecutionResult:
     policy: RuntimePolicyResult
     observations: tuple[ToolObservation, ...]
     specialist_outputs: dict[str, SpecialistAgentOutput]
+    evidence_validation: EvidenceValidationResult
     execution_facts: TurnExecutionFacts
     projected_steps: tuple[dict[str, Any], ...]
 
@@ -73,6 +80,8 @@ class FinanceTurnExecutor:
         web_research_tool: WebResearchTool,
         capability_health_service: CapabilityHealthService | None = None,
         context_projector: ContextProjector | None = None,
+        evidence_joiner: EvidenceJoiner | None = None,
+        evidence_validator: EvidenceValidator | None = None,
     ) -> None:
         self.capability_catalog = capability_catalog
         self.capability_resolver = capability_resolver
@@ -83,6 +92,8 @@ class FinanceTurnExecutor:
         self.web_research_tool = web_research_tool
         self.capability_health_service = capability_health_service
         self.context_projector = context_projector or ContextProjector()
+        self.evidence_joiner = evidence_joiner or EvidenceJoiner()
+        self.evidence_validator = evidence_validator or EvidenceValidator()
 
     async def execute(
         self,
@@ -173,7 +184,7 @@ class FinanceTurnExecutor:
             reply_language=reply_language,
             trace=trace,
         )
-        specialist_outputs = self._run_specialists(
+        specialist_outputs, evidence_validation = self._run_specialists(
             handoff_names=bound_plan.handoff_names,
             finance_context=finance_context,
             artifacts=artifacts,
@@ -213,6 +224,7 @@ class FinanceTurnExecutor:
             policy=policy,
             observations=tuple(state.tool_observations),
             specialist_outputs=specialist_outputs,
+            evidence_validation=evidence_validation,
             execution_facts=execution_facts,
             projected_steps=projected_steps,
         )
@@ -308,8 +320,11 @@ class FinanceTurnExecutor:
         policy: RuntimePolicyResult,
         state: AgentState,
         trace: TraceCollector,
-    ) -> dict[str, SpecialistAgentOutput]:
-        outputs: dict[str, SpecialistAgentOutput] = {}
+    ) -> tuple[
+        dict[str, SpecialistAgentOutput],
+        EvidenceValidationResult,
+    ]:
+        specialist_artifacts: list[SpecialistArtifact] = []
         for specialist in [
             name for name in handoff_names if name != "auditor"
         ]:
@@ -347,9 +362,27 @@ class FinanceTurnExecutor:
             )
             trace.record_output_validation(validation)
             if validation.status == "passed":
-                outputs[specialist] = (
-                    SpecialistAgentOutput.model_validate(result.output)
+                specialist_artifacts.append(
+                    SpecialistArtifact(
+                        specialist=specialist,
+                        output=SpecialistAgentOutput.model_validate(
+                            result.output
+                        ),
+                        artifact_refs=projected.artifact_refs,
+                    )
                 )
+
+        bundle = self.evidence_joiner.join(
+            artifacts,
+            specialist_artifacts,
+        )
+        evidence_validation = self.evidence_validator.validate(bundle)
+        trace.policy["evidence_validation"] = (
+            evidence_validation.ledger_dump()
+        )
+        outputs = bundle.outputs_for(
+            evidence_validation.accepted_specialists
+        )
 
         if "auditor" in handoff_names and should_run_audit(
             policy,
@@ -400,7 +433,7 @@ class FinanceTurnExecutor:
                 outputs["auditor"] = SpecialistAgentOutput.model_validate(
                     result.output
                 )
-        return outputs
+        return outputs, evidence_validation
 
     @staticmethod
     def _handoff_budget(
