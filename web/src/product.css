@@ -2720,8 +2720,8 @@ body {
 .office-layout {
   position: relative;
   display: grid;
-  grid-template-columns: 288px minmax(0, 1fr);
-  gap: 20px;
+  grid-template-columns: 264px minmax(0, 1fr);
+  gap: 16px;
   height: calc(100vh - 68px - 54px);
   min-height: 540px;
 }
@@ -2731,10 +2731,11 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 18px 14px 14px;
+  padding: 16px 12px 12px;
   border: 1px solid var(--finance-line);
-  border-radius: 16px;
-  background: rgba(255, 253, 247, 0.9);
+  border-radius: 14px;
+  background: rgba(255, 253, 247, 0.72);
+  box-shadow: 0 8px 24px rgba(7, 31, 24, 0.04);
 }
 
 .office-rail-head {
@@ -2863,9 +2864,9 @@ body {
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--finance-line);
-  border-radius: 18px;
+  border-radius: 16px;
   background: var(--finance-card);
-  box-shadow: 0 14px 36px rgba(7, 31, 24, 0.08);
+  box-shadow: 0 12px 34px rgba(7, 31, 24, 0.07);
 }
 
 .office-thread-head {
@@ -2873,7 +2874,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 14px;
-  padding: 16px 22px;
+  padding: 14px 22px;
   border-bottom: 1px solid var(--finance-line);
   background: var(--finance-surface);
 }
@@ -2884,8 +2885,8 @@ body {
 }
 
 .office-thread-kicker {
-  color: var(--finance-muted);
-  font-size: 11.5px;
+  color: var(--finance-accent-2);
+  font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -2905,10 +2906,13 @@ body {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 18px;
+  gap: 22px;
   min-height: 0;
   overflow-y: auto;
-  padding: 24px 26px;
+  padding: 28px clamp(22px, 4vw, 56px);
+  background:
+    linear-gradient(180deg, rgba(249, 248, 242, 0.48), transparent 120px),
+    #fff;
 }
 
 .office-thread-empty {
@@ -2940,13 +2944,13 @@ body {
 }
 
 .office-suggestions {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 
 .office-suggestion {
-  padding: 11px 15px;
+  padding: 12px 14px;
   border: 1px solid #dfe5e3;
   border-radius: 12px;
   background: #fff;
@@ -2970,22 +2974,25 @@ body {
 
 .office-msg-user {
   justify-content: flex-end;
-  margin-left: 12%;
+  margin-left: 18%;
 }
 
 .office-msg-cfo {
-  margin-right: 8%;
+  margin-right: 10%;
 }
 
 .office-msg-body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  width: fit-content;
+  max-width: min(780px, calc(100% - 48px));
   min-width: 0;
 }
 
 .office-msg-user .office-msg-body {
   align-items: flex-end;
+  max-width: min(620px, calc(100% - 48px));
 }
 
 .office-msg-meta {
@@ -3021,10 +3028,10 @@ body {
 }
 
 .office-bubble {
-  padding: 13px 17px;
+  padding: 12px 16px;
   border-radius: 16px;
   font-size: 14px;
-  line-height: 1.65;
+  line-height: 1.72;
 }
 
 .office-bubble-user {
@@ -3037,14 +3044,34 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  border: 1px solid var(--finance-line);
   border-bottom-left-radius: 6px;
-  background: var(--finance-surface);
   color: var(--finance-ink);
+}
+
+.office-bubble-cfo-conversation {
+  padding: 5px 2px 4px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 15px;
+}
+
+.office-bubble-cfo-analysis {
+  padding: 17px 19px;
+  border: 1px solid #dfe5dc;
+  background:
+    linear-gradient(135deg, rgba(244, 248, 234, 0.72), transparent 46%),
+    var(--finance-surface);
+  box-shadow: 0 8px 24px rgba(7, 31, 24, 0.045);
 }
 
 .office-bubble-cfo p {
   margin: 0;
+}
+
+.office-bubble-cfo-conversation p + p,
+.office-bubble-cfo-analysis p + p {
+  margin-top: 4px;
 }
 
 /* Folded process disclosure */
@@ -3181,8 +3208,9 @@ body {
 /* Composer */
 .office-composer {
   display: flex;
+  align-items: flex-end;
   gap: 10px;
-  padding: 14px 20px;
+  padding: 14px 20px 16px;
   border-top: 1px solid var(--finance-line);
   background: var(--finance-surface);
 }
@@ -3190,12 +3218,18 @@ body {
 .office-input {
   flex: 1;
   min-width: 0;
-  padding: 11px 16px;
+  min-height: 44px;
+  max-height: 132px;
+  padding: 10px 16px;
   border: 1px solid #d9dfd7;
-  border-radius: 999px;
+  border-radius: 18px;
   background: #fff;
   color: var(--finance-ink);
   font-size: 14px;
+  line-height: 1.55;
+  overflow-y: auto;
+  resize: none;
+  field-sizing: content;
 }
 
 .office-input:focus {
@@ -3392,8 +3426,12 @@ body {
 /* Responsive: keep the thread primary at every width */
 @media (max-width: 1100px) {
   .office-layout {
-    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-columns: 226px minmax(0, 1fr);
     gap: 14px;
+  }
+
+  .office-suggestions {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -3439,11 +3477,16 @@ body {
   }
 
   .office-msg-user {
-    margin-left: 4%;
+    margin-left: 8%;
   }
 
   .office-msg-cfo {
     margin-right: 0;
+  }
+
+  .office-msg-body,
+  .office-msg-user .office-msg-body {
+    max-width: calc(100% - 44px);
   }
 }
 
