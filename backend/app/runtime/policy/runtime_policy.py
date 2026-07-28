@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app.models.runtime import RuntimePolicyResult
+from app.runtime.execution.team_expansion import expand_team_capabilities
 
 if TYPE_CHECKING:
     from app.runtime.capabilities.catalog import CapabilityCatalog
@@ -19,11 +20,11 @@ def evaluate_runtime_policy(
 ) -> RuntimePolicyResult:
     """Convert untrusted capability requests into bounded runtime policy."""
 
+    expanded_capability_ids = expand_team_capabilities(capability_ids, catalog)
     descriptors = []
-    for capability_id in dict.fromkeys(capability_ids):
+    for capability_id in expanded_capability_ids:
         entry = catalog.get(capability_id)
-        if entry is None:
-            raise ValueError(f"Unknown capability id: {capability_id}")
+        assert entry is not None
         descriptors.append(entry.descriptor)
 
     risk_level = max(
@@ -54,7 +55,7 @@ def evaluate_runtime_policy(
         risk_level=risk_level,
         required_specialists=specialists,
         audit_required=audit_required,
-        allow_market_context="market.context_review" in capability_ids,
+        allow_market_context="market.context_review" in expanded_capability_ids,
         max_tool_calls=max_tool_calls,
         max_deliberation_rounds=1 if specialists else 0,
     )

@@ -93,7 +93,10 @@ class SpecialistRunner:
         return SpecialistInput(
             task=request.task,
             evidence=evidence,
+            artifact_refs=request.artifact_refs,
+            allowed_tools=request.allowed_tools,
             constraints=list(request.constraints),
+            budget=request.budget,
             policy=policy.model_dump() if policy is not None else {},
             prior_outputs=prior_outputs,
         )

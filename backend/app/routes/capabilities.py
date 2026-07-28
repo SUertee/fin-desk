@@ -10,6 +10,7 @@ from app.runtime.capabilities import (
     CapabilityCatalogResponse,
     get_capability_health_service,
 )
+from app.runtime.capabilities.definitions import TEAM_CAPABILITY_DEFINITIONS
 from app.runtime.orchestration.finance_runtime import FinanceRuntime
 from app.runtime.orchestration.factory import build_finance_runtime
 
@@ -29,6 +30,7 @@ async def list_capabilities() -> CapabilityCatalogResponse:
     catalog = CapabilityCatalog.from_registries(
         runtime.tool_registry,
         REGISTRY,
+        team_definitions=TEAM_CAPABILITY_DEFINITIONS,
         optional_tool_statuses={"get_vibe_market_data": status},
     )
     return CapabilityCatalogResponse(

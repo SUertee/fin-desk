@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from app.models.runtime import RuntimePolicyResult
+from app.runtime.execution.team_expansion import expand_team_capabilities
 
 if TYPE_CHECKING:
     from app.runtime.capabilities.catalog import CapabilityCatalog
@@ -54,7 +55,7 @@ def build_execution_plan(
 ) -> ExecutionPlan:
     """Expand agent evidence dependencies without interpreting user text."""
 
-    requested = tuple(dict.fromkeys(capability_ids))
+    requested = expand_team_capabilities(capability_ids, catalog)
     tools: list[str] = []
     agents: list[str] = []
     for capability_id in requested:

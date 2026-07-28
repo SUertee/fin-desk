@@ -5,7 +5,10 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any
 
-from app.agents.specialists.contracts import SpecialistAgentOutput
+from app.agents.specialists.contracts import (
+    SpecialistAgentOutput,
+    SpecialistExecutionBudget,
+)
 from app.models.external_market_data import ExternalMarketHistoryArtifact
 from app.models.runtime import RuntimePolicyResult
 from app.models.turn_execution import TurnExecutionFacts
@@ -18,6 +21,7 @@ from app.runtime.capabilities import (
 from app.runtime.contracts.output_validation import validate_output_contract
 from app.runtime.execution.artifact_registry import ArtifactRegistry
 from app.runtime.execution.context import AgentContext
+from app.runtime.execution.context_projector import ContextProjector
 from app.runtime.execution.finance_toolset import FinanceToolset
 from app.runtime.execution.handoff import HandoffRequest, HandoffResult
 from app.runtime.execution.planner import build_execution_plan
@@ -68,6 +72,7 @@ class FinanceTurnExecutor:
         specialist_runner: SpecialistRunner,
         web_research_tool: WebResearchTool,
         capability_health_service: CapabilityHealthService | None = None,
+        context_projector: ContextProjector | None = None,
     ) -> None:
         self.capability_catalog = capability_catalog
         self.capability_resolver = capability_resolver
@@ -77,6 +82,7 @@ class FinanceTurnExecutor:
         self.specialist_runner = specialist_runner
         self.web_research_tool = web_research_tool
         self.capability_health_service = capability_health_service
+        self.context_projector = context_projector or ContextProjector()
 
     async def execute(
         self,
@@ -170,6 +176,7 @@ class FinanceTurnExecutor:
         specialist_outputs = self._run_specialists(
             handoff_names=bound_plan.handoff_names,
             finance_context=finance_context,
+            artifacts=artifacts,
             policy=policy,
             state=state,
             trace=trace,
@@ -297,6 +304,7 @@ class FinanceTurnExecutor:
         *,
         handoff_names: list[str],
         finance_context: dict[str, Any],
+        artifacts: ArtifactRegistry,
         policy: RuntimePolicyResult,
         state: AgentState,
         trace: TraceCollector,
@@ -305,15 +313,23 @@ class FinanceTurnExecutor:
         for specialist in [
             name for name in handoff_names if name != "auditor"
         ]:
+            projected = self.context_projector.project(
+                specialist,
+                finance_context=finance_context,
+                artifacts=artifacts,
+            )
             request = HandoffRequest(
                 from_agent="cfo",
                 to_agent=specialist,
                 task=f"Produce {specialist} review for CFO response",
-                evidence=finance_context,
+                evidence=projected.evidence,
+                artifact_refs=projected.artifact_refs,
+                allowed_tools=(),
                 constraints=[
                     "Use loaded evidence only",
                     "Call out limitations",
                 ],
+                budget=self._handoff_budget(policy),
                 output_contract="SpecialistAgentOutput",
             )
             result = self._run_handoff(request)
@@ -339,6 +355,11 @@ class FinanceTurnExecutor:
             policy,
             specialists_used=list(outputs),
         ):
+            projected = self.context_projector.project(
+                "auditor",
+                finance_context=finance_context,
+                artifacts=artifacts,
+            )
             request = HandoffRequest(
                 from_agent="cfo",
                 to_agent="auditor",
@@ -346,16 +367,19 @@ class FinanceTurnExecutor:
                     "Audit CFO and specialist evidence before final response"
                 ),
                 evidence={
-                    "finance_context": finance_context,
+                    "finance_context": projected.evidence,
                     "specialists": {
                         key: value.model_dump()
                         for key, value in outputs.items()
                     },
                 },
+                artifact_refs=projected.artifact_refs,
+                allowed_tools=(),
                 constraints=[
                     "No investment/tax/legal advice",
                     "Expose uncertainty",
                 ],
+                budget=self._handoff_budget(policy),
                 output_contract="SpecialistAgentOutput",
             )
             result = self._run_handoff(request, policy=policy)
@@ -377,6 +401,26 @@ class FinanceTurnExecutor:
                     result.output
                 )
         return outputs
+
+    @staticmethod
+    def _handoff_budget(
+        policy: RuntimePolicyResult,
+    ) -> SpecialistExecutionBudget:
+        output_tokens = {
+            "simple": 800,
+            "moderate": 1200,
+            "complex": 1600,
+        }[policy.complexity]
+        timeout_ms = {
+            "simple": 3000,
+            "moderate": 5000,
+            "complex": 8000,
+        }[policy.complexity]
+        return SpecialistExecutionBudget(
+            max_tool_calls=0,
+            max_output_tokens=output_tokens,
+            timeout_ms=timeout_ms,
+        )
 
     def _run_handoff(
         self,

@@ -20,7 +20,10 @@ def run(input: SpecialistInput) -> SpecialistAgentOutput:
     limitations: list[str] = []
     investment = input.evidence.get("investment_research") or {}
     has_investment_evidence = investment.get("status") == "available"
-    if not input.evidence.get("transactions_sample") and not has_investment_evidence:
+    if (
+        not input.evidence.get("transaction_evidence_available")
+        and not has_investment_evidence
+    ):
         limitations.append("没有可用的交易样本。" if zh else "No transaction sample was available.")
     if risk_level == "high":
         warnings.append(

@@ -17,7 +17,7 @@ from app.runtime.capabilities.definitions import (
     TOOL_CAPABILITY_DEFINITIONS,
     CapabilityDefinition,
 )
-from app.runtime.execution import ToolRegistry
+from app.runtime.execution.tool_executor import ToolRegistry
 
 
 @dataclass(frozen=True)
@@ -47,6 +47,7 @@ class CapabilityCatalog:
         *,
         tool_definitions: Mapping[str, CapabilityDefinition] | None = None,
         specialist_definitions: Mapping[str, CapabilityDefinition] | None = None,
+        team_definitions: Mapping[str, CapabilityDefinition] | None = None,
         optional_tool_statuses: Mapping[str, CapabilityRuntimeStatus] | None = None,
     ) -> "CapabilityCatalog":
         tools = (
@@ -104,6 +105,17 @@ class CapabilityCatalog:
                         kind="agent",
                         registry_name=name,
                     ),
+                )
+            )
+
+        for capability_id, definition in (team_definitions or {}).items():
+            if definition.capability_id != capability_id or definition.kind != "team":
+                raise ValueError(f"Invalid team capability definition: {capability_id}")
+            entries.append(
+                CapabilityEntry(
+                    descriptor=definition.descriptor(),
+                    status=CapabilityRuntimeStatus(),
+                    implementation=None,
                 )
             )
         return cls(entries)

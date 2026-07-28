@@ -27,7 +27,7 @@ export type CapabilityRuntimeStatus = {
 export type CapabilityCatalogItem = {
   descriptor: {
     capability_id: string;
-    kind: "tool" | "agent" | "skill";
+    kind: "tool" | "agent" | "skill" | "team";
     title: string;
     description: string;
     source: "internal" | "mcp";
