@@ -104,10 +104,17 @@ class CfoReplyGenerator:
             investment_guard_enabled = bool(
                 context.get("investment_research")
             )
+            team_limitations = tuple(
+                str(item)
+                for item in context.get("team_execution_limitations") or ()
+            )
+            buffered_output_required = bool(
+                investment_guard_enabled or team_limitations
+            )
             if (
                 on_reply_delta is not None
                 and hasattr(client, "generate_text_stream")
-                and not investment_guard_enabled
+                and not buffered_output_required
             ):
                 result = await client.generate_text_stream(
                     prompt,
@@ -131,12 +138,19 @@ class CfoReplyGenerator:
                 if violations:
                     status = "policy_blocked"
                     reply = None
-                if on_reply_delta is not None:
-                    emitted = on_reply_delta(
-                        reply or str(response_payload.get("reply") or "")
-                    )
-                    if hasattr(emitted, "__await__"):
-                        await emitted
+
+            if reply and team_limitations:
+                limitation = team_limitations[0]
+                if limitation not in reply:
+                    label = "数据限制：" if language == "zh" else "Coverage limitation: "
+                    reply = f"{reply.rstrip()}\n\n{label}{limitation}"
+
+            if on_reply_delta is not None and buffered_output_required:
+                emitted = on_reply_delta(
+                    reply or str(response_payload.get("reply") or "")
+                )
+                if hasattr(emitted, "__await__"):
+                    await emitted
 
             return CfoReplyResult(
                 status=status,

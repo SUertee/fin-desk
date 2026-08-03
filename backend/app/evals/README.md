@@ -18,6 +18,7 @@ facts required for debugging, audit, and regression review.
 | `memory_eval.py` | Deterministic multi-turn memory-window and reference-resolution eval |
 | `cfo_runtime_acceptance.py` | Cross-layer response and run-ledger acceptance evaluator |
 | `specialist_execution_eval.py` | Offline concurrency, dependency, timeout, and partial-success eval |
+| `composed_team_acceptance.py` | End-to-end composed-team acceptance evaluator |
 
 Run the memory regression set without a model or infrastructure dependency:
 
@@ -37,6 +38,12 @@ Run the specialist scheduling regression set:
 python -m app.evals.specialist_execution_eval
 ```
 
+Run the composed-team acceptance set:
+
+```bash
+pytest tests/test_composed_team_acceptance_eval.py -q
+```
+
 Its latency and speedup values compare deterministic local fixtures. They detect
 accidental serialization but are not production performance claims.
 
@@ -52,6 +59,7 @@ accidental serialization but are not production performance claims.
 - audit status when required
 - entrypoint and user identity consistency
 - response and run-ledger execution-fact consistency
+- bounded specialist context, evidence join, and partial-team disclosure
 
 The current v1 harness intentionally records input summaries instead of full
 financial payloads in logs. Full scenario payloads live in fixtures where they

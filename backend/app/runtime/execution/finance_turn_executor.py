@@ -193,7 +193,7 @@ class FinanceTurnExecutor:
             reply_language=reply_language,
             trace=trace,
         )
-        specialist_outputs, evidence_validation = (
+        specialist_outputs, evidence_validation, team_limitations = (
             await self._run_specialists(
                 handoff_steps=bound_plan.handoff_steps,
                 completed_dependencies=tuple(
@@ -208,6 +208,11 @@ class FinanceTurnExecutor:
                 trace=trace,
             )
         )
+        if team_limitations:
+            finance_context = {
+                **finance_context,
+                "team_execution_limitations": list(team_limitations),
+            }
         projected_steps = tuple(
             project_steps(
                 {
@@ -340,6 +345,7 @@ class FinanceTurnExecutor:
     ) -> tuple[
         dict[str, SpecialistAgentOutput],
         EvidenceValidationResult,
+        tuple[str, ...],
     ]:
         worker_tasks: list[ScheduledHandoff] = []
         for step in [
@@ -417,12 +423,29 @@ class FinanceTurnExecutor:
             artifacts,
             specialist_artifacts,
         )
-        evidence_validation = self.evidence_validator.validate(bundle)
+        unavailable_specialists = tuple(
+            (
+                scheduled.task.request.to_agent,
+                scheduled.status,
+            )
+            for scheduled in schedule.results
+            if scheduled.status != "completed"
+        )
+        evidence_validation = self.evidence_validator.validate(
+            bundle,
+            unavailable_specialists=unavailable_specialists,
+        )
         trace.policy["evidence_validation"] = (
             evidence_validation.ledger_dump()
         )
         outputs = bundle.outputs_for(
             evidence_validation.accepted_specialists
+        )
+        team_limitations = self._team_limitations(
+            evidence_validation,
+            reply_language=str(
+                finance_context.get("reply_language") or "en"
+            ),
         )
 
         if any(
@@ -477,7 +500,25 @@ class FinanceTurnExecutor:
                 outputs["auditor"] = SpecialistAgentOutput.model_validate(
                     result.output
                 )
-        return outputs, evidence_validation
+        return outputs, evidence_validation, team_limitations
+
+    @staticmethod
+    def _team_limitations(
+        validation: EvidenceValidationResult,
+        *,
+        reply_language: str,
+    ) -> tuple[str, ...]:
+        if not validation.rejected_specialists:
+            return ()
+        specialists = ", ".join(validation.rejected_specialists)
+        if reply_language == "zh":
+            return (
+                f"团队分析覆盖不完整：{specialists} 未提供可用结果。",
+            )
+        return (
+            "Team analysis coverage is incomplete: "
+            f"{specialists} did not provide usable results.",
+        )
 
     @staticmethod
     def _handoff_budget(

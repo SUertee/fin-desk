@@ -70,10 +70,18 @@ class EvidenceJoiner:
 class EvidenceValidator:
     """Reject malformed specialist evidence without judging its meaning."""
 
-    def validate(self, bundle: EvidenceBundle) -> EvidenceValidationResult:
+    def validate(
+        self,
+        bundle: EvidenceBundle,
+        *,
+        unavailable_specialists: tuple[tuple[str, str], ...] = (),
+    ) -> EvidenceValidationResult:
         accepted: list[str] = []
-        rejected: list[str] = []
-        reasons: list[str] = []
+        rejected = [specialist for specialist, _ in unavailable_specialists]
+        reasons = [
+            f"specialist_unavailable:{specialist}:{status}"
+            for specialist, status in unavailable_specialists
+        ]
 
         for artifact in bundle.specialist_artifacts:
             artifact_reasons = self._validate_specialist(

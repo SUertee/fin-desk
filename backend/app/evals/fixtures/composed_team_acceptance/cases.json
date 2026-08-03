@@ -1,0 +1,123 @@
+{
+  "cases": [
+    {
+      "case_id": "monthly_finance_team",
+      "team_capability_id": "team.monthly_finance_review",
+      "input": {
+        "message": "复核本月支出和预算",
+        "profile": {
+          "monthly_income": 10000,
+          "preferences": {"preferred_language": "zh"}
+        },
+        "transactions": [
+          {"description": "Salary", "amount": 10000, "category": "income"},
+          {"description": "Shopping", "amount": -1200, "category": "shopping"}
+        ],
+        "monthly_totals": [
+          {"month": "2026-07", "income": 10000, "expenses": 1200, "net": 8800}
+        ]
+      },
+      "expected": {
+        "selected_agents": ["cfo", "expense_analyst", "budget_coach", "auditor"],
+        "schedule_statuses": {
+          "expense_analyst": "completed",
+          "budget_coach": "completed"
+        },
+        "accepted_specialists": ["expense_analyst", "budget_coach"],
+        "rejected_specialists": [],
+        "context_keys": {
+          "expense_analyst": ["reply_language", "expense_snapshot"],
+          "budget_coach": ["reply_language", "budget_snapshot"],
+          "auditor": ["reply_language", "transaction_evidence_available"]
+        },
+        "artifact_refs": {
+          "expense_analyst": ["artifact://get_expense_snapshot"],
+          "budget_coach": ["artifact://get_budget_snapshot"],
+          "auditor": ["artifact://get_finance_context"]
+        },
+        "auditor_prior_outputs": ["expense_analyst", "budget_coach"]
+      }
+    },
+    {
+      "case_id": "investment_research_team",
+      "team_capability_id": "team.investment_research_review",
+      "input": {
+        "message": "结合最新市场信息评估我的投资准备情况",
+        "profile": {
+          "monthly_income": 12000,
+          "preferences": {"preferred_language": "zh"}
+        },
+        "transactions": [
+          {"description": "Salary", "amount": 12000, "category": "income"},
+          {"description": "Rent", "amount": -3500, "category": "housing"}
+        ],
+        "monthly_totals": [
+          {"month": "2026-07", "income": 12000, "expenses": 3500, "net": 8500}
+        ]
+      },
+      "expected": {
+        "selected_agents": ["cfo", "budget_coach", "market_context", "investment_research", "auditor"],
+        "schedule_statuses": {
+          "budget_coach": "completed",
+          "market_context": "completed",
+          "investment_research": "completed"
+        },
+        "accepted_specialists": ["budget_coach", "market_context", "investment_research"],
+        "rejected_specialists": [],
+        "context_keys": {
+          "budget_coach": ["reply_language", "budget_snapshot"],
+          "market_context": ["reply_language", "web_research"],
+          "investment_research": ["reply_language", "investment_research"],
+          "auditor": ["reply_language", "transaction_evidence_available", "investment_research"]
+        },
+        "artifact_refs": {
+          "budget_coach": ["artifact://get_budget_snapshot"],
+          "market_context": ["artifact://search_web_research"],
+          "investment_research": ["artifact://get_investment_research_context"],
+          "auditor": ["artifact://get_finance_context", "artifact://get_investment_research_context"]
+        },
+        "auditor_prior_outputs": ["budget_coach", "market_context", "investment_research"]
+      }
+    },
+    {
+      "case_id": "monthly_team_partial_failure",
+      "team_capability_id": "team.monthly_finance_review",
+      "failing_specialists": ["expense_analyst"],
+      "input": {
+        "message": "复核本月支出和预算",
+        "profile": {
+          "monthly_income": 10000,
+          "preferences": {"preferred_language": "zh"}
+        },
+        "transactions": [
+          {"description": "Salary", "amount": 10000, "category": "income"},
+          {"description": "Shopping", "amount": -1200, "category": "shopping"}
+        ],
+        "monthly_totals": [
+          {"month": "2026-07", "income": 10000, "expenses": 1200, "net": 8800}
+        ]
+      },
+      "expected": {
+        "selected_agents": ["cfo", "expense_analyst", "budget_coach", "auditor"],
+        "schedule_statuses": {
+          "expense_analyst": "failed",
+          "budget_coach": "completed"
+        },
+        "accepted_specialists": ["budget_coach"],
+        "rejected_specialists": ["expense_analyst"],
+        "context_keys": {
+          "expense_analyst": ["reply_language", "expense_snapshot"],
+          "budget_coach": ["reply_language", "budget_snapshot"],
+          "auditor": ["reply_language", "transaction_evidence_available"]
+        },
+        "artifact_refs": {
+          "expense_analyst": ["artifact://get_expense_snapshot"],
+          "budget_coach": ["artifact://get_budget_snapshot"],
+          "auditor": ["artifact://get_finance_context"]
+        },
+        "auditor_prior_outputs": ["budget_coach"],
+        "limitation_fragment": "团队分析覆盖不完整"
+      }
+    }
+  ]
+}

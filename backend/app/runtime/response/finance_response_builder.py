@@ -195,7 +195,11 @@ class FinanceResponseBuilder:
         budget = context.get("budget_snapshot", {})
         findings: list[AgentFinding] = []
         actions: list[AgentAction] = []
-        warnings: list[str] = []
+        team_limitations = [
+            str(item)
+            for item in context.get("team_execution_limitations") or []
+        ]
+        warnings: list[str] = list(team_limitations)
         knowledge = context.get("knowledge_retrieval") or {}
 
         for item in (knowledge.get("artifacts") or [])[:2]:
@@ -500,6 +504,14 @@ class FinanceResponseBuilder:
                 )
             )
             reply += extra
+
+        if team_limitations:
+            limitation = team_limitations[0]
+            reply += (
+                f"数据限制：{limitation}"
+                if language == "zh"
+                else f" Coverage limitation: {limitation}"
+            )
 
         if evidence_level == "brief":
             findings = [

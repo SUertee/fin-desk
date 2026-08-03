@@ -5,6 +5,7 @@ import pytest
 from app.models.runtime import AgentRunUsage
 from app.runtime.llm.client import LLMResponse
 from app.runtime.orchestration.factory import build_finance_runtime
+from app.runtime.response.cfo_reply_generator import CfoReplyGenerator
 from tests.cfo_decision_fakes import execute
 
 TRANSACTIONS = [
@@ -180,6 +181,34 @@ class TestLLMCompose:
         assert result["data"]["summary_cards"]
         assert result["data"]["audit"]["status"] in ("verified", "needs_review", "data_limited")
         assert result["request_id"]
+
+    async def test_partial_team_limitation_survives_llm_wording(self):
+        client = StreamingFakeDeepSeek(reply="预算分析已完成。")
+        generator = CfoReplyGenerator(
+            lambda: client,
+            lambda _preferences, _message: "zh",
+        )
+        deltas = []
+
+        async def on_delta(text):
+            deltas.append(text)
+
+        result = await generator.generate(
+            context={
+                "team_execution_limitations": [
+                    "团队分析覆盖不完整：expense_analyst 未提供可用结果。"
+                ]
+            },
+            message="复核本月预算",
+            effective_message="复核本月预算",
+            response_payload={"reply": "确定性回复", "data": {}},
+            on_reply_delta=on_delta,
+        )
+
+        assert client.stream_calls == 0
+        assert result.reply is not None
+        assert "团队分析覆盖不完整" in result.reply
+        assert deltas == [result.reply]
 
     async def test_investment_reply_is_buffered_and_unsafe_output_is_blocked(
         self, monkeypatch
