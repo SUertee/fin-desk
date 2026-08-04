@@ -1,0 +1,345 @@
+{
+  "cases": {
+    "cfo_runtime_acceptance:clarification_missing_investment_symbol": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:clarification_missing_time_scope": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:clarification_unresolved_reference": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:conversation_acknowledgement": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:conversation_capability_question": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:conversation_greeting_en": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:conversation_greeting_zh": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:finance_budget_snapshot_tool": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:finance_cashflow_summary_tool": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:finance_context_with_transactions": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:finance_context_without_transactions": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:finance_expense_snapshot_tool": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:policy_block_budget_team_atomically": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:policy_block_context": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:policy_block_expense_team_atomically": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:specialist_audit_only": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:specialist_budget_review_with_data": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:specialist_budget_review_without_data": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:specialist_expense_review_with_data": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "cfo_runtime_acceptance:specialist_expense_review_without_data": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "composed_team_acceptance:investment_research_team": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "composed_team_acceptance:monthly_finance_team": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "composed_team_acceptance:monthly_team_partial_failure": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "investment_research:grounded_performance": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "investment_research:guarantee_and_trade_request": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "investment_research:missing_benchmark_and_readiness": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "investment_research:stale_market_evidence": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:en-asset-allocation-etf": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:en-budget-cash-flow": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:en-diversification-rebalance": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:en-emergency-fund": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:en-financial-shock": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:en-investing-plan": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:filter-au-diversification": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:filter-au-emergency": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:filter-us-allocation": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:filter-us-emergency": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:freshness-exclude-stale": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:freshness-include-stale": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:no-match-mars-title": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:no-match-penguin-license": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:zh-asset-time-horizon": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:zh-budget-review": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:zh-diversification-risk": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:zh-emergency-fund": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:zh-income-shock-buffer": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "knowledge_retrieval:zh-investing-readiness": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:acknowledgement_not_rewritten": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:complete_query_not_rewritten": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:evidence_request_preserves_intent": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:generic_reference_without_memory": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:greeting_not_rewritten": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:invalid_history_is_ignored": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:missing_category_for_time": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:missing_date_for_category": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:no_summary_above_threshold": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:recent_over_limit": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:recent_under_limit": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:summary_above_threshold_used": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:summary_at_threshold_not_used": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:trusted_category_substitution": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:trusted_day_pronoun": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:trusted_time_substitution": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "memory:trusted_transaction_pronoun": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "specialist_execution:dependency_chain": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "specialist_execution:independent_parallel_speedup": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "specialist_execution:non_parallel_tasks": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    },
+    "specialist_execution:timeout_isolation": {
+      "required": true,
+      "severity": "major",
+      "status": "pass"
+    }
+  },
+  "schema_version": "1"
+}

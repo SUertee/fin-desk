@@ -41,6 +41,10 @@ jobs:
           mkdir -p reports
           python -m app.evals.trace_export app/evals/samples/ci_traces.jsonl --output reports/trace-report.json
 
+      - name: Run hermetic offline eval gate
+        working-directory: backend
+        run: python -m app.evals.harness_runner --output reports/offline-eval-report.json
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -60,10 +64,12 @@ jobs:
         working-directory: web
         run: npm run build
 
-      - name: Upload trace regression report
+      - name: Upload eval reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trace-regression-report
-          path: backend/reports/trace-report.json
+          name: agent-eval-reports
+          path: |
+            backend/reports/trace-report.json
+            backend/reports/offline-eval-report.json
           if-no-files-found: ignore

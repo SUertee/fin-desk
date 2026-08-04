@@ -11,7 +11,11 @@ facts required for debugging, audit, and regression review.
 | Path | Purpose |
 |------|---------|
 | `fixtures/*.json` | Golden scenarios for CFO chat entrypoints |
+| `baselines/offline.json` | Reviewed per-case baseline for the offline gate |
 | `samples/ci_traces.jsonl` | Deterministic trace export sample used by harness CI |
+| `contracts.py` | Shared task, trial, grader, report, baseline, and gate contracts |
+| `suite_adapters.py` | Thin adapters over the existing domain evaluators |
+| `harness_runner.py` | Hermetic offline suite runner and regression gate CLI |
 | `replay.py` | Loader and matcher for `AgentRunRecord` replay checks |
 | `replay_run.py` | CLI/admin helper for replaying persisted run records by request ID |
 | `trace_export.py` | Typed JSON/JSONL trace export reader and CI regression report CLI |
@@ -19,6 +23,40 @@ facts required for debugging, audit, and regression review.
 | `cfo_runtime_acceptance.py` | Cross-layer response and run-ledger acceptance evaluator |
 | `specialist_execution_eval.py` | Offline concurrency, dependency, timeout, and partial-success eval |
 | `composed_team_acceptance.py` | End-to-end composed-team acceptance evaluator |
+
+## Run The Unified Offline Gate
+
+Run all deterministic agent eval suites without live LLM, network, PostgreSQL,
+Redis, embedding, or MCP dependencies:
+
+```bash
+python -m app.evals.harness_runner --output reports/offline-eval-report.json
+```
+
+The command evaluates 68 reviewed cases across CFO runtime acceptance,
+composed teams, specialist execution, memory, knowledge retrieval, and
+investment research. It exits with:
+
+- `0` when the severity-aware regression gate passes.
+- `1` when a required case is missing, a blocking regression is found, or a
+  current critical or major case fails.
+- `2` when the baseline or offline harness configuration is invalid.
+
+The JSON report contains bounded case outcomes, reason codes, the baseline
+diff, and the final gate decision. It intentionally excludes response text,
+transaction payloads, prompts, and secrets.
+
+Baseline regeneration is a reviewed operation, not a routine way to fix a
+failing gate:
+
+```bash
+python -m app.evals.harness_runner \
+  --write-baseline \
+  --output reports/offline-eval-report.json
+```
+
+Review every new, removed, or changed case before committing
+`baselines/offline.json`.
 
 Run the memory regression set without a model or infrastructure dependency:
 

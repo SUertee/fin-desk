@@ -52,7 +52,7 @@ def evaluate_investment_research_case(
     case: InvestmentResearchEvalCase,
 ) -> InvestmentResearchEvalResult:
     failures: list[str] = []
-    catalog = build_finance_runtime().capability_catalog
+    catalog = build_finance_runtime(llm_client=None).capability_catalog
     policy = evaluate_runtime_policy(["investment.research_review"], catalog)
     if "investment_research" not in policy.required_specialists:
         failures.append("investment_research specialist was not selected")
