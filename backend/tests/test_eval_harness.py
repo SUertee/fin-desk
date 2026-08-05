@@ -194,8 +194,8 @@ def test_offline_harness_is_complete_deterministic_and_private(monkeypatch):
 
     assert first == second
     assert first.config_fingerprint == offline_config_fingerprint()
-    assert sum(suite.total for suite in first.suites) == 74
-    assert sum(suite.passed for suite in first.suites) == 74
+    assert sum(suite.total for suite in first.suites) == 79
+    assert sum(suite.passed for suite in first.suites) == 79
     assert first.gate.passed
     serialized = json.dumps(first.model_dump(mode="json"), ensure_ascii=False)
     for forbidden in (

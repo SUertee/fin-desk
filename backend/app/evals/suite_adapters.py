@@ -44,6 +44,7 @@ from app.evals.knowledge_retrieval_eval import (
 )
 from app.evals.memory_eval import run_memory_eval
 from app.evals.specialist_execution_eval import run_specialist_execution_eval
+from app.evals.trajectory_contract_eval import run_trajectory_contract_eval
 from app.knowledge import (
     KnowledgeQuery,
     KnowledgeRetrievalResult,
@@ -363,6 +364,14 @@ def _run_financial_grounding() -> list[_Observation]:
     ]
 
 
+def _run_trajectory_contract() -> list[_Observation]:
+    report = run_trajectory_contract_eval()
+    return [
+        _observation(result.case_id, result, tags=(result.category,))
+        for result in report.results
+    ]
+
+
 SUITE_ADAPTERS: tuple[EvalSuiteAdapter, ...] = (
     EvalSuiteAdapter(
         suite_id="cfo_runtime_acceptance",
@@ -405,6 +414,12 @@ SUITE_ADAPTERS: tuple[EvalSuiteAdapter, ...] = (
         fixture_ref="app/evals/fixtures/financial_grounding/cases.json",
         severity="critical",
         run=_run_financial_grounding,
+    ),
+    EvalSuiteAdapter(
+        suite_id="trajectory_contract",
+        fixture_ref="app/evals/fixtures/trajectory_contract/cases.json",
+        severity="critical",
+        run=_run_trajectory_contract,
     ),
 )
 

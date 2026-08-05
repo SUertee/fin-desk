@@ -23,6 +23,7 @@ facts required for debugging, audit, and regression review.
 | `cfo_runtime_acceptance.py` | Cross-layer response and run-ledger acceptance evaluator |
 | `specialist_execution_eval.py` | Offline concurrency, dependency, timeout, and partial-success eval |
 | `composed_team_acceptance.py` | End-to-end composed-team acceptance evaluator |
+| `trajectory_contract_eval.py` | Observable execution graph, context scope, evidence lineage, audit, and UI projection eval |
 
 ## Run The Unified Offline Gate
 
@@ -33,9 +34,9 @@ Redis, embedding, or MCP dependencies:
 python -m app.evals.harness_runner --output reports/offline-eval-report.json
 ```
 
-The command evaluates 68 reviewed cases across CFO runtime acceptance,
-composed teams, specialist execution, memory, knowledge retrieval, and
-investment research. It exits with:
+The command evaluates 79 reviewed cases across CFO runtime acceptance,
+composed teams, specialist execution, memory, knowledge retrieval, investment
+research, financial grounding, and trajectory contracts. It exits with:
 
 - `0` when the severity-aware regression gate passes.
 - `1` when a required case is missing, a blocking regression is found, or a
@@ -98,6 +99,7 @@ accidental serialization but are not production performance claims.
 - entrypoint and user identity consistency
 - response and run-ledger execution-fact consistency
 - bounded specialist context, evidence join, and partial-team disclosure
+- valid execution dependencies, safe parallel declarations, and execution-fact UI projection
 
 The current v1 harness intentionally records input summaries instead of full
 financial payloads in logs. Full scenario payloads live in fixtures where they

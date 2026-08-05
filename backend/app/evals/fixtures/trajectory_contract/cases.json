@@ -1,0 +1,281 @@
+{
+  "cases": [
+    {
+      "case_id": "direct_response_without_execution",
+      "category": "direct_response",
+      "risk_level": "low",
+      "audit_required": false,
+      "execution": {
+        "outcome": "direct_response",
+        "evidence_available": false,
+        "specialist_findings_available": false,
+        "process_available": false,
+        "policy_blocked": false
+      },
+      "steps": [],
+      "available_artifacts": [],
+      "projectable_artifacts": [],
+      "accepted_specialists": [],
+      "rejected_specialists": [],
+      "final_evidence_specialists": [],
+      "validation_status": null,
+      "audit_status": null,
+      "limitations": []
+    },
+    {
+      "case_id": "single_specialist_minimal_context",
+      "category": "single_specialist",
+      "risk_level": "low",
+      "audit_required": false,
+      "execution": {
+        "outcome": "executed",
+        "evidence_available": true,
+        "specialist_findings_available": true,
+        "process_available": true,
+        "policy_blocked": false
+      },
+      "steps": [
+        {
+          "task_id": "tool.expense_snapshot",
+          "kind": "tool",
+          "status": "completed",
+          "depends_on": [],
+          "parallel_safe": false,
+          "artifact_refs": []
+        },
+        {
+          "task_id": "specialist.expense_analyst",
+          "kind": "specialist",
+          "status": "completed",
+          "specialist": "expense_analyst",
+          "depends_on": ["tool.expense_snapshot"],
+          "parallel_safe": true,
+          "projected_context_keys": ["expense_snapshot", "reply_language"],
+          "allowed_context_keys": ["expense_snapshot", "reply_language"],
+          "artifact_refs": ["artifact://expense_snapshot"]
+        },
+        {
+          "task_id": "compose.cfo",
+          "kind": "compose",
+          "status": "completed",
+          "depends_on": ["specialist.expense_analyst"],
+          "parallel_safe": false,
+          "artifact_refs": []
+        }
+      ],
+      "available_artifacts": ["expense_snapshot"],
+      "projectable_artifacts": ["expense_snapshot"],
+      "accepted_specialists": ["expense_analyst"],
+      "rejected_specialists": [],
+      "final_evidence_specialists": ["expense_analyst"],
+      "validation_status": "validated",
+      "audit_status": null,
+      "limitations": []
+    },
+    {
+      "case_id": "parallel_team_evidence_join",
+      "category": "parallel_team",
+      "risk_level": "medium",
+      "audit_required": true,
+      "execution": {
+        "outcome": "executed",
+        "evidence_available": true,
+        "specialist_findings_available": true,
+        "process_available": true,
+        "policy_blocked": false
+      },
+      "steps": [
+        {
+          "task_id": "tool.finance_context",
+          "kind": "tool",
+          "status": "completed",
+          "depends_on": [],
+          "parallel_safe": false,
+          "artifact_refs": []
+        },
+        {
+          "task_id": "specialist.expense_analyst",
+          "kind": "specialist",
+          "status": "completed",
+          "specialist": "expense_analyst",
+          "depends_on": ["tool.finance_context"],
+          "parallel_safe": true,
+          "projected_context_keys": ["expense_snapshot", "reply_language"],
+          "allowed_context_keys": ["expense_snapshot", "reply_language"],
+          "artifact_refs": ["artifact://expense_snapshot"]
+        },
+        {
+          "task_id": "specialist.budget_coach",
+          "kind": "specialist",
+          "status": "completed",
+          "specialist": "budget_coach",
+          "depends_on": ["tool.finance_context"],
+          "parallel_safe": true,
+          "projected_context_keys": ["budget_snapshot", "reply_language"],
+          "allowed_context_keys": ["budget_snapshot", "reply_language"],
+          "artifact_refs": ["artifact://budget_snapshot"]
+        },
+        {
+          "task_id": "audit.risk",
+          "kind": "audit",
+          "status": "completed",
+          "specialist": "auditor",
+          "depends_on": ["specialist.expense_analyst", "specialist.budget_coach"],
+          "parallel_safe": false,
+          "projected_context_keys": ["audit_context", "reply_language"],
+          "allowed_context_keys": ["audit_context", "reply_language"],
+          "artifact_refs": ["artifact://expense_snapshot", "artifact://budget_snapshot"]
+        },
+        {
+          "task_id": "compose.cfo",
+          "kind": "compose",
+          "status": "completed",
+          "depends_on": ["audit.risk"],
+          "parallel_safe": false,
+          "artifact_refs": []
+        }
+      ],
+      "available_artifacts": ["expense_snapshot", "budget_snapshot"],
+      "projectable_artifacts": ["expense_snapshot", "budget_snapshot"],
+      "accepted_specialists": ["expense_analyst", "budget_coach"],
+      "rejected_specialists": [],
+      "final_evidence_specialists": ["expense_analyst", "budget_coach"],
+      "validation_status": "validated",
+      "audit_status": "verified",
+      "limitations": []
+    },
+    {
+      "case_id": "high_risk_requires_audit",
+      "category": "high_risk",
+      "risk_level": "high",
+      "audit_required": true,
+      "execution": {
+        "outcome": "executed",
+        "evidence_available": true,
+        "specialist_findings_available": true,
+        "process_available": true,
+        "policy_blocked": false
+      },
+      "steps": [
+        {
+          "task_id": "tool.market_evidence",
+          "kind": "tool",
+          "status": "completed",
+          "depends_on": [],
+          "parallel_safe": false,
+          "artifact_refs": []
+        },
+        {
+          "task_id": "specialist.investment_analyst",
+          "kind": "specialist",
+          "status": "completed",
+          "specialist": "investment_analyst",
+          "depends_on": ["tool.market_evidence"],
+          "parallel_safe": true,
+          "projected_context_keys": ["investment_research", "reply_language"],
+          "allowed_context_keys": ["investment_research", "reply_language"],
+          "artifact_refs": ["artifact://market_evidence"]
+        },
+        {
+          "task_id": "audit.risk",
+          "kind": "audit",
+          "status": "completed",
+          "specialist": "auditor",
+          "depends_on": ["specialist.investment_analyst"],
+          "parallel_safe": false,
+          "projected_context_keys": ["audit_context", "reply_language"],
+          "allowed_context_keys": ["audit_context", "reply_language"],
+          "artifact_refs": ["artifact://market_evidence"]
+        },
+        {
+          "task_id": "compose.cfo",
+          "kind": "compose",
+          "status": "completed",
+          "depends_on": ["audit.risk"],
+          "parallel_safe": false,
+          "artifact_refs": []
+        }
+      ],
+      "available_artifacts": ["market_evidence"],
+      "projectable_artifacts": ["market_evidence"],
+      "accepted_specialists": ["investment_analyst"],
+      "rejected_specialists": [],
+      "final_evidence_specialists": ["investment_analyst"],
+      "validation_status": "validated",
+      "audit_status": "needs_review",
+      "limitations": []
+    },
+    {
+      "case_id": "partial_failure_is_contained",
+      "category": "partial_failure",
+      "risk_level": "medium",
+      "audit_required": true,
+      "execution": {
+        "outcome": "executed",
+        "evidence_available": true,
+        "specialist_findings_available": true,
+        "process_available": true,
+        "policy_blocked": false
+      },
+      "steps": [
+        {
+          "task_id": "tool.finance_context",
+          "kind": "tool",
+          "status": "completed",
+          "depends_on": [],
+          "parallel_safe": false,
+          "artifact_refs": []
+        },
+        {
+          "task_id": "specialist.expense_analyst",
+          "kind": "specialist",
+          "status": "completed",
+          "specialist": "expense_analyst",
+          "depends_on": ["tool.finance_context"],
+          "parallel_safe": true,
+          "projected_context_keys": ["expense_snapshot", "reply_language"],
+          "allowed_context_keys": ["expense_snapshot", "reply_language"],
+          "artifact_refs": ["artifact://expense_snapshot"]
+        },
+        {
+          "task_id": "specialist.budget_coach",
+          "kind": "specialist",
+          "status": "timed_out",
+          "specialist": "budget_coach",
+          "depends_on": ["tool.finance_context"],
+          "parallel_safe": true,
+          "projected_context_keys": ["budget_snapshot", "reply_language"],
+          "allowed_context_keys": ["budget_snapshot", "reply_language"],
+          "artifact_refs": ["artifact://budget_snapshot"]
+        },
+        {
+          "task_id": "audit.risk",
+          "kind": "audit",
+          "status": "completed",
+          "specialist": "auditor",
+          "depends_on": ["specialist.expense_analyst", "specialist.budget_coach"],
+          "parallel_safe": false,
+          "projected_context_keys": ["audit_context", "reply_language"],
+          "allowed_context_keys": ["audit_context", "reply_language"],
+          "artifact_refs": ["artifact://expense_snapshot"]
+        },
+        {
+          "task_id": "compose.cfo",
+          "kind": "compose",
+          "status": "completed",
+          "depends_on": ["audit.risk"],
+          "parallel_safe": false,
+          "artifact_refs": []
+        }
+      ],
+      "available_artifacts": ["expense_snapshot", "budget_snapshot"],
+      "projectable_artifacts": ["expense_snapshot"],
+      "accepted_specialists": ["expense_analyst"],
+      "rejected_specialists": ["budget_coach"],
+      "final_evidence_specialists": ["expense_analyst"],
+      "validation_status": "limited",
+      "audit_status": "data_limited",
+      "limitations": ["Budget analysis was unavailable; the response uses expense evidence only."]
+    }
+  ]
+}

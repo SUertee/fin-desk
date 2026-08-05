@@ -369,6 +369,31 @@
       "required": true,
       "severity": "major",
       "status": "pass"
+    },
+    "trajectory_contract:direct_response_without_execution": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "trajectory_contract:high_risk_requires_audit": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "trajectory_contract:parallel_team_evidence_join": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "trajectory_contract:partial_failure_is_contained": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "trajectory_contract:single_specialist_minimal_context": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
     }
   },
   "schema_version": "1"
