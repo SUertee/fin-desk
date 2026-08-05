@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Literal
 
@@ -12,6 +10,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.chat import ChatResponse
 from app.models.runtime import AgentRunRecord
+from app.evals.grounding_checks import (
+    collect_numbers,
+    extract_number_tokens,
+    normalize_number,
+)
 
 
 ACCEPTANCE_FIXTURES = (
@@ -293,14 +296,11 @@ def _compare(
         )
 
 
-_NUMBER_RE = re.compile(r"(?<![\w])[-+]?\d[\d,]*(?:\.\d+)?%?")
-
-
 def _unsupported_reply_numbers(
     case: CfoRuntimeAcceptanceCase,
     response: ChatResponse,
 ) -> list[str]:
-    allowed = _collect_numbers(
+    allowed = collect_numbers(
         {
             "input": case.input.model_dump(mode="json"),
             "data": (
@@ -313,32 +313,7 @@ def _unsupported_reply_numbers(
     return sorted(
         {
             token
-            for token in _NUMBER_RE.findall(response.reply)
-            if _normalize_number(token) not in allowed
+            for token in extract_number_tokens(response.reply)
+            if normalize_number(token) not in allowed
         }
     )
-
-
-def _collect_numbers(value: Any) -> set[Decimal]:
-    numbers: set[Decimal] = set()
-    if isinstance(value, dict):
-        for item in value.values():
-            numbers.update(_collect_numbers(item))
-    elif isinstance(value, list):
-        for item in value:
-            numbers.update(_collect_numbers(item))
-    elif isinstance(value, (int, float, Decimal)) and not isinstance(value, bool):
-        numbers.add(Decimal(str(value)).normalize())
-    elif isinstance(value, str):
-        for token in _NUMBER_RE.findall(value):
-            normalized = _normalize_number(token)
-            if normalized is not None:
-                numbers.add(normalized)
-    return numbers
-
-
-def _normalize_number(token: str) -> Decimal | None:
-    try:
-        return Decimal(token.replace(",", "").rstrip("%")).normalize()
-    except InvalidOperation:
-        return None

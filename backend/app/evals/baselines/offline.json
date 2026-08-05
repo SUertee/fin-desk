@@ -115,6 +115,36 @@
       "severity": "critical",
       "status": "pass"
     },
+    "financial_grounding:conversation_without_evidence": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "financial_grounding:grounded_amount_and_ratio": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "financial_grounding:grounded_statement_date": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "financial_grounding:honest_knowledge_no_match": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "financial_grounding:reviewed_knowledge_citation": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
+    "financial_grounding:specialist_current_run_evidence": {
+      "required": true,
+      "severity": "critical",
+      "status": "pass"
+    },
     "investment_research:grounded_performance": {
       "required": true,
       "severity": "major",

@@ -1,0 +1,126 @@
+{
+  "cases": [
+    {
+      "case_id": "grounded_amount_and_ratio",
+      "category": "numeric_claim",
+      "reply": "Shopping is CNY 11,348.48, or 22.7% of expenses.",
+      "artifacts": {
+        "expense_snapshot": {
+          "shopping_amount": "11348.48",
+          "shopping_share": 0.227
+        }
+      },
+      "evidence_refs": ["artifact://expense_snapshot"],
+      "specialist_artifacts": [],
+      "knowledge_artifacts": [],
+      "citation_ids": [],
+      "evidence_required": true,
+      "no_match_expected": false
+    },
+    {
+      "case_id": "grounded_statement_date",
+      "category": "date_claim",
+      "reply": "The imported statement coverage ends on 2026-06-30.",
+      "artifacts": {
+        "statement_period": {
+          "period_start": "2026-01-16",
+          "period_end": "2026-06-30"
+        }
+      },
+      "evidence_refs": ["artifact://statement_period"],
+      "specialist_artifacts": [],
+      "knowledge_artifacts": [],
+      "citation_ids": [],
+      "evidence_required": true,
+      "no_match_expected": false
+    },
+    {
+      "case_id": "specialist_current_run_evidence",
+      "category": "specialist_evidence",
+      "reply": "Shopping is the largest flexible expense category in this review.",
+      "artifacts": {
+        "expense_snapshot": {
+          "largest_flexible_category": "shopping",
+          "shopping_amount": "11348.48"
+        }
+      },
+      "evidence_refs": [],
+      "specialist_artifacts": [
+        {
+          "specialist": "expense_analyst",
+          "artifact_refs": ["artifact://expense_snapshot"],
+          "output": {
+            "specialist": "expense_analyst",
+            "confidence": 0.9,
+            "findings": [
+              {
+                "title": "Shopping leads flexible expenses",
+                "evidence": ["The current expense snapshot ranks shopping first."],
+                "risk_level": "medium"
+              }
+            ],
+            "recommendations": [],
+            "limitations": []
+          }
+        }
+      ],
+      "knowledge_artifacts": [],
+      "citation_ids": [],
+      "evidence_required": true,
+      "no_match_expected": false
+    },
+    {
+      "case_id": "reviewed_knowledge_citation",
+      "category": "knowledge_citation",
+      "reply": "Keep emergency savings liquid and accessible for unexpected expenses.",
+      "artifacts": {},
+      "evidence_refs": [],
+      "specialist_artifacts": [],
+      "knowledge_artifacts": [
+        {
+          "citation_id": "knowledge:emergency-fund-chunk-001",
+          "document_id": "emergency-fund-policy",
+          "chunk_id": "emergency-fund-chunk-001",
+          "title": "Emergency fund guidance",
+          "section": "Liquidity",
+          "excerpt": "Emergency savings should remain liquid and accessible for unexpected expenses.",
+          "source_url": "https://policy.example.gov/emergency-fund",
+          "source_authority": "Example Financial Authority",
+          "jurisdiction": "CN",
+          "reviewed_at": "2026-07-01",
+          "review_after": "2027-07-01",
+          "freshness": "current",
+          "retrieval_method": "lexical",
+          "score": 1.0
+        }
+      ],
+      "citation_ids": ["knowledge:emergency-fund-chunk-001"],
+      "evidence_required": true,
+      "no_match_expected": false
+    },
+    {
+      "case_id": "honest_knowledge_no_match",
+      "category": "no_match",
+      "reply": "I cannot determine that from the reviewed sources because there is no direct match.",
+      "artifacts": {},
+      "evidence_refs": [],
+      "specialist_artifacts": [],
+      "knowledge_artifacts": [],
+      "citation_ids": [],
+      "evidence_required": false,
+      "no_match_expected": true
+    },
+    {
+      "case_id": "conversation_without_evidence",
+      "category": "conversation",
+      "reply": "Hello. I can help you review spending, budgets, and financial goals.",
+      "artifacts": {},
+      "evidence_refs": [],
+      "specialist_artifacts": [],
+      "knowledge_artifacts": [],
+      "citation_ids": [],
+      "evidence_required": false,
+      "no_match_expected": false
+    }
+  ]
+}

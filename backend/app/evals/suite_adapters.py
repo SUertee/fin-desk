@@ -35,6 +35,7 @@ from app.evals.contracts import (
     EvalTask,
     EvalTrial,
 )
+from app.evals.financial_grounding_eval import run_financial_grounding_eval
 from app.evals.investment_research_eval import run_investment_research_eval
 from app.evals.knowledge_retrieval_eval import (
     KnowledgeRetrievalEvalCase,
@@ -354,6 +355,14 @@ def _run_investment() -> list[_Observation]:
     return [_observation(result.case_id, result) for result in report.results]
 
 
+def _run_financial_grounding() -> list[_Observation]:
+    report = run_financial_grounding_eval()
+    return [
+        _observation(result.case_id, result, tags=(result.category,))
+        for result in report.results
+    ]
+
+
 SUITE_ADAPTERS: tuple[EvalSuiteAdapter, ...] = (
     EvalSuiteAdapter(
         suite_id="cfo_runtime_acceptance",
@@ -390,6 +399,12 @@ SUITE_ADAPTERS: tuple[EvalSuiteAdapter, ...] = (
         fixture_ref="app/evals/fixtures/investment_research/cases.json",
         severity="major",
         run=_run_investment,
+    ),
+    EvalSuiteAdapter(
+        suite_id="financial_grounding",
+        fixture_ref="app/evals/fixtures/financial_grounding/cases.json",
+        severity="critical",
+        run=_run_financial_grounding,
     ),
 )
 
