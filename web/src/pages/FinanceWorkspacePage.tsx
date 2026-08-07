@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import {
+  ArrowDownRight,
+  ArrowUpRight,
   Bot,
   CheckCircle2,
   Coins,
@@ -185,13 +187,6 @@ export function FinanceWorkspacePage({
     briefActions[0]?.title ?? actionItems[0]?.title,
     lang
   );
-  const evidenceCaveat = buildEvidenceCaveat({
-    lang,
-    duplicateCount,
-    sourceCount,
-    qualityConfidence,
-  });
-
   const openReasoning = (title?: string) => {
     setSelectedActionTitle(title ?? null);
     setDetailDrawer("reasoning");
@@ -217,91 +212,70 @@ export function FinanceWorkspacePage({
 
   return (
     <main className="workspace-main">
-      {/* Band 1: 状态 — the CFO speaks */}
-      <section className="hero2">
-        <div>
-          <div className="hero2-eyebrow">
+      {/* Band 1: the CFO judgment and the four assets that support it */}
+      <section className="dashboard-hero">
+        <div className="dashboard-hero-copy">
+          <div className="dashboard-hero-eyebrow">
             <span>{t("hero.eyebrow")}</span>
-            <span className="hero2-divider">/</span>
+            <span>/</span>
             <span>{monthLabel(latestMonth?.month, lang)}</span>
             {auditStatus && (
               <>
-                <span className="hero2-divider">/</span>
+                <span>/</span>
                 <span>{t(`hero.audit.${auditStatus}`)}</span>
               </>
             )}
           </div>
-          <div className="hero2-judgment">
-            {heroSummary}
+          <h1 className="cfo-judgment-text">{heroSummary}</h1>
+          <div className="dashboard-hero-actions">
+            <button type="button" onClick={onOpenCfo} className="dashboard-btn dashboard-btn-primary">
+              <PanelRightOpen className="h-4 w-4" />
+              {t("hero.askCfo")}
+            </button>
+            <button
+              type="button"
+              onClick={handleUploadClick}
+              disabled={isUploading}
+              className="dashboard-btn dashboard-btn-secondary"
+            >
+              <Upload className="h-4 w-4" />
+              {isUploading ? t("hero.uploading") : t("hero.upload")}
+            </button>
+            <button type="button" onClick={() => openReasoning()} className="dashboard-btn-text">
+              <GitBranch className="h-3.5 w-3.5" />
+              {lang === "zh" ? "查看判断依据" : "View reasoning"}
+            </button>
           </div>
-          <div className="hero2-analysis-strip">
-            <div className={`hero2-analysis-card ${netCashFlow != null && netCashFlow < 0 ? "risk" : "good"}`}>
-              <span>{lang === "zh" ? "现金流缺口" : "Cash gap"}</span>
-              <strong>{netCashFlow == null ? "—" : `${netCashFlow < 0 ? "-" : "+"}${formatMoney(netCashFlow, sym)}`}</strong>
-            </div>
-            <div className="hero2-analysis-card focus">
-              <span>{lang === "zh" ? "最大支出类别" : "Largest category"}</span>
-              <strong>{topCategory ? `${topCategory.category} · ${formatMoney(topCategory.amount, sym)}` : "—"}</strong>
-            </div>
-            <div className={`hero2-analysis-card ${duplicateCount > 0 ? "watch" : "good"}`}>
-              <span>{lang === "zh" ? "数据质量" : "Data quality"}</span>
-              <strong>{qualityConfidence ? `${qualityConfidence}% · ${duplicateCount} ${lang === "zh" ? "重复" : "duplicates"}` : "—"}</strong>
-            </div>
-          </div>
-          <div className="hero2-insights">
-            <div className="hero2-insight">
-              <span>{lang === "zh" ? "优先行动" : "Priority action"}</span>
-              <strong>{priorityAction}</strong>
-            </div>
-            <div className="hero2-insight">
-              <span>{lang === "zh" ? "证据边界" : "Evidence boundary"}</span>
-              <strong>{evidenceCaveat}</strong>
-            </div>
-          </div>
-          <div className="hero2-stats">
-            <div className="hero2-stat">
-              <div className="hero2-stat-label">{t("hero.stat.expense")}</div>
-              <div className="hero2-stat-value spend">
-                {latestMonth ? `${sym}${latestMonth.expenses.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—"}
-              </div>
-            </div>
-            <div className="hero2-stat">
-              <div className="hero2-stat-label">{t("hero.stat.income")}</div>
-              <div className="hero2-stat-value">
-                {latestMonth ? `${sym}${latestMonth.income.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "—"}
-              </div>
-            </div>
-            <div className="hero2-stat">
-              <div className="hero2-stat-label">{t("hero.stat.budget")}</div>
-              <div className="hero2-stat-value watch">
-                {t(`budget.${hasData ? budgetStatus : "data_limited"}`)}
-              </div>
-            </div>
-          </div>
+          <p className="dashboard-hero-hint">{priorityAction}</p>
         </div>
-          <div className="hero2-cta">
-          <button type="button" onClick={onOpenCfo} className="hero2-btn hero2-btn-lime">
-            <PanelRightOpen className="h-4 w-4" />
-            {t("hero.askCfo")}
+
+        <div className="dashboard-metric-grid">
+          <div className={`metric-card glass-panel ${netCashFlow != null && netCashFlow < 0 ? "metric-card-risk" : "metric-card-positive"}`}>
+            <span className="metric-card-label">{lang === "zh" ? "净现金流" : "Net cash flow"}</span>
+            <strong>{netCashFlow == null ? "—" : `${netCashFlow < 0 ? "-" : "+"}${formatMoney(netCashFlow, sym)}`}</strong>
+            <small>
+              {netCashFlow != null && netCashFlow < 0 ? <ArrowDownRight /> : <ArrowUpRight />}
+              {monthLabel(latestMonth?.month, lang) || (lang === "zh" ? "等待数据" : "Awaiting data")}
+            </small>
+          </div>
+          <div className="metric-card glass-panel metric-card-income">
+            <span className="metric-card-label">{t("hero.stat.income")}</span>
+            <strong>{latestMonth ? `${sym}${latestMonth.income.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}</strong>
+            <small>{lang === "zh" ? "已确认收入" : "Confirmed inflow"}</small>
+          </div>
+          <div className="metric-card glass-panel metric-card-spend">
+            <span className="metric-card-label">{t("hero.stat.expense")}</span>
+            <strong>{latestMonth ? `${sym}${latestMonth.expenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}</strong>
+            <small>{topCategory ? `${topCategory.category} · ${formatMoney(topCategory.amount, sym)}` : lang === "zh" ? "等待分类数据" : "Awaiting categories"}</small>
+          </div>
+          <button type="button" className="metric-card glass-panel metric-card-status" onClick={() => setDetailDrawer("import")}>
+            <span className="metric-card-label">{t("hero.stat.budget")}</span>
+            <strong>{t(`budget.${hasData ? budgetStatus : "data_limited"}`)}</strong>
+            <small>
+              <Database />
+              {qualityConfidence ? `${qualityConfidence}% · ${duplicateCount} ${lang === "zh" ? "笔重复" : "duplicates"}` : lang === "zh" ? "等待账单导入" : "Awaiting statements"}
+            </small>
           </button>
-          <button
-            type="button"
-            onClick={handleUploadClick}
-            disabled={isUploading}
-            className="hero2-btn hero2-btn-ghost"
-          >
-            <Upload className="h-4 w-4" />
-            {isUploading ? t("hero.uploading") : t("hero.upload")}
-          </button>
-          <button type="button" onClick={() => openReasoning()} className="hero2-link">
-            <GitBranch className="h-3.5 w-3.5" />
-            {lang === "zh" ? "为什么这样建议？" : "Why this recommendation?"}
-          </button>
-          <button type="button" onClick={() => setDetailDrawer("import")} className="hero2-link">
-            <Database className="h-3.5 w-3.5" />
-            {lang === "zh" ? "查看导入与数据质量" : "View import and data quality"}
-          </button>
-          <div className="hero2-hint">{t("hero.uploadHint")}</div>
         </div>
       </section>
 
@@ -715,27 +689,6 @@ function buildHeroSummary({
     return `Cash flow is positive, but budget risk remains high; review ${category} first.`;
   }
   return `Cash flow is positive; maintain the rhythm and review controllable ${category} spend.`;
-}
-
-function buildEvidenceCaveat({
-  lang,
-  duplicateCount,
-  sourceCount,
-  qualityConfidence,
-}: {
-  lang: string;
-  duplicateCount: number;
-  sourceCount: number;
-  qualityConfidence: number;
-}) {
-  if (lang === "zh") {
-    if (!qualityConfidence) return "等待账单导入";
-    if (duplicateCount > 0) return `${sourceCount} 个来源，${duplicateCount} 笔重复已标记`;
-    return `${sourceCount} 个来源，数据质量 ${qualityConfidence}%`;
-  }
-  if (!qualityConfidence) return "Waiting for statement import";
-  if (duplicateCount > 0) return `${sourceCount} sources, ${duplicateCount} duplicates flagged`;
-  return `${sourceCount} sources, ${qualityConfidence%100 ? `${qualityConfidence}%` : "clean"} confidence`;
 }
 
 function normalizeActionTitle(title: string | undefined, lang: string) {
