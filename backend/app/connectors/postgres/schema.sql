@@ -140,6 +140,77 @@ CREATE TABLE IF NOT EXISTS knowledge_chunk_embeddings (
 CREATE INDEX IF NOT EXISTS idx_knowledge_embeddings_provider
     ON knowledge_chunk_embeddings (provider_id, model_id, dimension, chunk_id);
 
+-- ============================================================
+-- User-uploaded documents (multimodal RAG).
+-- Independent from the reviewed knowledge_* tables: user documents carry no
+-- review/jurisdiction authority, so the review_after freshness gate of reviewed
+-- knowledge does not apply.
+--
+-- Design: chunker + embedding are the RAG substrate. Text fragments, tables,
+-- and image captions all become chunks in one table, vectorized together.
+-- An image is just a chunk whose meta.type='image' and whose chunk_text is the
+-- VL-generated caption; the original oss_key lives in meta so the agent can
+-- presign a short-lived URL on demand. VL captions are cached per document
+-- (meta.image_captions) so re-running ingestion never re-calls VL/MinIO.
+-- ============================================================
+
+-- Uploaded file metadata + async ingestion state + file-level dedup (file_hash).
+-- meta stores image_captions cache: {image_hash: {caption, oss_key, thumb_key}}.
+CREATE TABLE IF NOT EXISTS knowledge_user_documents (
+    document_id           BIGSERIAL PRIMARY KEY,
+    file_hash             TEXT NOT NULL UNIQUE,
+    filename              TEXT NOT NULL,
+    mime_type             TEXT NOT NULL DEFAULT '',
+    size_bytes            BIGINT NOT NULL DEFAULT 0,
+    source_kind           TEXT NOT NULL DEFAULT 'upload'
+        CHECK (source_kind IN ('upload', 'chat_attachment')),
+    oss_key               TEXT NOT NULL DEFAULT '',
+    ingestion_status      TEXT NOT NULL DEFAULT 'pending'
+        CHECK (ingestion_status IN ('pending', 'processing', 'done', 'failed')),
+    ingestion_error       TEXT NOT NULL DEFAULT '',
+    ingestion_attempts    INTEGER NOT NULL DEFAULT 0,
+    ingestion_job_id      TEXT NOT NULL DEFAULT '',
+    ingestion_started_at  TIMESTAMPTZ,
+    ingestion_finished_at TIMESTAMPTZ,
+    title                 TEXT NOT NULL DEFAULT '',
+    language              TEXT NOT NULL DEFAULT '',
+    meta                  JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_user_documents_status
+    ON knowledge_user_documents (ingestion_status)
+    WHERE ingestion_status IN ('pending', 'processing');
+
+-- Chunk table = RAG substrate: chunker output (text/table/image caption) +
+-- embedding + meta all in one table. Image chunks carry oss_key/thumb_key in
+-- meta so the agent can presign a preview URL; the caption is chunk_text and
+-- is vectorized alongside text chunks for unified retrieval.
+CREATE TABLE IF NOT EXISTS knowledge_user_chunks (
+    chunk_id      BIGSERIAL PRIMARY KEY,
+    document_id   BIGINT NOT NULL REFERENCES knowledge_user_documents(document_id) ON DELETE CASCADE,
+    ordinal       INTEGER NOT NULL CHECK (ordinal >= 0),
+    chunk_text    TEXT NOT NULL,
+    embedding     vector(1024) NOT NULL,
+    content_hash  TEXT NOT NULL CHECK (length(content_hash) = 64),
+    meta          JSONB NOT NULL DEFAULT '{}'::jsonb,
+    search_vector TSVECTOR GENERATED ALWAYS AS (
+        to_tsvector('simple', chunk_text)
+    ) STORED,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (document_id, ordinal)
+);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_user_chunks_document
+    ON knowledge_user_chunks (document_id, ordinal);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_user_chunks_search_vector
+    ON knowledge_user_chunks USING GIN (search_vector);
+
+CREATE INDEX IF NOT EXISTS idx_knowledge_user_chunks_vec
+    ON knowledge_user_chunks USING hnsw (embedding vector_cosine_ops);
+
 -- Transactions imported from statement processors or future bank connectors
 CREATE TABLE IF NOT EXISTS transactions (
     id               BIGSERIAL PRIMARY KEY,

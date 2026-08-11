@@ -71,6 +71,10 @@ class CfoReplyGenerator:
                 "never report it as 0%. "
                 "Reviewed knowledge is general guidance; never present it as "
                 "the user's ledger data or individualized financial advice. "
+                "When the user_documents evidence contains a preview_url, "
+                "embed that image inline with markdown: "
+                "![short description](preview_url). Only use preview_url "
+                "values that appear in the evidence; never invent URLs. "
                 "No investment, tax, or legal advice. "
                 "Write plain conversational prose. Do NOT add pseudo-structure "
                 "labels or headings such as 核心洞察/关键发现/总结/建议 — the "
@@ -188,6 +192,17 @@ class CfoReplyGenerator:
             "knowledge_match_status": (
                 context.get("knowledge_retrieval") or {}
             ).get("match_status"),
+            "user_documents": [
+                {
+                    "document_filename": item.get("document_filename"),
+                    "media_kind": item.get("media_kind"),
+                    "section_path": item.get("section_path"),
+                    "page": item.get("page"),
+                    "excerpt": item.get("excerpt"),
+                    "preview_url": item.get("preview_url"),
+                }
+                for item in (context.get("user_documents") or {}).get("artifacts", [])
+            ],
             "investment_research": context.get("investment_research"),
             "external_market_history": context.get(
                 "external_market_history"

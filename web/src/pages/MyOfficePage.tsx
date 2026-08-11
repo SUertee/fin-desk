@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, KeyboardEvent, ReactNode } from "react";
+import type { ChangeEvent, FormEvent, KeyboardEvent, ReactNode } from "react";
 import {
   ChevronDown,
   ChevronRight,
   MessagesSquare,
+  Paperclip,
   Plus,
   Send,
   X,
@@ -54,8 +55,46 @@ const SUGGESTED_QUESTIONS = [
 
 /** CFO replies arrive as light markdown; render bold inline, keep the rest as text. */
 function renderInline(text: string): ReactNode[] {
+  // Render ![alt](url) as <img> first, then **bold** within the remaining text.
+  const nodes: ReactNode[] = [];
+  const imgRe = /!\[([^\]]*)\]\((https?:\/\/[^)]+)\)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+  while ((match = imgRe.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      for (const node of renderBold(text.slice(lastIndex, match.index), key)) {
+        nodes.push(node);
+        key++;
+      }
+    }
+    nodes.push(
+      <img
+        key={`img-${key++}`}
+        src={match[2]}
+        alt={match[1]}
+        style={{
+          maxWidth: "100%",
+          borderRadius: 8,
+          margin: "8px 0",
+          display: "block",
+        }}
+      />
+    );
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < text.length) {
+    for (const node of renderBold(text.slice(lastIndex), key)) {
+      nodes.push(node);
+      key++;
+    }
+  }
+  return nodes;
+}
+
+function renderBold(text: string, baseKey: number): ReactNode[] {
   return text.split(/\*\*(.+?)\*\*/g).map((part, index) =>
-    index % 2 === 1 ? <strong key={index}>{part}</strong> : part
+    index % 2 === 1 ? <strong key={`b-${baseKey}-${index}`}>{part}</strong> : part
   );
 }
 
@@ -105,6 +144,9 @@ export function MyOfficePage({
   const [expandedSteps, setExpandedSteps] = useState<Record<string, boolean>>({});
   const [railOpen, setRailOpen] = useState(false);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
 
   const loadSessions = useCallback(async () => {
     setSessionsError(null);
@@ -307,6 +349,48 @@ export function MyOfficePage({
 
   const drawerEvidence = drawer ? evidenceCache[drawer.requestId] ?? null : null;
 
+  const handleFileUpload = useCallback(
+    async (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      event.target.value = "";
+      setUploading(true);
+      setUploadNotice(`正在处理「${file.name}」（含图文档会逐张识别，可能要几十秒）…`);
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("user_id", userId);
+        formData.append("source_kind", "chat_attachment");
+        const apiBase =
+          (import.meta.env.VITE_API_BASE_URL as string | undefined) ||
+          "http://localhost:18000";
+        const response = await fetch(`${apiBase}/knowledge-documents/upload`, {
+          method: "POST",
+          body: formData,
+        });
+        if (!response.ok) {
+          const detail = await response.json().catch(() => ({}));
+          throw new Error(detail.detail || `上传失败 (${response.status})`);
+        }
+        const data = await response.json();
+        if (data.status === "done") {
+          setUploadNotice(
+            `已入库「${file.name}」：${data.chunk_count} 个片段，${data.image_count} 张图片。现在可以向 CFO 提问这份文档。`
+          );
+        } else if (data.status === "deduped") {
+          setUploadNotice(`「${file.name}」已存在，跳过重复处理。`);
+        } else {
+          setUploadNotice(`「${file.name}」处理失败：${data.error || "未知错误"}`);
+        }
+      } catch (error: any) {
+        setUploadNotice(error?.message ?? "上传失败");
+      } finally {
+        setUploading(false);
+      }
+    },
+    [userId]
+  );
+
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     void sendPrompt(input);
@@ -452,6 +536,22 @@ export function MyOfficePage({
           </div>
 
           <form className="office-composer" onSubmit={handleSubmit}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,.pptx,.xlsx,.md,.txt,.png,.jpg,.jpeg,.gif,.webp,.bmp"
+              onChange={handleFileUpload}
+              style={{ display: "none" }}
+            />
+            <button
+              type="button"
+              className="office-attach"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading || isSending}
+              title="上传文档（PDF）"
+            >
+              <Paperclip />
+            </button>
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
@@ -469,6 +569,9 @@ export function MyOfficePage({
               <Send />
             </button>
           </form>
+          {uploadNotice && (
+            <div className="office-upload-notice">{uploadNotice}</div>
+          )}
         </section>
 
         {drawer && (

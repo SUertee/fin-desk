@@ -325,6 +325,9 @@ class FinanceTurnExecutor:
                 self.toolset.knowledge_ledger_projection(item)
                 for item in knowledge_result.get("artifacts") or []
             ]
+        user_docs_result = artifacts.get("search_user_documents")
+        if user_docs_result:
+            result = {**result, "user_documents": user_docs_result}
         return result
 
     async def _run_specialists(

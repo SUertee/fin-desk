@@ -31,6 +31,7 @@ from app.tools.investment_research_tools import (
 )
 from app.tools.mcp_market_data import VibeMarketDataTool
 from app.tools.query_tools import extract_query_filters, run_transaction_query
+from app.tools.user_document_search import UserDocumentSearchTool
 from app.tools.web_research import WebResearchTool
 
 logger = logging.getLogger(__name__)
@@ -45,10 +46,12 @@ class FinanceToolset:
         knowledge_retriever: KnowledgeRetriever,
         web_research_tool: WebResearchTool,
         mcp_market_data_tool: VibeMarketDataTool | None = None,
+        user_document_search_tool: UserDocumentSearchTool | None = None,
     ) -> None:
         self.knowledge_retriever = knowledge_retriever
         self.web_research_tool = web_research_tool
         self.mcp_market_data_tool = mcp_market_data_tool
+        self.user_document_search_tool = user_document_search_tool
 
     def build_registry(self) -> ToolRegistry:
         specs = [
@@ -103,6 +106,8 @@ class FinanceToolset:
         ]
         if self.mcp_market_data_tool is not None:
             specs.append(self.mcp_market_data_tool.spec())
+        if self.user_document_search_tool is not None:
+            specs.append(self.user_document_search_tool.spec())
         return ToolRegistry(specs)
 
     async def search_knowledge(

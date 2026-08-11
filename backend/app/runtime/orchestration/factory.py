@@ -39,6 +39,7 @@ from app.tools.mcp_market_data import (
     VibeMarketDataTool,
     build_vibe_market_data_tool,
 )
+from app.tools.user_document_search import build_user_document_search_tool
 from app.tools.web_research import WebResearchTool
 from app.config.settings import get_settings
 
@@ -84,23 +85,33 @@ def build_finance_runtime(
         health_service = get_capability_health_service()
 
     retriever = knowledge_retriever or build_knowledge_retriever()
+    user_doc_tool = build_user_document_search_tool()
     finance_toolset = toolset or FinanceToolset(
         knowledge_retriever=retriever,
         web_research_tool=research_tool,
         mcp_market_data_tool=market_data_tool,
+        user_document_search_tool=user_doc_tool,
     )
     registry = tool_registry or finance_toolset.build_registry()
     runner = specialist_runner or SpecialistRunner()
 
-    optional_statuses = None
-    if market_data_tool is None and not injected_mcp_tool:
-        optional_statuses = {
-            "get_vibe_market_data": CapabilityRuntimeStatus(
+    optional_statuses: dict[str, CapabilityRuntimeStatus] | None = None
+    market_data_disabled = market_data_tool is None and not injected_mcp_tool
+    user_doc_disabled = user_doc_tool is None
+    if market_data_disabled or user_doc_disabled:
+        optional_statuses = {}
+        if market_data_disabled:
+            optional_statuses["get_vibe_market_data"] = CapabilityRuntimeStatus(
                 enabled=False,
                 available=False,
                 reason="Disabled by configuration",
             )
-        }
+        if user_doc_disabled:
+            optional_statuses["search_user_documents"] = CapabilityRuntimeStatus(
+                enabled=False,
+                available=False,
+                reason="Document ingestion not configured",
+            )
     catalog = CapabilityCatalog.from_registries(
         registry,
         runner.registry,

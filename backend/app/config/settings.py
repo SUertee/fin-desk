@@ -256,6 +256,120 @@ class KnowledgeSettings:
 
 
 @dataclass(frozen=True)
+class ObjectStorageSettings:
+    provider: str = "minio"
+    allowed_providers: tuple[str, ...] = ("minio",)
+    endpoint: str = "localhost:9000"
+    external_endpoint: str = "localhost:9000"
+    bucket: str = "findesk-user-assets"
+    access_key: str = field(default="", repr=False)
+    secret_key: str = field(default="", repr=False)
+    secure: bool = False
+    external_secure: bool = False
+    presign_ttl_seconds: int = 300
+
+    def __post_init__(self) -> None:
+        provider = self.provider.strip().lower()
+        allowed = tuple(
+            item.strip().lower()
+            for item in self.allowed_providers
+            if item.strip()
+        )
+        if not allowed or provider not in allowed:
+            raise ValueError("object storage provider is not allowlisted")
+        if not self.endpoint.strip():
+            raise ValueError("object storage endpoint cannot be empty")
+        if not self.bucket.strip():
+            raise ValueError("object storage bucket cannot be empty")
+        if not 60 <= self.presign_ttl_seconds <= 86400:
+            raise ValueError(
+                "object storage presign TTL must be between 60 and 86400 seconds"
+            )
+        object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "allowed_providers", allowed)
+        object.__setattr__(self, "endpoint", self.endpoint.strip())
+        object.__setattr__(
+            self, "external_endpoint", self.external_endpoint.strip()
+        )
+        object.__setattr__(self, "bucket", self.bucket.strip())
+        object.__setattr__(self, "access_key", self.access_key.strip())
+        object.__setattr__(self, "secret_key", self.secret_key.strip())
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.access_key and self.secret_key)
+
+
+@dataclass(frozen=True)
+class VisionSettings:
+    provider: str = "siliconflow"
+    allowed_providers: tuple[str, ...] = ("siliconflow",)
+    api_key: str = field(default="", repr=False)
+    base_url: str = "https://api.siliconflow.cn/v1"
+    model: str = "Qwen/Qwen2.5-VL-72B-Instruct"
+    timeout_seconds: int = 60
+    outbound_call_budget: int = 8
+
+    def __post_init__(self) -> None:
+        provider = self.provider.strip().lower()
+        allowed = tuple(
+            item.strip().lower()
+            for item in self.allowed_providers
+            if item.strip()
+        )
+        if not allowed or provider not in allowed:
+            raise ValueError("vision provider is not allowlisted")
+        if not self.model.strip():
+            raise ValueError("vision model cannot be empty")
+        parsed_base_url = urlsplit(self.base_url.strip())
+        if parsed_base_url.scheme != "https" or not parsed_base_url.hostname:
+            raise ValueError("vision base URL must use HTTPS")
+        if not 1 <= self.timeout_seconds <= 180:
+            raise ValueError("vision timeout must be between 1 and 180 seconds")
+        if not 1 <= self.outbound_call_budget <= 100:
+            raise ValueError(
+                "vision outbound call budget must be between 1 and 100"
+            )
+        object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "allowed_providers", allowed)
+        object.__setattr__(self, "api_key", self.api_key.strip())
+        object.__setattr__(self, "base_url", self.base_url.rstrip("/"))
+        object.__setattr__(self, "model", self.model.strip())
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.api_key)
+
+
+@dataclass(frozen=True)
+class DocumentIngestionSettings:
+    inbox_path: Path = Path("storage/document-inbox")
+    storage_path: Path = Path("storage/document-imports")
+    max_file_bytes: int = 20_000_000
+    poll_seconds: int = 10
+    stable_seconds: int = 5
+    image_min_area: int = 5000
+    thumbnail_max_edge: int = 300
+    caption_max_chars: int = 300
+
+    def __post_init__(self) -> None:
+        if self.max_file_bytes < 1:
+            raise ValueError("document maximum file size must be positive")
+        if self.poll_seconds < 2:
+            raise ValueError("document poll interval must be at least 2 seconds")
+        if self.stable_seconds < 1:
+            raise ValueError("document stable interval must be positive")
+        if self.image_min_area < 1:
+            raise ValueError("document image_min_area must be positive")
+        if self.thumbnail_max_edge < 16:
+            raise ValueError("document thumbnail_max_edge must be at least 16")
+        if not 50 <= self.caption_max_chars <= 2000:
+            raise ValueError(
+                "document caption_max_chars must be between 50 and 2000"
+            )
+
+
+@dataclass(frozen=True)
 class FinanceInboxSettings:
     timeout_seconds: int = 10
     max_response_bytes: int = 2_000_000
@@ -448,6 +562,9 @@ class AppSettings:
     finance_inbox: FinanceInboxSettings = FinanceInboxSettings()
     statement_ingestion: StatementIngestionSettings = StatementIngestionSettings()
     mcp: McpSettings = McpSettings()
+    object_storage: ObjectStorageSettings = ObjectStorageSettings()
+    vision: VisionSettings = VisionSettings()
+    document_ingestion: DocumentIngestionSettings = DocumentIngestionSettings()
 
 
 def _split_csv(value: str) -> list[str]:
@@ -735,5 +852,54 @@ def get_settings() -> AppSettings:
             market_source=os.getenv("MCP_VIBE_MARKET_SOURCE", "yfinance"),
             lookback_days=int(os.getenv("MCP_VIBE_LOOKBACK_DAYS", "90")),
             max_rows=int(os.getenv("MCP_VIBE_MAX_ROWS", "90")),
+        ),
+        object_storage=ObjectStorageSettings(
+            provider=os.getenv("OBJECT_STORAGE_PROVIDER", "minio"),
+            allowed_providers=tuple(
+                _split_csv(os.getenv("OBJECT_STORAGE_ALLOWED_PROVIDERS", "minio"))
+            ),
+            endpoint=os.getenv("OBJECT_STORAGE_ENDPOINT", "localhost:9000"),
+            external_endpoint=os.getenv(
+                "OBJECT_STORAGE_EXTERNAL_ENDPOINT", "localhost:9000"
+            ),
+            bucket=os.getenv("OBJECT_STORAGE_BUCKET", "findesk-user-assets"),
+            access_key=os.getenv("OBJECT_STORAGE_ACCESS_KEY", ""),
+            secret_key=os.getenv("OBJECT_STORAGE_SECRET_KEY", ""),
+            secure=_env_bool("OBJECT_STORAGE_SECURE", False),
+            external_secure=_env_bool("OBJECT_STORAGE_EXTERNAL_SECURE", False),
+            presign_ttl_seconds=int(
+                os.getenv("OBJECT_STORAGE_PRESIGN_TTL_SECONDS", "300")
+            ),
+        ),
+        vision=VisionSettings(
+            provider=os.getenv("VISION_PROVIDER", "siliconflow"),
+            allowed_providers=tuple(
+                _split_csv(os.getenv("VISION_ALLOWED_PROVIDERS", "siliconflow"))
+            ),
+            api_key=os.getenv("SILICONFLOW_API_KEY", ""),
+            base_url=os.getenv("VISION_BASE_URL", "https://api.siliconflow.cn/v1"),
+            model=os.getenv("VISION_MODEL", "Qwen/Qwen2.5-VL-72B-Instruct"),
+            timeout_seconds=int(os.getenv("VISION_TIMEOUT_SECONDS", "60")),
+            outbound_call_budget=int(
+                os.getenv("VISION_OUTBOUND_CALL_BUDGET", "8")
+            ),
+        ),
+        document_ingestion=DocumentIngestionSettings(
+            inbox_path=Path(
+                os.getenv("DOCUMENT_INBOX_PATH", "storage/document-inbox")
+            ),
+            storage_path=Path(
+                os.getenv("DOCUMENT_STORAGE_PATH", "storage/document-imports")
+            ),
+            max_file_bytes=int(os.getenv("DOCUMENT_MAX_FILE_BYTES", "20000000")),
+            poll_seconds=int(os.getenv("DOCUMENT_POLL_SECONDS", "10")),
+            stable_seconds=int(os.getenv("DOCUMENT_STABLE_SECONDS", "5")),
+            image_min_area=int(os.getenv("DOCUMENT_IMAGE_MIN_AREA", "5000")),
+            thumbnail_max_edge=int(
+                os.getenv("DOCUMENT_THUMBNAIL_MAX_EDGE", "300")
+            ),
+            caption_max_chars=int(
+                os.getenv("DOCUMENT_CAPTION_MAX_CHARS", "300")
+            ),
         ),
     )

@@ -98,6 +98,16 @@ TOOL_CAPABILITY_DEFINITIONS: dict[str, CapabilityDefinition] = {
         owner="knowledge",
         output_contract="KnowledgeRetrievalResult",
     ),
+    "search_user_documents": _tool(
+        "knowledge.user_search",
+        "User document search",
+        description=(
+            "Vector search over the user's uploaded documents "
+            "(PDFs, images, research notes). Image hits include a preview URL."
+        ),
+        owner="knowledge",
+        output_contract="UserDocumentSearchResult",
+    ),
     "get_investment_research_context": _tool(
         "investment.research_context",
         "Investment research context",

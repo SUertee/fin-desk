@@ -44,6 +44,25 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  minio:
+    image: quay.io/minio/minio:latest
+    ports:
+      - "127.0.0.1:${OBJECT_STORAGE_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
+    environment:
+      MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY:-findesk}
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_KEY:-findesksecret}
+    command: server /data --console-address ":9001"
+    volumes:
+      - finance_minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
   backend:
     image: findesk-backend:local
     build:
@@ -51,6 +70,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      minio:
+        condition: service_started
     ports:
       - "127.0.0.1:${BACKEND_PORT:-18000}:8000"
     env_file:
@@ -63,6 +84,10 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:18001,http://127.0.0.1:18001}
       STATEMENT_INBOX_PATH: /data/statement-inbox
       STATEMENT_STORAGE_PATH: /data/statement-imports
+      OBJECT_STORAGE_ENDPOINT: minio:9000
+      OBJECT_STORAGE_EXTERNAL_ENDPOINT: localhost:9000
+      OBJECT_STORAGE_ACCESS_KEY: ${OBJECT_STORAGE_ACCESS_KEY:-findesk}
+      OBJECT_STORAGE_SECRET_KEY: ${OBJECT_STORAGE_SECRET_KEY:-findesksecret}
     volumes:
       - ${FINDESK_STATEMENT_INBOX_HOST:-./storage/import-inbox}:/data/statement-inbox
       - statement_imports_data:/data/statement-imports
@@ -93,5 +118,7 @@ services:
 volumes:
   finance_postgres_data:
     name: personal-finance-team-data
+  finance_minio_data:
+    name: personal-finance-team-assets
   statement_imports_data:
     name: personal-finance-team-statements
