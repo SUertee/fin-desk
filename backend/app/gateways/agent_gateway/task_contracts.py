@@ -37,7 +37,7 @@ class AgentProfile(BaseModel):
     domain: str
     version: str
     description: str
-    owner: str = "personal-finance-team"
+    owner: str = "fin-desk"
     default_entrypoint: str = "/agent-gateway/tasks"
     capabilities: list[AgentCapability]
     supported_protocols: list[str] = Field(default_factory=lambda: ["agent_gateway/v1"])

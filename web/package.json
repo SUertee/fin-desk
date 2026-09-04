@@ -1,6 +1,6 @@
 {
-      "name": "findesk-client",
-      "version": "0.1.0",
+      "name": "fin-desk-client",
+      "version": "1.0.0",
       "private": true,
       "dependencies": {
             "lucide-react": "^0.487.0",

@@ -2,6 +2,8 @@
 
 **A Personal Finance Agent Team**
 
+Current release: **v1.0.0**
+
 FinDesk turns raw statement exports (Alipay, WeChat Pay, bank PDFs) into a reconciled personal ledger, then puts a CFO-led agent team on top of it — with typed handoffs, audit gating, and a replayable run ledger for every answer.
 
 ## Overview
