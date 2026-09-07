@@ -1,7 +1,7 @@
 # FinDesk private server deployment
 
-The production branch includes the desktop and mobile commits. The public app still uses
-one `demo` user; this deployment is a personal instance. The web port binds to loopback;
+The production branch includes the desktop and mobile commits. Authentication maps the
+configured owner account to one private user workspace; this deployment is a personal instance. The web port binds to loopback;
 the database, cache and API have no published ports. It does not copy local financial data.
 
 ## Prepare and run
@@ -35,25 +35,30 @@ checking the destination instance. Do not reuse local Docker volumes as producti
 
 ## Domain, Caddy and mobile access
 
-The production domain is `findesk.suertexu.com`. Create a Cloudflare `A` record pointing it
-to the server and keep it DNS-only during the first validation. The record did not exist on
-2026-09-07; the server address is intentionally not committed to this repository.
+The production domain is `findesk.suertexu.com`. Its Cloudflare `A` record was verified on
+2026-09-07. Keep it DNS-only during the first validation; the server address is intentionally
+not committed to this repository.
 
 myserver already runs Caddy 2.11 in Docker on ports 80/443. The production web service joins
 the existing external `caddy_default` network with the unique alias `findesk-web`. Copy the
-site block from `deploy/Caddyfile.findesk.example` into `/data/caddy/Caddyfile`, replacing
-the placeholder with a Caddy password hash generated interactively:
+site block from `deploy/Caddyfile.findesk.example` into `/data/caddy/Caddyfile` after the
+application login has been configured and verified through the loopback port.
+
+Production authentication is fail-closed. Set `AUTH_EMAIL` in `deploy/backend.env` and
+generate an Argon2 password hash interactively (the password is never placed on the command
+line or stored in shell history):
 
 ```sh
-docker exec -it caddy caddy hash-password
+docker compose --env-file deploy/production.env -f compose.production.yml run --rm \
+  backend python -m app.auth.password
 docker exec caddy caddy validate --config /etc/caddy/Caddyfile
 docker exec caddy caddy reload --config /etc/caddy/Caddyfile
 ```
 
-The temporary Basic Auth gate protects both the interface and every `/api` request. Do not
-publish the site without it: the application currently hardcodes one `demo` user and has no
-application login. Store the password in a password manager. Replace Basic Auth with proper
-application authentication before supporting multiple users.
+Copy the resulting hash into `AUTH_PASSWORD_HASH` in `deploy/backend.env`, keep that file at
+mode `600`, and restart the backend and web services. The application uses an opaque
+HttpOnly/Secure/SameSite cookie, server-side revocable sessions, CSRF tokens for writes and
+bounded login attempts. It has no public registration and is intentionally a single-user v1.
 
 The UI uses same-origin `/api`, including streaming responses. Nginx disables response
 buffering and permits a 25 MB request body. The backend may impose tighter file limits.
@@ -70,15 +75,16 @@ into separate volumes before switching. Never use `down -v` against the live ins
 
 ## Read-only server assessment (2026-09-07)
 
-Docker is installed; architecture is amd64. Available memory was about 2.3 GB; free disk
-about 6.4 GB (89% used). Build images locally and check disk again before image transfer.
-No server files, domains, containers or credentials were changed during this assessment.
-Remote rollout awaits the Cloudflare DNS record, access credential and provider configuration.
+Docker is installed; architecture is amd64. The production containers were built and started
+behind the loopback port on 2026-09-07; the health check passed. Free disk was about 4.7 GB
+(92% used) afterward, so Docker build cache should be reviewed before future builds. The
+public Caddy route remains disabled until application credentials are configured and tested.
 
 ## Validation
 
-The frontend suite passes 20/20 tests and Vite production build succeeds. Compose validates
-with `config --no-interpolate --no-env-resolution --quiet` (syntax only, not runtime secrets).
-The local production-image build could not resolve the Docker Hub base-image metadata:
-requests for both `node:22-alpine` and `nginx:stable-alpine` returned EOF before build
-execution. Image runtime and Nginx proxy smoke tests remain pending.
+The frontend suite passes 22/22 tests and Vite production build succeeds. The backend suite
+passes 599/599 tests, including login, CSRF and statement-import coverage. The frontend
+production dependency audit reports zero known vulnerabilities. Compose validates with
+`config --no-interpolate --no-env-resolution --quiet` (syntax only, not runtime secrets).
+Both production images built successfully on myserver, and the Nginx-to-backend health check
+passed through `http://127.0.0.1:18080/api/health`.

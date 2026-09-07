@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "./financeApi";
+import { authFetch } from "./authApi";
 
 export type StatementImportRecord = {
   import_id: string;
@@ -41,7 +42,7 @@ export type StatementRuntimeSettings = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getApiBaseUrl()}${path}`, init);
+  const response = await authFetch(`${getApiBaseUrl()}${path}`, init);
   const payload = await response.json();
   if (!response.ok) throw new Error(payload?.error ?? "Statement request failed");
   return payload as T;

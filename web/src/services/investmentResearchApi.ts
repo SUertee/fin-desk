@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "./financeApi";
+import { authFetch } from "./authApi";
 
 export type MarketAssetType = "equity" | "etf";
 
@@ -183,7 +184,7 @@ export type ScenarioValuation = {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${getApiBaseUrl()}${path}`, init);
+  const response = await authFetch(`${getApiBaseUrl()}${path}`, init);
   const payload = response.status === 204 ? null : await response.json();
   if (!response.ok) {
     throw new Error(payload?.detail ?? "Investment research request failed");

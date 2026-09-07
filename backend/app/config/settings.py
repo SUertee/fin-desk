@@ -54,6 +54,31 @@ class RedisSettings:
 
 
 @dataclass(frozen=True)
+class AuthSettings:
+    enabled: bool = False
+    user_id: str = "demo"
+    email: str = ""
+    password_hash: str = ""
+    session_ttl_seconds: int = 604800
+    cookie_secure: bool = False
+    login_attempt_limit: int = 8
+    login_window_seconds: int = 900
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "user_id", self.user_id.strip())
+        object.__setattr__(self, "email", self.email.strip().lower())
+        if self.session_ttl_seconds < 300:
+            raise ValueError("auth session TTL must be at least 300 seconds")
+        if self.login_attempt_limit < 1 or self.login_window_seconds < 60:
+            raise ValueError("invalid auth login rate limit")
+        if self.enabled:
+            if not self.user_id or not self.email:
+                raise ValueError("AUTH_USER_ID and AUTH_EMAIL are required")
+            if not self.password_hash.startswith("$argon2"):
+                raise ValueError("AUTH_PASSWORD_HASH must be an Argon2 hash")
+
+
+@dataclass(frozen=True)
 class CostSettings:
     reporting_currency: str = "USD"
 
@@ -434,6 +459,7 @@ class AppSettings:
     allowed_origins: list[str]
     database: DatabaseSettings
     redis: RedisSettings = RedisSettings()
+    auth: AuthSettings = AuthSettings()
     default_user_id: str = "demo"
     runtime_profile: str = "default"
     chat_model_profile: str = "chat"
@@ -545,6 +571,19 @@ def get_settings() -> AppSettings:
             socket_timeout_seconds=float(
                 os.getenv("REDIS_SOCKET_TIMEOUT_SECONDS", "1")
             ),
+        ),
+        auth=AuthSettings(
+            enabled=_env_bool("AUTH_ENABLED", False),
+            user_id=os.getenv("AUTH_USER_ID", "demo"),
+            email=os.getenv("AUTH_EMAIL", ""),
+            password_hash=os.getenv("AUTH_PASSWORD_HASH", ""),
+            session_ttl_seconds=int(os.getenv("AUTH_SESSION_TTL_SECONDS", "604800")),
+            cookie_secure=_env_bool(
+                "AUTH_COOKIE_SECURE",
+                os.getenv("APP_ENV", "local").strip().lower() == "production",
+            ),
+            login_attempt_limit=int(os.getenv("AUTH_LOGIN_ATTEMPT_LIMIT", "8")),
+            login_window_seconds=int(os.getenv("AUTH_LOGIN_WINDOW_SECONDS", "900")),
         ),
         default_user_id=os.getenv("DEFAULT_USER_ID", "demo"),
         runtime_profile=os.getenv("FINANCE_RUNTIME_PROFILE", "default"),

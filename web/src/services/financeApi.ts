@@ -1,5 +1,6 @@
 import type { AnalysisRunRow, TransactionRow } from "../types/db";
 import type { ChatResponse } from "../types/financeAgent";
+import { authFetch } from "./authApi";
 import type {
   AgentRunFilters,
   AgentRunListResponse,
@@ -41,7 +42,7 @@ export type CapabilityCatalogItem = {
 };
 
 export async function fetchCapabilities(): Promise<CapabilityCatalogItem[]> {
-  const response = await fetch(`${apiBaseUrl}/developer/capabilities`);
+  const response = await authFetch(`${apiBaseUrl}/developer/capabilities`);
   const payload = await response.json();
   if (!response.ok) {
     throw new Error(payload?.detail ?? "Failed to load capabilities");
@@ -96,7 +97,7 @@ export async function fetchDailyTotals(
   userId: string,
   month: string
 ): Promise<DailyTotalsResponse> {
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/transactions/daily/${encodeURIComponent(userId)}?month=${month}`
   );
   if (!response.ok) {
@@ -106,7 +107,7 @@ export async function fetchDailyTotals(
 }
 
 export async function fetchTransactionsForDay(userId: string, day: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/transactions/${encodeURIComponent(userId)}?date_from=${day}&date_to=${day}`
   );
   if (!response.ok) {
@@ -116,7 +117,7 @@ export async function fetchTransactionsForDay(userId: string, day: string) {
 }
 
 export async function fetchTransactions(userId: string, limit = 200) {
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/transactions/${encodeURIComponent(userId)}?limit=${limit}`
   );
   if (!response.ok) {
@@ -127,7 +128,7 @@ export async function fetchTransactions(userId: string, limit = 200) {
 }
 
 export async function fetchProfile(userId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/profile/${encodeURIComponent(userId)}`
   );
   if (!response.ok) {
@@ -246,7 +247,7 @@ export async function updateProfile(
   userId: string,
   payload: ProfileUpdatePayload
 ) {
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/profile/${encodeURIComponent(userId)}`,
     {
       method: "PUT",
@@ -290,7 +291,7 @@ export async function fetchAiCostOverview(
   if (reportingCurrency) {
     params.set("reporting_currency", reportingCurrency);
   }
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/costs/ai/${encodeURIComponent(userId)}/overview?${params.toString()}`
   );
   const payload = await response.json();
@@ -301,7 +302,7 @@ export async function fetchAiCostOverview(
 }
 
 export async function fetchLatestAnalysisRun(userId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/analysis-runs/latest/${encodeURIComponent(userId)}`
   );
   if (!response.ok) {
@@ -314,7 +315,7 @@ export async function fetchLatestAnalysisRun(userId: string) {
 export async function fetchDataSourceStatus(
   userId: string
 ): Promise<DataSourceStatus> {
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/data-sources/status/${encodeURIComponent(userId)}`
   );
   const payload = await response.json();
@@ -329,7 +330,7 @@ export async function importStatement(userId: string, file: File) {
   formData.append("user_id", userId);
   formData.append("file", file);
 
-  const response = await fetch(`${apiBaseUrl}/statement-import/import`, {
+  const response = await authFetch(`${apiBaseUrl}/statement-import/import`, {
     method: "POST",
     body: formData,
   });
@@ -381,7 +382,7 @@ export async function fetchAgentRuns(
   if (filters.createdFrom) params.set("created_from", filters.createdFrom);
   if (filters.createdTo) params.set("created_to", filters.createdTo);
 
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/agent-runs/user/${encodeURIComponent(userId)}?${params.toString()}`
   );
   if (!response.ok) {
@@ -405,7 +406,7 @@ export async function replayAgentRun(requestId: string, caseId?: string) {
   if (caseId) params.set("case_id", caseId);
 
   const suffix = params.toString() ? `?${params.toString()}` : "";
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/agent-runs/${encodeURIComponent(requestId)}/replay${suffix}`
   );
   const payload = await response.json();
@@ -421,7 +422,7 @@ export async function replayAgentRun(requestId: string, caseId?: string) {
 export async function fetchAgentRunProjection(
   requestId: string
 ): Promise<AgentRunProjection> {
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/agent-runs/${encodeURIComponent(requestId)}/projected`
   );
   const payload = await response.json();
@@ -432,7 +433,7 @@ export async function fetchAgentRunProjection(
 }
 
 export async function fetchEvalCases(): Promise<EvalCaseSummary[]> {
-  const response = await fetch(`${apiBaseUrl}/evals/cases`);
+  const response = await authFetch(`${apiBaseUrl}/evals/cases`);
   const payload = await response.json();
   if (!response.ok) {
     throw new Error(payload?.error ?? "Failed to load eval cases");
@@ -441,7 +442,7 @@ export async function fetchEvalCases(): Promise<EvalCaseSummary[]> {
 }
 
 export async function fetchWorkspaceBrief(userId: string) {
-  const response = await fetch(
+  const response = await authFetch(
     `${apiBaseUrl}/workspace/brief/${encodeURIComponent(userId)}`
   );
   if (!response.ok) {
@@ -460,7 +461,7 @@ export async function sendChatMessageStream(
   message: string,
   onEvent: (event: ChatStreamEvent) => void
 ): Promise<void> {
-  const response = await fetch(`${apiBaseUrl}/chat/stream`, {
+  const response = await authFetch(`${apiBaseUrl}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

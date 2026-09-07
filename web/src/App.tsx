@@ -3,6 +3,7 @@ import {
   Bell,
   LayoutDashboard,
   LineChart,
+  LogOut,
   Menu,
   MessagesSquare,
   Settings as SettingsIcon,
@@ -19,10 +20,11 @@ import { FinanceInboxPage } from "./pages/FinanceInboxPage";
 import { SettingsPage, type SettingsSection } from "./pages/SettingsPage";
 import type { PageId } from "./pages/pageTypes";
 import { useI18n } from "./i18n";
+import { useAuth } from "./auth";
 
 export default function App() {
-  // TODO: Replace hardcoded "demo" with auth-based user identification
-  const userId = "demo";
+  const { user, logout } = useAuth();
+  const userId = user.id;
   const { lang, t } = useI18n();
   const l = (zh: string, en: string) => (lang === "zh" ? zh : en);
 
@@ -184,7 +186,18 @@ export default function App() {
           </div>
           <div className="product-topbar-actions">
             <Bell className="product-bell" />
-            <div className="product-avatar">RM</div>
+            <div className="product-avatar" title={user.email}>
+              {user.email.slice(0, 2).toUpperCase()}
+            </div>
+            <button
+              type="button"
+              className="product-logout"
+              onClick={() => void logout()}
+              aria-label={l("退出登录", "Sign out")}
+              title={l("退出登录", "Sign out")}
+            >
+              <LogOut />
+            </button>
           </div>
         </header>
 

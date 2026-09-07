@@ -9,6 +9,8 @@ x-backend: &backend
     POSTGRES_DSN: postgresql://findesk:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/findesk
     REDIS_URL: redis://redis:6379/0
     ALLOWED_ORIGINS: ${FINDESK_ORIGIN:-http://localhost:18080}
+    AUTH_ENABLED: "true"
+    AUTH_COOKIE_SECURE: "true"
     STATEMENT_INBOX_PATH: /data/statement-inbox
     STATEMENT_STORAGE_PATH: /data/statement-imports
   volumes:

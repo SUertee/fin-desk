@@ -14,10 +14,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.auth.middleware import authentication_middleware
+from app.auth.authorization import enforce_user_scope
+
 from app.routes.agent_gateway import router as agent_gateway_router
+from app.routes.auth import router as auth_router
 from app.integrations.agenthub import router as agenthub_router
 from app.routes.ai_costs import router as ai_costs_router
 from app.routes.chat import router as chat_router
@@ -66,9 +70,11 @@ app = FastAPI(
     ),
     version="2.0.0",
     lifespan=lifespan,
+    dependencies=[Depends(enforce_user_scope)],
 )
 
 allowed_origins = get_settings().allowed_origins
+app.middleware("http")(authentication_middleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -78,6 +84,7 @@ app.add_middleware(
 )
 
 app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(capabilities_router)
 app.include_router(data_sources_router)

@@ -1,4 +1,5 @@
 import { getApiBaseUrl } from "./financeApi";
+import { authFetch } from "./authApi";
 import type {
   ContentSubscription,
   InboxItem,
@@ -23,7 +24,7 @@ async function readJson<T>(response: Response, fallback: string): Promise<T> {
 
 export async function fetchInboxSummary(userId: string): Promise<InboxSummary> {
   return readJson<InboxSummary>(
-    await fetch(`${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/summary`),
+    await authFetch(`${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/summary`),
     "Failed to load Finance Inbox summary"
   );
 }
@@ -36,7 +37,7 @@ export async function fetchInboxItems(
   if (options.status) params.set("status", options.status);
   if (options.cursor) params.set("cursor", options.cursor);
   return readJson<InboxPage>(
-    await fetch(
+    await authFetch(
       `${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/items?${params.toString()}`
     ),
     "Failed to load Finance Inbox"
@@ -49,7 +50,7 @@ export async function updateInboxItemStatus(
   status: InboxItemStatus
 ): Promise<InboxItem> {
   return readJson<InboxItem>(
-    await fetch(
+    await authFetch(
       `${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/items/${encodeURIComponent(itemId)}`,
       {
         method: "PATCH",
@@ -63,7 +64,7 @@ export async function updateInboxItemStatus(
 
 export async function refreshInbox(userId: string): Promise<RefreshAllResult> {
   return readJson<RefreshAllResult>(
-    await fetch(`${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/refresh`, {
+    await authFetch(`${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/refresh`, {
       method: "POST",
     }),
     "Failed to refresh Finance Inbox"
@@ -74,7 +75,7 @@ export async function fetchSubscriptions(
   userId: string
 ): Promise<ContentSubscription[]> {
   return readJson<ContentSubscription[]>(
-    await fetch(`${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/subscriptions`),
+    await authFetch(`${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/subscriptions`),
     "Failed to load subscriptions"
   );
 }
@@ -84,7 +85,7 @@ export async function createSubscription(
   payload: { name: string; feed_url: string }
 ): Promise<{ subscription: ContentSubscription; created: boolean }> {
   return readJson<{ subscription: ContentSubscription; created: boolean }>(
-    await fetch(`${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/subscriptions`, {
+    await authFetch(`${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/subscriptions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -99,7 +100,7 @@ export async function updateSubscription(
   payload: { name?: string; enabled?: boolean }
 ): Promise<ContentSubscription> {
   return readJson<ContentSubscription>(
-    await fetch(
+    await authFetch(
       `${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/subscriptions/${encodeURIComponent(subscriptionId)}`,
       {
         method: "PATCH",
@@ -116,7 +117,7 @@ export async function refreshSubscription(
   subscriptionId: string
 ): Promise<RefreshResult> {
   return readJson<RefreshResult>(
-    await fetch(
+    await authFetch(
       `${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/subscriptions/${encodeURIComponent(subscriptionId)}/refresh`,
       { method: "POST" }
     ),
@@ -131,7 +132,7 @@ export async function importSubscriptionsOPML(
   const formData = new FormData();
   formData.append("file", file);
   return readJson<OPMLImportResult>(
-    await fetch(
+    await authFetch(
       `${apiBaseUrl}/inbox/${encodeURIComponent(userId)}/subscriptions/import-opml`,
       { method: "POST", body: formData }
     ),

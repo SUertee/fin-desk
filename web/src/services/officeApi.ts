@@ -3,6 +3,7 @@
  * chat streaming, and the answer-level user evidence projection.
  */
 import { getApiBaseUrl } from "./financeApi";
+import { authFetch } from "./authApi";
 import type { ChatResponse } from "../types/financeAgent";
 import type {
   EvidenceStep,
@@ -14,7 +15,7 @@ import type {
 export async function fetchOfficeSessions(
   userId: string
 ): Promise<OfficeSession[]> {
-  const response = await fetch(
+  const response = await authFetch(
     `${getApiBaseUrl()}/office/sessions/${encodeURIComponent(userId)}`
   );
   const payload = await response.json();
@@ -28,7 +29,7 @@ export async function createOfficeSession(
   userId: string,
   title = ""
 ): Promise<OfficeSession> {
-  const response = await fetch(`${getApiBaseUrl()}/office/sessions`, {
+  const response = await authFetch(`${getApiBaseUrl()}/office/sessions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ user_id: userId, title }),
@@ -44,7 +45,7 @@ export async function fetchOfficeSessionMessages(
   userId: string,
   sessionId: string
 ): Promise<OfficeMessage[]> {
-  const response = await fetch(
+  const response = await authFetch(
     `${getApiBaseUrl()}/office/sessions/${encodeURIComponent(
       userId
     )}/${encodeURIComponent(sessionId)}/messages`
@@ -59,7 +60,7 @@ export async function fetchOfficeSessionMessages(
 export async function fetchOfficeEvidence(
   requestId: string
 ): Promise<UserEvidenceProjection> {
-  const response = await fetch(
+  const response = await authFetch(
     `${getApiBaseUrl()}/office/evidence/${encodeURIComponent(requestId)}`
   );
   const payload = await response.json();
@@ -81,7 +82,7 @@ export async function sendOfficeChatMessageStream(
   message: string,
   onEvent: (event: OfficeChatStreamEvent) => void
 ): Promise<void> {
-  const response = await fetch(`${getApiBaseUrl()}/chat/stream`, {
+  const response = await authFetch(`${getApiBaseUrl()}/chat/stream`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

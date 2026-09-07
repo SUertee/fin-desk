@@ -1,10 +1,12 @@
-# Replace the password hash before installing this block. Generate it interactively with:
-# docker exec -it caddy caddy hash-password
 findesk.suertexu.com {
 	encode zstd gzip
 
-	basic_auth {
-		findesk REPLACE_WITH_CADDY_PASSWORD_HASH
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 	}
 
 	reverse_proxy findesk-web:80
