@@ -1,5 +1,6 @@
 import { Check, FileUp, Pencil, Plus, RefreshCw, Rss, X } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useI18n } from "../../i18n";
 import {
   createSubscription,
   fetchSubscriptions,
@@ -10,6 +11,8 @@ import {
 import type { ContentSubscription } from "../../types/inbox";
 
 export function SubscriptionManager({ userId }: { userId: string }) {
+  const { lang } = useI18n();
+  const l = (zh: string, en: string) => lang === "zh" ? zh : en;
   const [subscriptions, setSubscriptions] = useState<ContentSubscription[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -124,8 +127,8 @@ export function SubscriptionManager({ userId }: { userId: string }) {
     <div className="subscription-manager">
       <div className="subscription-create-row">
         <input
-          aria-label="Subscription name"
-          placeholder="Source name"
+          aria-label={l("订阅名称", "Subscription name")}
+          placeholder={l("来源名称", "Source name")}
           value={name}
           onChange={(event) => setName(event.target.value)}
         />
@@ -136,10 +139,10 @@ export function SubscriptionManager({ userId }: { userId: string }) {
           onChange={(event) => setUrl(event.target.value)}
         />
         <button type="button" onClick={handleCreate} disabled={busyId === "create" || !name.trim() || !url.trim()}>
-          <Plus /> Add feed
+          <Plus /> {l("添加订阅", "Add feed")}
         </button>
         <label className="subscription-opml-button">
-          <FileUp /> Import OPML
+          <FileUp /> {l("导入 OPML", "Import OPML")}
           <input
             type="file"
             accept=".opml,.xml,text/x-opml,application/xml"
@@ -155,12 +158,12 @@ export function SubscriptionManager({ userId }: { userId: string }) {
       {message && <div className="subscription-message">{message}</div>}
       {error && <div className="subscription-error">{error}</div>}
       {loading ? (
-        <div className="subscription-empty">Loading finance subscriptions...</div>
+        <div className="subscription-empty">{l("正在加载财经订阅…", "Loading finance subscriptions...")}</div>
       ) : subscriptions.length === 0 ? (
         <div className="subscription-empty">
           <Rss />
-          <strong>No finance content sources yet</strong>
-          <span>Add one RSS feed or import an OPML file. Feeds are refreshed only when you ask.</span>
+          <strong>{l("尚未添加财经内容源", "No finance content sources yet")}</strong>
+          <span>{l("添加 RSS 订阅或导入 OPML 文件；内容只会在你请求时刷新。", "Add one RSS feed or import an OPML file. Feeds are refreshed only when you ask.")}</span>
         </div>
       ) : (
         <div className="subscription-list">
@@ -180,18 +183,18 @@ export function SubscriptionManager({ userId }: { userId: string }) {
                 <span>{new URL(item.normalized_feed_url).hostname}</span>
                 <small>
                   {item.last_refresh_status === "never"
-                    ? "Never refreshed"
+                    ? l("从未刷新", "Never refreshed")
                     : `${item.last_refresh_status} · ${formatTimestamp(item.last_refresh_at)}`}
                   {item.last_error_code ? ` · ${item.last_error_code}` : ""}
                 </small>
               </div>
               <div className="subscription-source-actions">
-                <button type="button" title="Rename" onClick={() => { setEditingId(item.id); setEditingName(item.name); }}><Pencil /></button>
+                <button type="button" title={l("重命名", "Rename")} onClick={() => { setEditingId(item.id); setEditingName(item.name); }}><Pencil /></button>
                 <button type="button" onClick={() => handleRefresh(item)} disabled={busyId === item.id || !item.enabled}>
-                  <RefreshCw className={busyId === item.id ? "spin" : ""} /> Refresh
+                  <RefreshCw className={busyId === item.id ? "spin" : ""} /> {l("刷新", "Refresh")}
                 </button>
                 <button type="button" className={item.enabled ? "subscription-toggle-on" : ""} onClick={() => handleToggle(item)} disabled={busyId === item.id}>
-                  {item.enabled ? "Enabled" : "Disabled"}
+                  {item.enabled ? l("已启用", "Enabled") : l("已停用", "Disabled")}
                 </button>
               </div>
             </article>

@@ -1,5 +1,13 @@
 import { useState } from "react";
-import { Bell, LayoutDashboard, LineChart, MessagesSquare, Settings as SettingsIcon } from "lucide-react";
+import {
+  Bell,
+  LayoutDashboard,
+  LineChart,
+  Menu,
+  MessagesSquare,
+  Settings as SettingsIcon,
+  X,
+} from "lucide-react";
 import { getApiBaseUrl } from "./services/financeApi";
 import { useFinanceWorkspaceData } from "./hooks/useFinanceWorkspaceData";
 
@@ -15,9 +23,11 @@ import { useI18n } from "./i18n";
 export default function App() {
   // TODO: Replace hardcoded "demo" with auth-based user identification
   const userId = "demo";
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
+  const l = (zh: string, en: string) => (lang === "zh" ? zh : en);
 
   const [activePage, setActivePage] = useState<PageId>("workspace");
+  const [isNavOpen, setIsNavOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [cfoPrefill, setCfoPrefill] = useState<string | null>(null);
   const [officePrefill, setOfficePrefill] = useState<string | null>(null);
@@ -54,42 +64,42 @@ export default function App() {
   const onboardingItems = [
     budgetStatus === "risk"
       ? {
-          title: "Reduce discretionary spend this week",
-          body: "Your expense ratio is above the risk threshold. Start with the largest flexible category.",
-          status: "High priority",
+          title: l("本周减少弹性支出", "Reduce discretionary spend this week"),
+          body: l("支出比例已超过风险阈值，请从最大的弹性支出类目开始检查。", "Your expense ratio is above the risk threshold. Start with the largest flexible category."),
+          status: l("高优先级", "High priority"),
         }
       : budgetStatus === "watch"
         ? {
-            title: "Set one weekly spending guardrail",
-            body: "Spending is elevated but controllable. Use a weekly cap before changing the full budget.",
-            status: "Recommended",
+            title: l("设置一条每周支出上限", "Set one weekly spending guardrail"),
+            body: l("当前支出偏高但仍可控，可先设置每周上限，再决定是否调整整体预算。", "Spending is elevated but controllable. Use a weekly cap before changing the full budget."),
+            status: l("建议", "Recommended"),
           }
         : {
-            title: "Keep the current cash-flow rhythm",
-            body: "Loaded income and expenses look stable. Automate savings before adding discretionary spend.",
-            status: "Healthy",
+            title: l("保持当前现金流节奏", "Keep the current cash-flow rhythm"),
+            body: l("已导入的收支整体稳定，建议先自动化储蓄，再增加弹性支出。", "Loaded income and expenses look stable. Automate savings before adding discretionary spend."),
+            status: l("健康", "Healthy"),
           },
     topCategory
       ? {
-          title: `Review ${topCategory.category}`,
-          body: `${topCategory.category} is currently the largest expense category at ${topCategory.amount.toLocaleString()} ${topCategory.currency}.`,
-          status: "Spending review",
+          title: l(`复核 ${topCategory.category}`, `Review ${topCategory.category}`),
+          body: l(`${topCategory.category} 是当前最大支出类目，共 ${topCategory.amount.toLocaleString()} ${topCategory.currency}。`, `${topCategory.category} is currently the largest expense category at ${topCategory.amount.toLocaleString()} ${topCategory.currency}.`),
+          status: l("支出复核", "Spending review"),
         }
       : {
-          title: "Import recent transactions",
-          body: "Add a statement to unlock category review, anomaly checks, and budget recommendations.",
-          status: "Data needed",
+          title: l("导入近期交易", "Import recent transactions"),
+          body: l("添加账单后即可查看类目复核、异常检查和预算建议。", "Add a statement to unlock category review, anomaly checks, and budget recommendations."),
+          status: l("需要数据", "Data needed"),
         },
     duplicateCount > 0
       ? {
-          title: "Check duplicate transactions",
-          body: `${duplicateCount} potential duplicates are flagged and should be reviewed before relying on reports.`,
-          status: "Data quality",
+          title: l("检查重复交易", "Check duplicate transactions"),
+          body: l(`发现 ${duplicateCount} 笔疑似重复交易，请在使用报表前完成复核。`, `${duplicateCount} potential duplicates are flagged and should be reviewed before relying on reports.`),
+          status: l("数据质量", "Data quality"),
         }
       : {
-          title: "Data quality looks clean",
-          body: "No duplicate transactions are currently flagged in the loaded dataset.",
-          status: "Verified",
+          title: l("数据质量良好", "Data quality looks clean"),
+          body: l("当前已导入数据中未发现重复交易。", "No duplicate transactions are currently flagged in the loaded dataset."),
+          status: l("已验证", "Verified"),
         },
   ];
 
@@ -106,15 +116,20 @@ export default function App() {
 
   return (
     <div className="product-shell">
-      <header className="product-topbar">
-        <div className="product-topbar-inner">
-          <div className="product-brand-mark">
-            <div className="product-logo">F</div>
-            <div>
-              <div className="product-brand-title">FinDesk</div>
-            </div>
-          </div>
-          <nav className="product-tabs">
+      <aside className={`product-sidebar ${isNavOpen ? "product-sidebar-open" : ""}`}>
+        <div className="product-brand-mark">
+          <div className="product-logo">F</div>
+          <div className="product-brand-title">FinDesk</div>
+          <button
+            type="button"
+            className="product-nav-close"
+            aria-label="Close navigation"
+            onClick={() => setIsNavOpen(false)}
+          >
+            <X />
+          </button>
+        </div>
+        <nav className="product-tabs" aria-label="Primary navigation">
           {navItems.map((item) => {
             const Icon = item.icon;
             const active = activePage === item.id;
@@ -128,6 +143,7 @@ export default function App() {
                 onClick={() => {
                   if (item.id === "settings") setSettingsSection("profile");
                   setActivePage(item.id);
+                  setIsNavOpen(false);
                 }}
                 className={`product-tab ${active ? "product-tab-active" : ""}`}
               >
@@ -137,18 +153,46 @@ export default function App() {
             );
           })}
         </nav>
+        <div className="product-sidebar-foot">
+          <span>{l("个人 CFO", "PERSONAL CFO")}</span>
+          <p>{l("让每一个财务决策都有据可循。", "Evidence-led financial decisions.")}</p>
+        </div>
+      </aside>
+
+      {isNavOpen && (
+        <button
+          type="button"
+          className="product-nav-backdrop"
+          aria-label="Close navigation"
+          onClick={() => setIsNavOpen(false)}
+        />
+      )}
+
+      <div className="product-app-frame">
+        <header className="product-utility-bar">
+          <button
+            type="button"
+            className="product-nav-trigger"
+            aria-label="Open navigation"
+            aria-expanded={isNavOpen}
+            onClick={() => setIsNavOpen(true)}
+          >
+            <Menu />
+          </button>
+          <div className="product-utility-context">
+            <span>{navItems.find((item) => item.id === activePage)?.label ?? "FinDesk"}</span>
+          </div>
           <div className="product-topbar-actions">
             <Bell className="product-bell" />
             <div className="product-avatar">RM</div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <div
-        className={`product-content${
-          isSidebarOpen && activePage === "workspace" ? " product-content-with-chat" : ""
-        }`}
-      >
+        <div
+          className={`product-content${
+            isSidebarOpen && activePage === "workspace" ? " product-content-with-chat" : ""
+          }`}
+        >
         {activePage === "workspace" ? (
           <FinanceWorkspacePage
             userId={userId}
@@ -219,6 +263,7 @@ export default function App() {
               )}
             </main>
         )}
+        </div>
       </div>
 
       {activePage === "workspace" && (

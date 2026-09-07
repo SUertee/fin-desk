@@ -156,7 +156,7 @@ describe("InvestmentResearchPage", () => {
     await screen.findByText("Apple Inc.");
     expect(screen.queryByText("EVIDENCE")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: /2 sources/i }));
+    fireEvent.click(screen.getByRole("button", { name: /2 (sources|个来源)/i }));
     await screen.findByText("EVIDENCE");
     expect(screen.getAllByText("openbb:yfinance").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText(/not an executable quote/i)).toBeTruthy();
@@ -217,7 +217,7 @@ describe("InvestmentResearchPage", () => {
 
     fireEvent.click(await screen.findByText("AAPL"));
     await screen.findByText("Apple Inc.");
-    fireEvent.click(screen.getByRole("button", { name: /Ask CFO/i }));
+    fireEvent.click(screen.getByRole("button", { name: /(Ask|询问) CFO/i }));
 
     expect(onAskCfo).toHaveBeenCalledWith(expect.stringContaining("股票标的 AAPL"));
   });
@@ -229,6 +229,6 @@ describe("InvestmentResearchPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /假设场景/ }));
 
     expect(screen.getByText(/不连接券商、不使用真实资金/)).toBeTruthy();
-    expect(screen.getByText("Hypothetical only")).toBeTruthy();
+    expect(screen.getByText(/Hypothetical only|仅供假设分析/)).toBeTruthy();
   });
 });

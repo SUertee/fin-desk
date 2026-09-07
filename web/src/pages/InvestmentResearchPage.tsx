@@ -170,6 +170,12 @@ export function InvestmentResearchPage({
     void loadCollections();
   }, [userId]);
 
+  useEffect(() => {
+    if (loading || detailLoading || selectedSymbol || watchlist.length === 0) return;
+    const first = watchlist[0];
+    void loadResearch(first.symbol, first.asset_type);
+  }, [detailLoading, loading, selectedSymbol, watchlist]);
+
   const loadResearch = async (symbol: string, assetType: MarketAssetType) => {
     setSelectedSymbol(symbol);
     setSelectedAssetType(assetType);
@@ -313,7 +319,7 @@ export function InvestmentResearchPage({
 
   return (
     <main className="research-shell">
-      <header className="research-page-head">
+      <header className="research-page-head research-page-head-compact">
         <div>
           <div className="research-eyebrow">
             <BookOpenCheck /> {lang === "zh" ? "只读市场研究" : "READ-ONLY MARKET RESEARCH"}
@@ -354,20 +360,20 @@ export function InvestmentResearchPage({
         <div className="research-error">
           <span>{error}</span>
           <button type="button" onClick={() => void loadCollections()}>
-            <RefreshCw /> Retry
+            <RefreshCw /> {lang === "zh" ? "重试" : "Retry"}
           </button>
         </div>
       )}
 
       {loading ? (
-        <div className="research-loading"><LoaderCircle /> Loading research workspace…</div>
+        <div className="research-loading"><LoaderCircle /> {lang === "zh" ? "正在加载研究工作台…" : "Loading research workspace…"}</div>
       ) : tab === "research" ? (
         <section className="research-layout">
           <aside className="research-rail">
             <div className="research-rail-head">
               <div>
                 <span>{lang === "zh" ? "关注列表" : "Watchlist"}</span>
-                <small>{watchlist.length} instruments</small>
+                <small>{lang === "zh" ? `${watchlist.length} 个标的` : `${watchlist.length} instruments`}</small>
               </div>
             </div>
             <div className="research-add-row">
@@ -375,14 +381,14 @@ export function InvestmentResearchPage({
                 value={symbolInput}
                 onChange={(event) => setSymbolInput(event.target.value)}
                 placeholder="AAPL"
-                aria-label="Symbol"
+                aria-label={lang === "zh" ? "标的代码" : "Symbol"}
               />
               <select
                 value={assetTypeInput}
                 onChange={(event) => setAssetTypeInput(event.target.value as MarketAssetType)}
-                aria-label="Asset type"
+                aria-label={lang === "zh" ? "资产类型" : "Asset type"}
               >
-                <option value="equity">Stock</option>
+                <option value="equity">{lang === "zh" ? "股票" : "Stock"}</option>
                 <option value="etf">ETF</option>
               </select>
               <button
@@ -433,7 +439,7 @@ export function InvestmentResearchPage({
 
           <div className="research-canvas">
             {detailLoading ? (
-              <div className="research-loading"><LoaderCircle /> Loading sourced market data…</div>
+              <div className="research-loading"><LoaderCircle /> {lang === "zh" ? "正在加载有来源的市场数据…" : "Loading sourced market data…"}</div>
             ) : snapshot ? (
               <>
                 <div className="research-instrument-head">
@@ -445,7 +451,7 @@ export function InvestmentResearchPage({
                   </div>
                   <div className="research-head-actions">
                     <button type="button" onClick={() => setEvidenceOpen(true)}>
-                      <BookOpenCheck /> {snapshot.evidence.length} sources
+                      <BookOpenCheck /> {lang === "zh" ? `${snapshot.evidence.length} 个来源` : `${snapshot.evidence.length} sources`}
                     </button>
                     <button
                       type="button"
@@ -458,7 +464,7 @@ export function InvestmentResearchPage({
                         )
                       }
                     >
-                      Ask CFO <ArrowRight />
+                      {lang === "zh" ? "询问 CFO" : "Ask CFO"} <ArrowRight />
                     </button>
                   </div>
                 </div>
@@ -614,7 +620,7 @@ export function InvestmentResearchPage({
             <div className="research-rail-head">
               <div>
                 <span>{lang === "zh" ? "场景档案" : "Scenario files"}</span>
-                <small>Hypothetical only</small>
+                <small>{lang === "zh" ? "仅供假设分析" : "Hypothetical only"}</small>
               </div>
             </div>
             <div className="research-scenario-form">
@@ -637,7 +643,7 @@ export function InvestmentResearchPage({
             </div>
             <div className="research-watchlist">
               {scenarios.length === 0 ? (
-                <div className="research-rail-empty">No scenarios yet.</div>
+                <div className="research-rail-empty">{lang === "zh" ? "尚未创建场景。" : "No scenarios yet."}</div>
               ) : (
                 scenarios.map((item) => (
                   <div
@@ -646,7 +652,7 @@ export function InvestmentResearchPage({
                   >
                     <button type="button" onClick={() => void loadScenario(item.scenario_id)}>
                       <span>{item.name}</span>
-                      <small>{item.starting_cash ? formatMoney(item.starting_cash.amount, item.starting_cash.currency) : "No budget"}</small>
+                      <small>{item.starting_cash ? formatMoney(item.starting_cash.amount, item.starting_cash.currency) : lang === "zh" ? "未设置预算" : "No budget"}</small>
                       <ChevronRight />
                     </button>
                   </div>
@@ -657,15 +663,15 @@ export function InvestmentResearchPage({
 
           <div className="research-canvas">
             {detailLoading ? (
-              <div className="research-loading"><LoaderCircle /> Valuing hypothetical positions…</div>
+              <div className="research-loading"><LoaderCircle /> {lang === "zh" ? "正在估算假设仓位…" : "Valuing hypothetical positions…"}</div>
             ) : scenarioDetail && valuation ? (
               <>
                 <div className="research-instrument-head">
                   <div className="research-symbol-mark scenario"><FlaskConical /></div>
                   <div>
-                    <span>HYPOTHETICAL SCENARIO</span>
+                    <span>{lang === "zh" ? "假设研究场景" : "HYPOTHETICAL SCENARIO"}</span>
                     <h2>{scenarioDetail.scenario.name}</h2>
-                    <small>{scenarioDetail.scenario.reporting_currency} reporting currency</small>
+                    <small>{scenarioDetail.scenario.reporting_currency} {lang === "zh" ? "报告币种" : "reporting currency"}</small>
                   </div>
                   <div className="research-head-actions">
                     <button
@@ -679,7 +685,7 @@ export function InvestmentResearchPage({
                         )
                       }
                     >
-                      Ask CFO <ArrowRight />
+                      {lang === "zh" ? "询问 CFO" : "Ask CFO"} <ArrowRight />
                     </button>
                   </div>
                 </div>
@@ -694,7 +700,7 @@ export function InvestmentResearchPage({
                             scenarioDetail.scenario.starting_cash.amount,
                             scenarioDetail.scenario.starting_cash.currency
                           )
-                        : "Not configured"}
+                        : lang === "zh" ? "尚未设置" : "Not configured"}
                     </strong>
                   </article>
                   <article>
@@ -709,8 +715,8 @@ export function InvestmentResearchPage({
                       {valuation.reporting_total
                         ? formatMoney(valuation.reporting_total.amount, valuation.reporting_total.currency)
                         : valuation.status === "empty"
-                          ? "No positions"
-                          : "Partial"}
+                          ? lang === "zh" ? "暂无仓位" : "No positions"
+                          : lang === "zh" ? "部分可用" : "Partial"}
                     </strong>
                   </article>
                   <article className={`readiness ${valuation.readiness.status}`}>
@@ -725,7 +731,7 @@ export function InvestmentResearchPage({
                     <header>
                       <div>
                         <span>{lang === "zh" ? "假设仓位" : "Hypothetical positions"}</span>
-                        <small>Not brokerage holdings</small>
+                        <small>{lang === "zh" ? "非券商真实持仓" : "Not brokerage holdings"}</small>
                       </div>
                     </header>
                     <div className="scenario-position-add">
@@ -739,16 +745,16 @@ export function InvestmentResearchPage({
                         value={positionQuantity}
                         onChange={(event) => setPositionQuantity(event.target.value)}
                         inputMode="decimal"
-                        placeholder="Quantity"
+                        placeholder={lang === "zh" ? "数量" : "Quantity"}
                         aria-label={lang === "zh" ? "假设数量" : "Hypothetical quantity"}
                       />
                       <button type="button" onClick={() => void addPosition()} disabled={saving}>
-                        <Plus /> Add
+                        <Plus /> {lang === "zh" ? "添加" : "Add"}
                       </button>
                     </div>
                     <div className="scenario-position-list">
                       {scenarioDetail.positions.length === 0 ? (
-                        <div className="research-rail-empty">Add a hypothetical position to begin.</div>
+                        <div className="research-rail-empty">{lang === "zh" ? "添加一个假设仓位以开始分析。" : "Add a hypothetical position to begin."}</div>
                       ) : (
                         scenarioDetail.positions.map((item) => {
                           const priced = valuation.positions.find(
@@ -782,10 +788,10 @@ export function InvestmentResearchPage({
                   </section>
                   <section className="scenario-risk-panel">
                     <header>
-                      <div><span>{lang === "zh" ? "风控与准备度" : "Risk & readiness"}</span><small>Deterministic policy</small></div>
+                      <div><span>{lang === "zh" ? "风控与准备度" : "Risk & readiness"}</span><small>{lang === "zh" ? "确定性规则" : "Deterministic policy"}</small></div>
                     </header>
                     {valuation.risk.findings.length === 0 ? (
-                      <div className="scenario-risk-clear"><ShieldCheck /> No configured risk rule was triggered.</div>
+                      <div className="scenario-risk-clear"><ShieldCheck /> {lang === "zh" ? "当前未触发已配置的风险规则。" : "No configured risk rule was triggered."}</div>
                     ) : (
                       <div className="scenario-risk-list">
                         {valuation.risk.findings.map((finding, index) => (

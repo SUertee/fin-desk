@@ -74,13 +74,13 @@ type ProfileForm = {
 };
 
 const navItems = [
-  { id: "profile", label: "Profile", icon: UserRound },
-  { id: "dataSources", label: "Data Sources", icon: Database },
-  { id: "costs", label: "Cost Reporting", icon: Coins },
-  { id: "agent", label: "Agent Behavior", icon: Bot },
-  { id: "memory", label: "Memory", icon: Brain },
-  { id: "privacy", label: "Privacy & Safety", icon: ShieldCheck },
-  { id: "developer", label: "Developer", icon: FileText },
+  { id: "profile", zh: "个人资料", en: "Profile", icon: UserRound },
+  { id: "dataSources", zh: "数据源", en: "Data Sources", icon: Database },
+  { id: "costs", zh: "成本报告", en: "Cost Reporting", icon: Coins },
+  { id: "agent", zh: "CFO 行为", en: "CFO Behavior", icon: Bot },
+  { id: "memory", zh: "记忆", en: "Memory", icon: Brain },
+  { id: "privacy", zh: "隐私与安全", en: "Privacy & Safety", icon: ShieldCheck },
+  { id: "developer", zh: "开发者", en: "Developer", icon: FileText },
 ] as const;
 
 const riskOptions = ["conservative", "moderate", "aggressive"];
@@ -97,6 +97,7 @@ export function SettingsPage({
   showDeveloperTools = false,
   initialSection = "profile",
 }: SettingsPageProps) {
+  const { lang } = useI18n();
   const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
   const [form, setForm] = useState<ProfileForm>(() =>
     buildProfileForm(profile, profileName, monthlyIncome)
@@ -128,23 +129,23 @@ export function SettingsPage({
   const loadedTransactionCount =
     dataSourceStatus?.transaction_count ?? transactionCount;
   const latestImport = dataSourceStatus?.latest_import ?? null;
-  const activeSectionLabel = sectionTitle(activeSection);
+  const activeSectionLabel = sectionTitle(activeSection, lang);
   const saveStatusTitle = saveError
-    ? "Could not save changes"
+    ? localize(lang, "无法保存修改", "Could not save changes")
     : isSaving
-      ? `Saving ${activeSectionLabel.toLowerCase()} preferences`
+      ? localize(lang, `正在保存${activeSectionLabel}设置`, `Saving ${activeSectionLabel.toLowerCase()} preferences`)
       : isDirty
-        ? `Unsaved changes in ${activeSectionLabel}`
+        ? localize(lang, `${activeSectionLabel}有未保存修改`, `Unsaved changes in ${activeSectionLabel}`)
         : saveMessage
           ? saveMessage
-          : "All changes saved";
+          : localize(lang, "所有修改均已保存", "All changes saved");
   const saveStatusDetail = saveError
     ? saveError
     : isSaving
-      ? "Applying your edits to the finance workspace."
+      ? localize(lang, "正在将修改应用到财务工作台。", "Applying your edits to the finance workspace.")
       : isDirty
-        ? "Review your edits before applying them."
-        : "Your settings are up to date.";
+        ? localize(lang, "请确认修改后再保存。", "Review your edits before applying them.")
+        : localize(lang, "当前设置已是最新状态。", "Your settings are up to date.");
 
   const handleProfileSave = async () => {
     setIsSaving(true);
@@ -169,10 +170,10 @@ export function SettingsPage({
       };
       await updateProfile(userId, payload);
       setSavedForm(form);
-      setSaveMessage("Profile saved");
+      setSaveMessage(localize(lang, "个人资料已保存", "Profile saved"));
       await onProfileSaved?.();
     } catch (error: any) {
-      setSaveError(error?.message ?? "Failed to save profile");
+      setSaveError(error?.message ?? localize(lang, "个人资料保存失败", "Failed to save profile"));
     } finally {
       setIsSaving(false);
     }
@@ -184,6 +185,7 @@ export function SettingsPage({
         <DataSourcesPanel
           userId={userId}
           onChanged={onProfileSaved}
+          lang={lang}
         />
       );
     }
@@ -191,13 +193,13 @@ export function SettingsPage({
       return <AgentPanel form={form} setForm={setForm} />;
     }
     if (activeSection === "costs") {
-      return <CostReportingPanel form={form} setForm={setForm} />;
+      return <CostReportingPanel form={form} setForm={setForm} lang={lang} />;
     }
     if (activeSection === "memory") {
-      return <MemoryPanel />;
+      return <MemoryPanel lang={lang} />;
     }
     if (activeSection === "privacy") {
-      return <PrivacyPanel />;
+      return <PrivacyPanel lang={lang} />;
     }
     if (activeSection === "developer") {
       return (
@@ -207,12 +209,13 @@ export function SettingsPage({
         />
       );
     }
-    return <ProfilePanel form={form} setForm={setForm} />;
+    return <ProfilePanel form={form} setForm={setForm} lang={lang} />;
   }, [
     activeSection,
     apiBaseUrl,
     dataSourceStatus,
     form,
+    lang,
     latestImport,
     loadedTransactionCount,
     onProfileSaved,
@@ -223,8 +226,8 @@ export function SettingsPage({
   return (
     <section className="settings-v2-page">
           <div className="settings-v2-heading">
-            <h1>Settings</h1>
-            <p>Configure your finance workspace, data, memory, and CFO behavior.</p>
+            <h1>{localize(lang, "设置", "Settings")}</h1>
+            <p>{localize(lang, "管理财务工作台、数据、记忆与 CFO 行为。", "Configure your finance workspace, data, memory, and CFO behavior.")}</p>
           </div>
 
           <div className="settings-v2-layout">
@@ -245,7 +248,7 @@ export function SettingsPage({
                       }`}
                     >
                       <Icon />
-                      <span>{item.label}</span>
+                      <span>{item[lang]}</span>
                       <ChevronRight />
                     </button>
                   );
@@ -255,8 +258,8 @@ export function SettingsPage({
               <div className="settings-v2-help">
                 <CircleHelp />
                 <div>
-                  <strong>Need help?</strong>
-                  <span>View docs or contact support</span>
+                  <strong>{localize(lang, "需要帮助？", "Need help?")}</strong>
+                  <span>{localize(lang, "查看文档或联系支持", "View docs or contact support")}</span>
                 </div>
                 <ExternalLink />
               </div>
@@ -269,7 +272,7 @@ export function SettingsPage({
                 </div>
                 <div>
                   <h2>{activeSectionLabel}</h2>
-                  <p>{sectionSubtitle(activeSection)}</p>
+                  <p>{sectionSubtitle(activeSection, lang)}</p>
                 </div>
               </div>
               {content}
@@ -297,7 +300,7 @@ export function SettingsPage({
                       setSaveMessage(null);
                     }}
                   >
-                    Discard
+                    {localize(lang, "放弃修改", "Discard")}
                   </button>
                   <button
                     type="button"
@@ -306,7 +309,11 @@ export function SettingsPage({
                     onClick={handleProfileSave}
                   >
                     <Save />
-                    {isSaving ? "Saving" : saveError ? "Retry save" : "Save changes"}
+                    {isSaving
+                      ? localize(lang, "保存中", "Saving")
+                      : saveError
+                        ? localize(lang, "重试保存", "Retry save")
+                        : localize(lang, "保存修改", "Save changes")}
                   </button>
                 </div>
               </div>
@@ -317,6 +324,7 @@ export function SettingsPage({
               transactionCount={loadedTransactionCount}
               latestImport={latestImport}
               form={form}
+              lang={lang}
             />
       </div>
     </section>
@@ -326,14 +334,16 @@ export function SettingsPage({
 function ProfilePanel({
   form,
   setForm,
+  lang,
 }: {
   form: ProfileForm;
   setForm: (updater: (prev: ProfileForm) => ProfileForm) => void;
+  lang: "zh" | "en";
 }) {
   return (
     <div className="settings-v2-grid">
-      <SettingsPanelCard icon={<UserRound />} title="Personal details">
-        <Field label="Name">
+      <SettingsPanelCard icon={<UserRound />} title={localize(lang, "个人信息", "Personal details")} editLabel={localize(lang, "编辑", "Edit")}>
+        <Field label={localize(lang, "姓名", "Name")}>
           <input
             value={form.name}
             onChange={(event) =>
@@ -341,7 +351,7 @@ function ProfilePanel({
             }
           />
         </Field>
-        <Field label="Occupation">
+        <Field label={localize(lang, "职业", "Occupation")}>
           <input
             value={form.occupation}
             onChange={(event) =>
@@ -349,7 +359,7 @@ function ProfilePanel({
             }
           />
         </Field>
-        <Field label="Monthly income">
+        <Field label={localize(lang, "月收入", "Monthly income")}>
           <input
             value={form.monthly_income}
             onChange={(event) =>
@@ -359,9 +369,9 @@ function ProfilePanel({
         </Field>
       </SettingsPanelCard>
 
-      <SettingsPanelCard icon={<Goal />} title="Risk & goals">
+      <SettingsPanelCard icon={<Goal />} title={localize(lang, "风险偏好与目标", "Risk & goals")}>
         <div className="settings-v2-field">
-          <label>Risk preference</label>
+          <label>{localize(lang, "风险偏好", "Risk preference")}</label>
           <div className="settings-v2-segmented">
             {riskOptions.map((option) => (
               <button
@@ -376,13 +386,13 @@ function ProfilePanel({
                   setForm((prev) => ({ ...prev, risk_tolerance: option }))
                 }
               >
-                {toTitle(option)}
+                {riskLabel(option, lang)}
               </button>
             ))}
           </div>
         </div>
         <div className="settings-v2-field">
-          <label>Financial goals</label>
+          <label>{localize(lang, "财务目标", "Financial goals")}</label>
           <div className="settings-v2-goals">
             {form.goals.map((goal) => (
               <button
@@ -400,12 +410,12 @@ function ProfilePanel({
               </button>
             ))}
             {form.goals.length === 0 && (
-              <p className="settings-v2-empty-inline">No goals configured yet.</p>
+              <p className="settings-v2-empty-inline">{localize(lang, "尚未设置目标", "No goals configured yet.")}</p>
             )}
             <div className="settings-v2-add-goal">
               <input
                 value={form.newGoal}
-                placeholder="Add goal"
+                placeholder={localize(lang, "添加目标", "Add goal")}
                 onChange={(event) =>
                   setForm((prev) => ({ ...prev, newGoal: event.target.value }))
                 }
@@ -424,9 +434,9 @@ function ProfilePanel({
         </div>
       </SettingsPanelCard>
 
-      <SettingsPanelCard icon={<BarChart3 />} title="Financial baseline">
+      <SettingsPanelCard icon={<BarChart3 />} title={localize(lang, "财务基线", "Financial baseline")}>
         <BaselineField
-          label="Cash balance"
+          label={localize(lang, "现金余额", "Cash balance")}
           value={form.cash_balance}
           percent={form.cash_balance ? 77 : null}
           onChange={(value) =>
@@ -434,7 +444,7 @@ function ProfilePanel({
           }
         />
         <BaselineField
-          label="Monthly expense target"
+          label={localize(lang, "月支出目标", "Monthly expense target")}
           value={form.monthly_expenses}
           percent={form.monthly_expenses ? 60 : null}
           onChange={(value) =>
@@ -442,13 +452,13 @@ function ProfilePanel({
           }
         />
         <BaselineField
-          label="Savings target"
+          label={localize(lang, "储蓄目标", "Savings target")}
           value={form.savings}
           percent={form.savings ? 45 : null}
           onChange={(value) => setForm((prev) => ({ ...prev, savings: value }))}
         />
         <p className="settings-v2-card-note">
-          Targets are used by the CFO to evaluate progress and give better advice.
+          {localize(lang, "CFO 会根据这些目标评估进度并提供更准确的建议。", "Targets are used by the CFO to evaluate progress and give better advice.")}
         </p>
       </SettingsPanelCard>
 
@@ -460,17 +470,22 @@ function ProfilePanel({
 function DataSourcesPanel({
   userId,
   onChanged,
+  lang,
 }: {
   userId: string;
   onChanged?: () => Promise<void> | void;
+  lang: "zh" | "en";
 }) {
   return (
     <div className="settings-v2-grid">
       <div className="settings-v2-wide"><StatementImportManager userId={userId} onChanged={onChanged} /></div>
-      <SettingsPanelCard icon={<Database />} title="Finance content subscriptions" wide>
+      <SettingsPanelCard icon={<Database />} title={localize(lang, "财经内容订阅", "Finance content subscriptions")} wide>
         <p className="settings-v2-card-note settings-v2-card-note-leading">
-          RSS sources are refreshed only when you request it. Inbox content remains
-          separate from CFO advice and is never added to knowledge automatically.
+          {localize(
+            lang,
+            "RSS 内容只会在你请求时刷新；收件箱内容与 CFO 建议保持分离，不会自动加入知识库。",
+            "RSS sources are refreshed only when you request it. Inbox content remains separate from CFO advice and is never added to knowledge automatically."
+          )}
         </p>
         <SubscriptionManager userId={userId} />
       </SettingsPanelCard>
@@ -481,14 +496,16 @@ function DataSourcesPanel({
 function CostReportingPanel({
   form,
   setForm,
+  lang,
 }: {
   form: ProfileForm;
   setForm: (updater: (prev: ProfileForm) => ProfileForm) => void;
+  lang: "zh" | "en";
 }) {
   return (
     <div className="settings-v2-grid">
-      <SettingsPanelCard icon={<Coins />} title="Reporting currency" wide>
-        <Field label="Display currency">
+      <SettingsPanelCard icon={<Coins />} title={localize(lang, "报告币种", "Reporting currency")} wide>
+        <Field label={localize(lang, "显示币种", "Display currency")}>
           <select
             value={form.reportingCurrency}
             onChange={(event) =>
@@ -508,13 +525,13 @@ function CostReportingPanel({
           derives this reporting view from immutable historical exchange-rate snapshots.
         </p>
       </SettingsPanelCard>
-      <SettingsPanelCard icon={<PiggyBank />} title="AI spending guardrail" wide>
-        <Field label="Monthly AI budget">
+      <SettingsPanelCard icon={<PiggyBank />} title={localize(lang, "AI 成本控制", "AI spending guardrail")} wide>
+        <Field label={localize(lang, "每月 AI 预算", "Monthly AI budget")}>
           <div className="settings-v2-money-input">
             <span>{form.reportingCurrency}</span>
             <input
               inputMode="decimal"
-              placeholder="Not configured"
+              placeholder={localize(lang, "尚未设置", "Not configured")}
               value={form.monthlyAiBudget}
               onChange={(event) =>
                 setForm((prev) => ({
@@ -530,10 +547,10 @@ function CostReportingPanel({
           pricing or exchange rates are reported as coverage gaps, never as zero spend.
         </p>
       </SettingsPanelCard>
-      <SettingsPanelCard icon={<Database />} title="Cost sources" wide>
-        <StatusLine label="FinDesk Agent Run API usage" value="Connected" tone="good" />
-        <StatusLine label="External project API usage" value="Not connected" />
-        <StatusLine label="AI subscriptions" value="Not connected" />
+      <SettingsPanelCard icon={<Database />} title={localize(lang, "成本数据源", "Cost sources")} wide>
+        <StatusLine label="FinDesk Agent Run API" value={localize(lang, "已连接", "Connected")} tone="good" />
+        <StatusLine label={localize(lang, "外部项目 API", "External project API usage")} value={localize(lang, "未连接", "Not connected")} />
+        <StatusLine label={localize(lang, "AI 订阅", "AI subscriptions")} value={localize(lang, "未连接", "Not connected")} />
         <p className="settings-v2-card-note">
           Provider exports and subscription connectors will appear here only after an
           authoritative source is configured.
@@ -554,7 +571,7 @@ function AgentPanel({
 }) {
   const { lang, setLang, t: tr } = useI18n();
   return (
-    <SettingsPanelCard icon={<Bot />} title="CFO personalization" wide={!compact}>
+    <SettingsPanelCard icon={<Bot />} title={localize(lang, "CFO 个性化", "CFO personalization")} wide={!compact}>
       <Field label={tr("settings.uiLanguage")}>
         <select
           value={lang}
@@ -565,56 +582,56 @@ function AgentPanel({
         </select>
       </Field>
       <p className="settings-v2-card-note">{tr("settings.uiLanguage.note")}</p>
-      <Field label="Response tone">
+      <Field label={localize(lang, "回复语气", "Response tone")}>
         <select
           value={form.responseTone}
           onChange={(event) =>
             setForm((prev) => ({ ...prev, responseTone: event.target.value }))
           }
         >
-          <option>Concise</option>
-          <option>Balanced</option>
-          <option>Comprehensive</option>
+          <option value="Concise">{localize(lang, "简洁", "Concise")}</option>
+          <option value="Balanced">{localize(lang, "平衡", "Balanced")}</option>
+          <option value="Comprehensive">{localize(lang, "详尽", "Comprehensive")}</option>
         </select>
       </Field>
-      <Field label="Preferred language">
+      <Field label={localize(lang, "CFO 回复语言", "Preferred language")}>
         <select
           value={form.language}
           onChange={(event) =>
             setForm((prev) => ({ ...prev, language: event.target.value }))
           }
         >
-          <option>English</option>
-          <option>Chinese</option>
-          <option>Auto</option>
+          <option value="English">{localize(lang, "英语", "English")}</option>
+          <option value="Chinese">{localize(lang, "中文", "Chinese")}</option>
+          <option value="Auto">{localize(lang, "自动", "Auto")}</option>
         </select>
       </Field>
-      <Field label="Evidence level">
+      <Field label={localize(lang, "证据详细程度", "Evidence level")}>
         <select
           value={form.evidenceLevel}
           onChange={(event) =>
             setForm((prev) => ({ ...prev, evidenceLevel: event.target.value }))
           }
         >
-          <option>Brief</option>
-          <option>Detailed with data</option>
-          <option>Audit-heavy</option>
+          <option value="Brief">{localize(lang, "简要", "Brief")}</option>
+          <option value="Detailed with data">{localize(lang, "包含数据明细", "Detailed with data")}</option>
+          <option value="Audit-heavy">{localize(lang, "审计优先", "Audit-heavy")}</option>
         </select>
       </Field>
       <p className="settings-v2-card-note">
-        These preferences shape how the CFO communicates and reasons.
+        {localize(lang, "这些偏好会影响 CFO 的沟通方式与分析深度。", "These preferences shape how the CFO communicates and reasons.")}
       </p>
     </SettingsPanelCard>
   );
 }
 
-function MemoryPanel() {
+function MemoryPanel({ lang }: { lang: "zh" | "en" }) {
   return (
     <div className="settings-v2-grid">
-      <SettingsPanelCard icon={<Brain />} title="Memory system" wide>
-        <StatusLine label="Short-term memory" value="Last 5 turns" />
-        <StatusLine label="Session summary" value="Enabled after threshold" />
-        <StatusLine label="Shared across agents" value="Enabled" />
+      <SettingsPanelCard icon={<Brain />} title={localize(lang, "记忆系统", "Memory system")} wide>
+        <StatusLine label={localize(lang, "短期记忆", "Short-term memory")} value={localize(lang, "最近 5 轮", "Last 5 turns")} />
+        <StatusLine label={localize(lang, "会话摘要", "Session summary")} value={localize(lang, "达到阈值后启用", "Enabled after threshold")} />
+        <StatusLine label={localize(lang, "Agent 间共享", "Shared across agents")} value={localize(lang, "已启用", "Enabled")} />
         <p className="settings-v2-card-note">
           CFO and specialists share a bounded memory context to avoid duplicated
           context passing and unsupported recall.
@@ -624,14 +641,14 @@ function MemoryPanel() {
   );
 }
 
-function PrivacyPanel() {
+function PrivacyPanel({ lang }: { lang: "zh" | "en" }) {
   return (
     <div className="settings-v2-grid">
-      <SettingsPanelCard icon={<LockKeyhole />} title="Data handling" wide>
-        <StatusLine label="Storage" value="Local Postgres" />
-        <StatusLine label="Market data" value="Disabled" />
-        <StatusLine label="High-risk audit" value="Required" />
-        <StatusLine label="Financial disclaimer" value="Enabled" />
+      <SettingsPanelCard icon={<LockKeyhole />} title={localize(lang, "数据处理", "Data handling")} wide>
+        <StatusLine label={localize(lang, "存储", "Storage")} value={localize(lang, "本地 Postgres", "Local Postgres")} />
+        <StatusLine label={localize(lang, "市场数据", "Market data")} value={localize(lang, "已停用", "Disabled")} />
+        <StatusLine label={localize(lang, "高风险审计", "High-risk audit")} value={localize(lang, "必须", "Required")} />
+        <StatusLine label={localize(lang, "财务免责声明", "Financial disclaimer")} value={localize(lang, "已启用", "Enabled")} />
       </SettingsPanelCard>
     </div>
   );
@@ -739,48 +756,50 @@ function WorkspaceStatusRail({
   transactionCount,
   latestImport,
   form,
+  lang,
 }: {
   dataSourceStatus?: DataSourceStatus | null;
   transactionCount: number;
   latestImport: DataSourceStatus["latest_import"] | null;
   form: ProfileForm;
+  lang: "zh" | "en";
 }) {
   return (
     <aside className="settings-v2-status-rail">
-      <h3>Workspace status</h3>
-      <StatusCard icon={<Database />} title="Data Sources">
-        <StatusLine label="Alipay statement" value="Ready" tone="good" />
-        <StatusLine label="WeChat statement" value="Planned" tone="warn" />
-        <StatusLine label="Transactions" value={transactionCount.toLocaleString()} />
-        <StatusLine label="Latest import" value={latestImport?.source_file ?? "None"} />
+      <h3>{localize(lang, "工作台状态", "Workspace status")}</h3>
+      <StatusCard icon={<Database />} title={localize(lang, "数据源", "Data Sources")}>
+        <StatusLine label={localize(lang, "支付宝账单", "Alipay statement")} value={localize(lang, "已就绪", "Ready")} tone="good" />
+        <StatusLine label={localize(lang, "微信账单", "WeChat statement")} value={localize(lang, "计划中", "Planned")} tone="warn" />
+        <StatusLine label={localize(lang, "交易数量", "Transactions")} value={transactionCount.toLocaleString()} />
+        <StatusLine label={localize(lang, "最近导入", "Latest import")} value={latestImport?.source_file ?? localize(lang, "无", "None")} />
       </StatusCard>
-      <StatusCard icon={<Brain />} title="Memory">
-        <StatusLine label="Memory system" value="Enabled" tone="good" />
-        <StatusLine label="Recent turns" value="No session yet" />
+      <StatusCard icon={<Brain />} title={localize(lang, "记忆", "Memory")}>
+        <StatusLine label={localize(lang, "记忆系统", "Memory system")} value={localize(lang, "已启用", "Enabled")} tone="good" />
+        <StatusLine label={localize(lang, "最近对话", "Recent turns")} value={localize(lang, "暂无会话", "No session yet")} />
       </StatusCard>
-      <StatusCard icon={<Bot />} title="Agent">
-        <StatusLine label="Default assistant" value="CFO" tone="good" />
+      <StatusCard icon={<Bot />} title="CFO">
+        <StatusLine label={localize(lang, "默认助手", "Default assistant")} value="CFO" tone="good" />
         <StatusLine
-          label="Response style"
-          value={form.responseTone || "Not configured"}
+          label={localize(lang, "回复风格", "Response style")}
+          value={form.responseTone ? preferenceLabel(form.responseTone, lang) : localize(lang, "尚未设置", "Not configured")}
           tone={form.responseTone ? "good" : undefined}
         />
-        <StatusLine label="Market context" value="Disabled" />
+        <StatusLine label={localize(lang, "市场上下文", "Market context")} value={localize(lang, "已停用", "Disabled")} />
       </StatusCard>
-      <StatusCard icon={<Coins />} title="AI Costs">
+      <StatusCard icon={<Coins />} title={localize(lang, "AI 成本", "AI Costs")}>
         <StatusLine
-          label="Reporting currency"
+          label={localize(lang, "报告币种", "Reporting currency")}
           value={form.reportingCurrency}
           tone="good"
         />
         <StatusLine
-          label="Monthly budget"
-          value={form.monthlyAiBudget || "Not configured"}
+          label={localize(lang, "每月预算", "Monthly budget")}
+          value={form.monthlyAiBudget || localize(lang, "尚未设置", "Not configured")}
         />
       </StatusCard>
       <button className="settings-v2-overview" type="button">
         <BarChart3 />
-        View workspace overview
+        {localize(lang, "查看工作台概览", "View workspace overview")}
         <ExternalLink />
       </button>
     </aside>
@@ -792,21 +811,23 @@ function SettingsPanelCard({
   title,
   children,
   wide = false,
+  editLabel,
 }: {
   icon: React.ReactNode;
   title: string;
   children: React.ReactNode;
   wide?: boolean;
+  editLabel?: string;
 }) {
   return (
     <article className={`settings-v2-panel-card ${wide ? "settings-v2-wide" : ""}`}>
       <div className="settings-v2-panel-title">
         <span>{icon}</span>
         <h3>{title}</h3>
-        {title === "Personal details" && (
+        {editLabel && (
           <button className="settings-v2-edit-button" type="button">
             <Pencil />
-            Edit
+            {editLabel}
           </button>
         )}
       </div>
@@ -861,7 +882,7 @@ function BaselineField({
       <span>{label}</span>
       <input value={value} onChange={(event) => onChange(event.target.value)} />
       {percent === null ? (
-        <strong className="settings-v2-no-data">No data</strong>
+        <strong className="settings-v2-no-data">—</strong>
       ) : (
         <>
           <div className="settings-v2-progress">
@@ -992,26 +1013,49 @@ function toTitle(value: string): string {
   return value.slice(0, 1).toUpperCase() + value.slice(1);
 }
 
-function sectionTitle(section: SettingsSection): string {
-  return {
-    profile: "Profile",
-    dataSources: "Data Sources",
-    costs: "Cost Reporting",
-    agent: "Agent Behavior",
-    memory: "Memory",
-    privacy: "Privacy & Safety",
-    developer: "Developer",
-  }[section];
+function localize(lang: "zh" | "en", zh: string, en: string): string {
+  return lang === "zh" ? zh : en;
 }
 
-function sectionSubtitle(section: SettingsSection): string {
-  return {
-    profile: "Personalize how the CFO evaluates your financial situation.",
-    dataSources: "Connect statements and review import health.",
-    costs: "Choose a reporting currency and set an AI spending guardrail.",
-    agent: "Control how the CFO communicates and delegates work.",
-    memory: "Manage what the CFO remembers across conversations.",
-    privacy: "Review data handling and safety controls.",
-    developer: "Inspect runtime, eval, replay, and API configuration.",
-  }[section];
+function riskLabel(value: string, lang: "zh" | "en"): string {
+  const labels: Record<string, [string, string]> = {
+    conservative: ["保守", "Conservative"],
+    moderate: ["稳健", "Moderate"],
+    aggressive: ["进取", "Aggressive"],
+  };
+  const label = labels[value] ?? [value, toTitle(value)];
+  return localize(lang, label[0], label[1]);
+}
+
+function preferenceLabel(value: string, lang: "zh" | "en"): string {
+  const labels: Record<string, string> = {
+    Concise: "简洁",
+    Balanced: "平衡",
+    Comprehensive: "详尽",
+    English: "英语",
+    Chinese: "中文",
+    Auto: "自动",
+    Brief: "简要",
+    "Detailed with data": "包含数据明细",
+    "Audit-heavy": "审计优先",
+  };
+  return lang === "zh" ? labels[value] ?? value : value;
+}
+
+function sectionTitle(section: SettingsSection, lang: "zh" | "en"): string {
+  const item = navItems.find((entry) => entry.id === section) ?? navItems[0];
+  return item[lang];
+}
+
+function sectionSubtitle(section: SettingsSection, lang: "zh" | "en"): string {
+  const labels: Record<SettingsSection, [string, string]> = {
+    profile: ["设置 CFO 评估你财务状况时使用的个人信息。", "Personalize how the CFO evaluates your financial situation."],
+    dataSources: ["连接账单并检查数据导入状态。", "Connect statements and review import health."],
+    costs: ["选择报告币种并设置 AI 成本预算。", "Choose a reporting currency and set an AI spending guardrail."],
+    agent: ["控制 CFO 的沟通方式和任务处理偏好。", "Control how the CFO communicates and delegates work."],
+    memory: ["管理 CFO 在不同会话中保留的记忆。", "Manage what the CFO remembers across conversations."],
+    privacy: ["查看数据处理方式和安全控制。", "Review data handling and safety controls."],
+    developer: ["检查运行环境、评测、回放和 API 配置。", "Inspect runtime, eval, replay, and API configuration."],
+  };
+  return localize(lang, labels[section][0], labels[section][1]);
 }

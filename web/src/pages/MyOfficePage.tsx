@@ -114,7 +114,7 @@ export function MyOfficePage({
       return list;
     } catch (error: any) {
       setSessions([]);
-      setSessionsError(error?.message ?? "无法加载会话档案");
+      setSessionsError(/failed to fetch/i.test(error?.message ?? "") ? "无法连接后端服务" : error?.message ?? "无法加载会话档案");
       return [];
     }
   }, [userId]);
@@ -139,7 +139,7 @@ export function MyOfficePage({
         );
       } catch (error: any) {
         setMessages([]);
-        setMessagesError(error?.message ?? "无法加载会话消息");
+        setMessagesError(/failed to fetch/i.test(error?.message ?? "") ? "无法连接后端服务" : error?.message ?? "无法加载会话消息");
       } finally {
         setMessagesLoading(false);
       }
@@ -298,7 +298,7 @@ export function MyOfficePage({
           setEvidenceCache((prev) => ({ ...prev, [requestId]: projection }));
         })
         .catch((error: any) => {
-          setEvidenceError(error?.message ?? "无法加载证据");
+          setEvidenceError(/failed to fetch/i.test(error?.message ?? "") ? "无法连接后端服务" : error?.message ?? "无法加载证据");
         })
         .finally(() => setEvidenceLoading(false));
     },

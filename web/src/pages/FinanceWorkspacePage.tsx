@@ -283,7 +283,7 @@ export function FinanceWorkspacePage({
 
       {errMsg && (
         <div className="text-sm text-red-600">
-          {errMsg}
+          {lang === "zh" && /failed to fetch/i.test(errMsg) ? "无法连接后端服务" : errMsg}
           <button onClick={onReload} className="ml-3 text-xs text-blue-600 underline" type="button">
             {t("workspace.retry")}
           </button>

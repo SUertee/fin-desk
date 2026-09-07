@@ -54,16 +54,16 @@ describe("SettingsPage cost reporting preferences", () => {
 
   it("loads and saves reporting currency and the monthly AI budget separately", async () => {
     renderSettings();
-    fireEvent.click(screen.getByRole("button", { name: /Cost Reporting/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Cost Reporting|成本报告/ }));
 
     const currency = screen.getByRole("combobox");
-    const budget = screen.getByPlaceholderText("Not configured");
+    const budget = screen.getByPlaceholderText(/Not configured|尚未设置/);
     expect((currency as HTMLSelectElement).value).toBe("USD");
     expect((budget as HTMLInputElement).value).toBe("50");
 
     fireEvent.change(currency, { target: { value: "AUD" } });
     fireEvent.change(budget, { target: { value: "75.25" } });
-    fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Save changes|保存修改/ }));
 
     await waitFor(() => expect(updateProfile).toHaveBeenCalledTimes(1));
     expect(vi.mocked(updateProfile).mock.calls[0][1]).toMatchObject({
@@ -76,12 +76,12 @@ describe("SettingsPage cost reporting preferences", () => {
 
   it("persists an empty budget as null instead of fabricating zero spend", async () => {
     renderSettings();
-    fireEvent.click(screen.getByRole("button", { name: /Cost Reporting/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Cost Reporting|成本报告/ }));
 
-    fireEvent.change(screen.getByPlaceholderText("Not configured"), {
+    fireEvent.change(screen.getByPlaceholderText(/Not configured|尚未设置/), {
       target: { value: "" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Save changes|保存修改/ }));
 
     await waitFor(() => expect(updateProfile).toHaveBeenCalledTimes(1));
     expect(vi.mocked(updateProfile).mock.calls[0][1].cost_preferences).toEqual({
@@ -98,7 +98,7 @@ describe("SettingsPage developer capabilities", () => {
     renderSettings();
 
     expect(
-      screen.queryByRole("button", { name: /^Developer$/ })
+      screen.queryByRole("button", { name: /^(Developer|开发者)$/ })
     ).toBeNull();
     expect(fetchCapabilities).not.toHaveBeenCalled();
   });
@@ -128,7 +128,7 @@ describe("SettingsPage developer capabilities", () => {
     ]);
     renderSettings(true);
 
-    fireEvent.click(screen.getByRole("button", { name: /^Developer$/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^(Developer|开发者)$/ }));
 
     expect(await screen.findByText("Local runtime capabilities")).toBeTruthy();
     expect(await screen.findByText("External market history")).toBeTruthy();
