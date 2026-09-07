@@ -24,6 +24,7 @@ mlruns/
 **/mlruns/
 
 # Local secrets
+deploy/*.env
 .env.local
 backend/.env
 web/.env.local

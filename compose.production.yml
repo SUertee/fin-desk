@@ -1,0 +1,72 @@
+# Standalone configuration; do not combine with the local development compose file.
+name: findesk-production
+x-backend: &backend
+  image: findesk-backend:${FINDESK_VERSION:-v1}
+  build: ./backend
+  env_file: ./deploy/backend.env
+  environment:
+    APP_ENV: production
+    POSTGRES_DSN: postgresql://findesk:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@db:5432/findesk
+    REDIS_URL: redis://redis:6379/0
+    ALLOWED_ORIGINS: ${FINDESK_ORIGIN:-http://localhost:18080}
+    STATEMENT_INBOX_PATH: /data/statement-inbox
+    STATEMENT_STORAGE_PATH: /data/statement-imports
+  volumes:
+    - imports:/data/statement-imports
+    - inbox:/data/statement-inbox
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  web:
+    image: findesk-web:${FINDESK_VERSION:-v1}
+    build:
+      context: ./web
+      dockerfile: Dockerfile.production
+    ports:
+      - "127.0.0.1:${FINDESK_PORT:-18080}:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+  backend:
+    <<: *backend
+  statement-worker:
+    <<: *backend
+    command: [python, -m, app.workers.statement_inbox]
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: findesk
+      POSTGRES_USER: findesk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U findesk -d findesk"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+  redis:
+    image: redis:7.4-alpine
+    command: [redis-server, --save, "", --appendonly, "no", --maxmemory, 128mb, --maxmemory-policy, allkeys-lru]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  database:
+  imports:
+  inbox:
