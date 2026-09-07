@@ -34,6 +34,11 @@ services:
       dockerfile: Dockerfile.production
     ports:
       - "127.0.0.1:${FINDESK_PORT:-18080}:80"
+    networks:
+      default:
+      caddy:
+        aliases:
+          - findesk-web
     depends_on:
       - backend
     restart: unless-stopped
@@ -70,3 +75,8 @@ volumes:
   database:
   imports:
   inbox:
+
+networks:
+  caddy:
+    external: true
+    name: caddy_default

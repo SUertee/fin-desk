@@ -1,0 +1,11 @@
+# Replace the password hash before installing this block. Generate it interactively with:
+# docker exec -it caddy caddy hash-password
+findesk.suertexu.com {
+	encode zstd gzip
+
+	basic_auth {
+		findesk REPLACE_WITH_CADDY_PASSWORD_HASH
+	}
+
+	reverse_proxy findesk-web:80
+}

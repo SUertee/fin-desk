@@ -33,13 +33,27 @@ ssh -N -L 18080:127.0.0.1:18080 myserver
 Visit `http://localhost:18080`. This is a fresh database. Upload a statement only after
 checking the destination instance. Do not reuse local Docker volumes as production volumes.
 
-## Existing Caddy and mobile access
+## Domain, Caddy and mobile access
 
-myserver already runs Caddy in Docker on ports 80/443. Choose a domain and configure
-authentication for the whole site before adding its route. A Caddy container cannot reach
-another container through `127.0.0.1`; connect it to the application's Docker network and
-proxy to the web service, or explicitly configure a host gateway. Keep all API paths behind
-the same authentication. Validate the Caddy configuration before reloading it.
+The production domain is `findesk.suertexu.com`. Create a Cloudflare `A` record pointing it
+to the server and keep it DNS-only during the first validation. The record did not exist on
+2026-09-07; the server address is intentionally not committed to this repository.
+
+myserver already runs Caddy 2.11 in Docker on ports 80/443. The production web service joins
+the existing external `caddy_default` network with the unique alias `findesk-web`. Copy the
+site block from `deploy/Caddyfile.findesk.example` into `/data/caddy/Caddyfile`, replacing
+the placeholder with a Caddy password hash generated interactively:
+
+```sh
+docker exec -it caddy caddy hash-password
+docker exec caddy caddy validate --config /etc/caddy/Caddyfile
+docker exec caddy caddy reload --config /etc/caddy/Caddyfile
+```
+
+The temporary Basic Auth gate protects both the interface and every `/api` request. Do not
+publish the site without it: the application currently hardcodes one `demo` user and has no
+application login. Store the password in a password manager. Replace Basic Auth with proper
+application authentication before supporting multiple users.
 
 The UI uses same-origin `/api`, including streaming responses. Nginx disables response
 buffering and permits a 25 MB request body. The backend may impose tighter file limits.
@@ -59,11 +73,12 @@ into separate volumes before switching. Never use `down -v` against the live ins
 Docker is installed; architecture is amd64. Available memory was about 2.3 GB; free disk
 about 6.4 GB (89% used). Build images locally and check disk again before image transfer.
 No server files, domains, containers or credentials were changed during this assessment.
-Remote rollout awaits the destination domain/access choice and provider configuration.
+Remote rollout awaits the Cloudflare DNS record, access credential and provider configuration.
 
 ## Validation
 
 The frontend suite passes 20/20 tests and Vite production build succeeds. Compose validates
 with `config --no-interpolate --no-env-resolution --quiet` (syntax only, not runtime secrets).
-The local production-image build could not pull `node:22-alpine`: Docker Hub returned EOF
-before build execution. Image runtime and Nginx proxy smoke tests remain pending.
+The local production-image build could not resolve the Docker Hub base-image metadata:
+requests for both `node:22-alpine` and `nginx:stable-alpine` returned EOF before build
+execution. Image runtime and Nginx proxy smoke tests remain pending.
