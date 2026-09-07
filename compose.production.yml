@@ -11,6 +11,7 @@ x-backend: &backend
     ALLOWED_ORIGINS: ${FINDESK_ORIGIN:-http://localhost:18080}
     AUTH_ENABLED: "true"
     AUTH_COOKIE_SECURE: "true"
+    AUTH_ALLOW_INITIAL_REGISTRATION: ${AUTH_ALLOW_INITIAL_REGISTRATION:-false}
     STATEMENT_INBOX_PATH: /data/statement-inbox
     STATEMENT_STORAGE_PATH: /data/statement-imports
   volumes:

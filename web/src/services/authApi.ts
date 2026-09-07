@@ -51,6 +51,17 @@ export async function fetchAuthSession(): Promise<AuthSession> {
   );
 }
 
+export async function fetchAuthStatus(): Promise<{ setup_required: boolean }> {
+  const response = await fetch(`${apiBaseUrl}/auth/status`, {
+    credentials: "include",
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload?.error ?? "Authentication service unavailable");
+  }
+  return payload;
+}
+
 export async function loginWithPassword(
   email: string,
   password: string
@@ -61,6 +72,21 @@ export async function loginWithPassword(
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({ email, password }),
+    })
+  );
+}
+
+export async function registerOwner(
+  email: string,
+  password: string,
+  setupToken: string
+): Promise<AuthSession> {
+  return readSessionResponse(
+    await fetch(`${apiBaseUrl}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password, setup_token: setupToken }),
     })
   );
 }

@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
+from app.auth.middleware import PUBLIC_PATHS
 from app.config.settings import get_settings
 
 
 async def enforce_user_scope(request: Request) -> None:
     settings = get_settings()
-    if not settings.auth.enabled or request.url.path in {"/health", "/auth/login"}:
+    if not settings.auth.enabled or request.url.path in PUBLIC_PATHS:
         return
 
     authenticated_user = getattr(request.state, "auth_user_id", "")

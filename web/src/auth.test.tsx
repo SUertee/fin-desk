@@ -19,6 +19,12 @@ describe("AuthGate", () => {
         })
       )
       .mockResolvedValueOnce(
+        new Response(JSON.stringify({ setup_required: false }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
         new Response(
           JSON.stringify({
             authenticated: true,
@@ -41,7 +47,30 @@ describe("AuthGate", () => {
     fireEvent.click(screen.getByRole("button", { name: "安全登录" }));
 
     await screen.findByText("private workspace");
-    expect(fetchMock.mock.calls[1][1]).toMatchObject({ credentials: "include" });
+    expect(fetchMock.mock.calls[2][1]).toMatchObject({ credentials: "include" });
+  });
+
+  it("offers one-time owner registration when the server is uninitialized", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: "Authentication required" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        })
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ setup_required: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<AuthGate><div>private workspace</div></AuthGate>);
+
+    await screen.findByRole("heading", { name: "创建你的管理员账号" });
+    expect(screen.getByLabelText("服务器初始化码")).toBeTruthy();
   });
 
   it("adds the CSRF token to unsafe authenticated requests", async () => {

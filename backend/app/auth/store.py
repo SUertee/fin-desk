@@ -11,6 +11,64 @@ from app.connectors.postgres.connection import get_conn
 logger = logging.getLogger(__name__)
 
 
+def owner_exists_db() -> bool | None:
+    with get_conn() as conn:
+        if not conn:
+            return None
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT EXISTS (SELECT 1 FROM auth_users)")
+                row = cur.fetchone()
+            return bool(row and row[0])
+        except Exception:
+            logger.exception("Failed to check authentication owner")
+            return None
+
+
+def get_owner_by_email_db(email: str) -> dict[str, str] | None:
+    with get_conn() as conn:
+        if not conn:
+            return None
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT user_id, email, password_hash
+                    FROM auth_users WHERE email = %s
+                    """,
+                    (email.strip().lower(),),
+                )
+                row = cur.fetchone()
+            if not row:
+                return None
+            return {"user_id": row[0], "email": row[1], "password_hash": row[2]}
+        except Exception:
+            logger.exception("Failed to read authentication owner")
+            return None
+
+
+def create_owner_db(*, user_id: str, email: str, password_hash: str) -> bool:
+    with get_conn() as conn:
+        if not conn:
+            return False
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    INSERT INTO auth_users (
+                        singleton, user_id, email, password_hash
+                    ) VALUES (TRUE, %s, %s, %s)
+                    """,
+                    (user_id, email.strip().lower(), password_hash),
+                )
+            conn.commit()
+            return True
+        except Exception:
+            conn.rollback()
+            logger.warning("Initial owner registration was rejected")
+            return False
+
+
 def create_session_db(
     *, token_hash: str, user_id: str, email: str, csrf_token: str, expires_at: datetime
 ) -> bool:

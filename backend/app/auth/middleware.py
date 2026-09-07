@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from app.auth.service import SESSION_COOKIE, resolve_session
 from app.config.settings import get_settings
 
-PUBLIC_PATHS = {"/health", "/auth/login"}
+PUBLIC_PATHS = {"/health", "/auth/login", "/auth/status", "/auth/register"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 
 

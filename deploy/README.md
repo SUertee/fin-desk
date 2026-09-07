@@ -44,21 +44,26 @@ the existing external `caddy_default` network with the unique alias `findesk-web
 site block from `deploy/Caddyfile.findesk.example` into `/data/caddy/Caddyfile` after the
 application login has been configured and verified through the loopback port.
 
-Production authentication is fail-closed. Set `AUTH_EMAIL` in `deploy/backend.env` and
-generate an Argon2 password hash interactively (the password is never placed on the command
-line or stored in shell history):
+Production authentication is fail-closed. Generate a one-time setup code inside the backend
+image. Store only the printed `AUTH_SETUP_TOKEN_HASH` line in `deploy/backend.env`; keep the
+raw setup code in your password manager until registration is complete:
 
 ```sh
 docker compose --env-file deploy/production.env -f compose.production.yml run --rm \
-  backend python -m app.auth.password
+  backend python -m app.auth.setup_token
 docker exec caddy caddy validate --config /etc/caddy/Caddyfile
 docker exec caddy caddy reload --config /etc/caddy/Caddyfile
 ```
 
-Copy the resulting hash into `AUTH_PASSWORD_HASH` in `deploy/backend.env`, keep that file at
-mode `600`, and restart the backend and web services. The application uses an opaque
-HttpOnly/Secure/SameSite cookie, server-side revocable sessions, CSRF tokens for writes and
-bounded login attempts. It has no public registration and is intentionally a single-user v1.
+Keep `deploy/backend.env` at mode `600`, start the application, and use the raw setup code on
+the registration page to choose the owner email and password. The database accepts exactly
+one owner row, so every later registration attempt is rejected atomically. After setup, set
+`AUTH_ALLOW_INITIAL_REGISTRATION=false` in `deploy/production.env`, remove
+`AUTH_SETUP_TOKEN_HASH` from `deploy/backend.env`, and restart the services.
+
+The application uses an opaque HttpOnly/Secure/SameSite cookie, server-side revocable
+sessions, CSRF tokens for writes and bounded login attempts. There is no ongoing public
+registration; the setup screen exists only before the first owner is created.
 
 The UI uses same-origin `/api`, including streaming responses. Nginx disables response
 buffering and permits a 25 MB request body. The backend may impose tighter file limits.
@@ -82,8 +87,8 @@ public Caddy route remains disabled until application credentials are configured
 
 ## Validation
 
-The frontend suite passes 22/22 tests and Vite production build succeeds. The backend suite
-passes 599/599 tests, including login, CSRF and statement-import coverage. The frontend
+The frontend suite passes 23/23 tests and Vite production build succeeds. The backend suite
+passes 601/601 tests, including registration, login, CSRF and statement-import coverage. The frontend
 production dependency audit reports zero known vulnerabilities. Compose validates with
 `config --no-interpolate --no-env-resolution --quiet` (syntax only, not runtime secrets).
 Both production images built successfully on myserver, and the Nginx-to-backend health check

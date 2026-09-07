@@ -59,6 +59,8 @@ class AuthSettings:
     user_id: str = "demo"
     email: str = ""
     password_hash: str = ""
+    allow_initial_registration: bool = False
+    setup_token_hash: str = ""
     session_ttl_seconds: int = 604800
     cookie_secure: bool = False
     login_attempt_limit: int = 8
@@ -72,10 +74,24 @@ class AuthSettings:
         if self.login_attempt_limit < 1 or self.login_window_seconds < 60:
             raise ValueError("invalid auth login rate limit")
         if self.enabled:
-            if not self.user_id or not self.email:
-                raise ValueError("AUTH_USER_ID and AUTH_EMAIL are required")
-            if not self.password_hash.startswith("$argon2"):
+            if not self.user_id:
+                raise ValueError("AUTH_USER_ID is required")
+            if bool(self.email) != bool(self.password_hash):
+                raise ValueError("AUTH_EMAIL and AUTH_PASSWORD_HASH must be set together")
+            if self.password_hash and not self.password_hash.startswith("$argon2"):
                 raise ValueError("AUTH_PASSWORD_HASH must be an Argon2 hash")
+            if self.allow_initial_registration:
+                try:
+                    valid_setup_hash = (
+                        len(self.setup_token_hash) == 64
+                        and bytes.fromhex(self.setup_token_hash) is not None
+                    )
+                except ValueError:
+                    valid_setup_hash = False
+                if not valid_setup_hash:
+                    raise ValueError(
+                        "AUTH_SETUP_TOKEN_HASH must be a SHA-256 hex digest"
+                    )
 
 
 @dataclass(frozen=True)
@@ -577,6 +593,10 @@ def get_settings() -> AppSettings:
             user_id=os.getenv("AUTH_USER_ID", "demo"),
             email=os.getenv("AUTH_EMAIL", ""),
             password_hash=os.getenv("AUTH_PASSWORD_HASH", ""),
+            allow_initial_registration=_env_bool(
+                "AUTH_ALLOW_INITIAL_REGISTRATION", False
+            ),
+            setup_token_hash=os.getenv("AUTH_SETUP_TOKEN_HASH", "").strip().lower(),
             session_ttl_seconds=int(os.getenv("AUTH_SESSION_TTL_SECONDS", "604800")),
             cookie_secure=_env_bool(
                 "AUTH_COOKIE_SECURE",

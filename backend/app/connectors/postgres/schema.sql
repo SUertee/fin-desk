@@ -10,6 +10,16 @@
 
 CREATE EXTENSION IF NOT EXISTS vector;
 
+-- Exactly one owner account is allowed in the self-hosted v1 deployment.
+CREATE TABLE IF NOT EXISTS auth_users (
+    singleton      BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+    user_id        TEXT UNIQUE NOT NULL,
+    email          TEXT UNIQUE NOT NULL,
+    password_hash  TEXT NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Opaque browser sessions. Raw session tokens are never persisted.
 CREATE TABLE IF NOT EXISTS auth_sessions (
     token_hash  TEXT PRIMARY KEY,

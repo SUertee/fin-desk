@@ -7,7 +7,8 @@ from datetime import datetime, timedelta, timezone
 from fastapi.testclient import TestClient
 
 from app.auth.password import hash_password, verify_password
-from app.config.settings import get_settings
+from app.auth.service import login, register_owner, token_digest
+from app.config.settings import AuthSettings, get_settings
 from app.main import app
 
 
@@ -124,3 +125,61 @@ def test_login_sets_httponly_strict_cookie(monkeypatch):
         assert response.json()["user"]["id"] == "demo"
     finally:
         get_settings.cache_clear()
+
+
+def test_initial_registration_is_token_gated_and_one_time(monkeypatch):
+    setup_token = "one-time-setup-token-value"
+    settings = AuthSettings(
+        enabled=True,
+        user_id="demo",
+        allow_initial_registration=True,
+        setup_token_hash=token_digest(setup_token),
+    )
+    owner_exists = False
+    monkeypatch.setattr(
+        "app.auth.service.owner_exists_db", lambda: owner_exists
+    )
+    monkeypatch.setattr("app.auth.service.create_owner_db", lambda **_values: True)
+    monkeypatch.setattr("app.auth.service.create_session_db", lambda **_values: True)
+
+    token, session = register_owner(
+        settings,
+        email="owner@example.com",
+        password="correct horse battery",
+        setup_token=setup_token,
+    )
+    assert token
+    assert session["email"] == "owner@example.com"
+
+    owner_exists = True
+    try:
+        register_owner(
+            settings,
+            email="second@example.com",
+            password="correct horse battery",
+            setup_token=setup_token,
+        )
+    except FileExistsError:
+        pass
+    else:
+        raise AssertionError("second owner registration must be rejected")
+
+
+def test_login_does_not_accept_correct_password_for_wrong_email(monkeypatch):
+    settings = AuthSettings(
+        enabled=True,
+        user_id="demo",
+        email="owner@example.com",
+        password_hash=hash_password("correct horse battery"),
+    )
+    monkeypatch.setattr("app.auth.service.get_owner_by_email_db", lambda _email: None)
+    try:
+        login(
+            settings,
+            email="attacker@example.com",
+            password="correct horse battery",
+        )
+    except PermissionError:
+        pass
+    else:
+        raise AssertionError("email must be verified together with the password")
