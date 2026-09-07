@@ -330,6 +330,7 @@ export function MyOfficePage({
         <aside className={`office-rail${railOpen ? " office-rail-open" : ""}`}>
           <div className="office-rail-head">
             <div className="office-rail-title">会话档案</div>
+            <button type="button" className="office-mobile-close" aria-label="关闭会话列表" onClick={() => setRailOpen(false)}><X /></button>
             <button
               type="button"
               className="office-new-session"

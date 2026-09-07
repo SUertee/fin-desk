@@ -125,7 +125,7 @@ export function SpendingCalendar({
 
   return (
     <div className="dashboard-card">
-      <div
+      <div className="calendar-heading"
         style={{
           display: "flex",
           alignItems: "center",
@@ -136,7 +136,7 @@ export function SpendingCalendar({
         <h3 className="dashboard-card-title" style={{ marginBottom: 0 }}>
           Spending Calendar
         </h3>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div className="calendar-controls" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 13, color: "#6b7280" }}>
             支出 <strong style={{ color: "#dc2626" }}>{sym}{totals.expense.toFixed(2)}</strong>
             {"  ·  "}

@@ -107,7 +107,7 @@ export function StatementImportManager({ userId, onChanged }: Props) {
         >
           <UploadCloud />
           <strong>{busy === "upload" ? l("正在处理账单…", "Processing statement...") : l("将账单拖到这里", "Drop a statement here")}</strong>
-          <span>{l("或从电脑中选择文件", "or choose a file from your computer")}</span>
+          <span>{l("或从设备中选择文件", "or choose a file from your device")}</span>
         </button>
         <input ref={fileInput} hidden type="file" accept=".csv,.xlsx,.pdf" onChange={(event) => upload(event.target.files?.[0])} />
         {(message || error) && <p className={error ? "statement-feedback-error" : "statement-feedback"}>{error ?? message}</p>}
