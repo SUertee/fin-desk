@@ -25,7 +25,15 @@ import {
 
 import { currencySymbol } from "../components/MetricsCards";
 import { useI18n } from "../i18n";
-import { fetchCashPlan, type CashPlanResponse, type DataSourceStatus, type ManualTransactionInput } from "../services/financeApi";
+import {
+  fetchAccountBalances,
+  fetchCashPlan,
+  saveAccountBalances,
+  type AccountBalancesResponse,
+  type CashPlanResponse,
+  type DataSourceStatus,
+  type ManualTransactionInput,
+} from "../services/financeApi";
 import { financeCategoryLabel, financeSourceLabel } from "../utils/financeLabels";
 
 type TableTransaction = {
@@ -91,6 +99,11 @@ export function FinanceWorkspacePage({
 }: Props) {
   const { lang } = useI18n();
   const [cashPlan, setCashPlan] = useState<CashPlanResponse | null>(null);
+  const [accountBalances, setAccountBalances] = useState<AccountBalancesResponse | null>(null);
+  const [balanceOpen, setBalanceOpen] = useState(false);
+  const [balanceValues, setBalanceValues] = useState({ bank: "", alipay: "", wechat: "", cash: "" });
+  const [balanceSaving, setBalanceSaving] = useState(false);
+  const [balanceError, setBalanceError] = useState("");
   const [entryOpen, setEntryOpen] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<TemplateId | null>(null);
   const [entryType, setEntryType] = useState<EntryType>("expense");
@@ -108,9 +121,11 @@ export function FinanceWorkspacePage({
 
   useEffect(() => {
     let active = true;
-    fetchCashPlan(userId)
-      .then((result) => active && setCashPlan(result))
-      .catch(() => active && setCashPlan(null));
+    Promise.allSettled([fetchCashPlan(userId), fetchAccountBalances(userId)]).then(([plan, balances]) => {
+      if (!active) return;
+      setCashPlan(plan.status === "fulfilled" ? plan.value : null);
+      setAccountBalances(balances.status === "fulfilled" ? balances.value : null);
+    });
     return () => { active = false; };
   }, [userId]);
 
@@ -133,6 +148,48 @@ export function FinanceWorkspacePage({
   const latestDaySpend = useMemo(() => tableTransactions
     .filter((transaction) => !transaction.is_duplicate && transaction.date === period?.to && transaction.amount < 0)
     .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0), [tableTransactions, period?.to]);
+  const balanceAgeDays = accountBalances?.confirmed_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(accountBalances.confirmed_at).getTime()) / 86400000))
+    : null;
+
+  const openBalances = () => {
+    const values = Object.fromEntries(
+      ["bank", "alipay", "wechat", "cash"].map((type) => [
+        type,
+        String(accountBalances?.items.find((item) => item.account_type === type)?.amount ?? ""),
+      ]),
+    ) as typeof balanceValues;
+    setBalanceValues(values);
+    setBalanceError("");
+    setBalanceOpen(true);
+  };
+
+  const balanceTotal = Object.values(balanceValues)
+    .reduce((sum, value) => sum + (Number(value) || 0), 0);
+
+  const confirmBalances = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const values = Object.fromEntries(
+      Object.entries(balanceValues).map(([key, value]) => [key, Number(value || 0)]),
+    ) as Record<keyof typeof balanceValues, number>;
+    if (Object.values(values).some((value) => !Number.isFinite(value) || value < 0)) {
+      setBalanceError(lang === "zh" ? "余额不能小于 0" : "Balances cannot be negative");
+      return;
+    }
+    setBalanceSaving(true);
+    setBalanceError("");
+    try {
+      const result = await saveAccountBalances(userId, { ...values, currency: primaryCurrency });
+      setAccountBalances(result);
+      const updatedPlan = await fetchCashPlan(userId);
+      setCashPlan(updatedPlan);
+      setBalanceOpen(false);
+    } catch (error) {
+      setBalanceError(error instanceof Error ? error.message : (lang === "zh" ? "保存失败" : "Failed to save"));
+    } finally {
+      setBalanceSaving(false);
+    }
+  };
 
   const upload = () => {
     const input = document.createElement("input");
@@ -146,6 +203,27 @@ export function FinanceWorkspacePage({
   };
 
   const needs: NeedItem[] = [];
+  if (!accountBalances?.confirmed_at) {
+    needs.push({
+      id: "confirm-balance",
+      title: lang === "zh" ? "确认你现在实际有多少钱" : "Confirm your current balances",
+      body: lang === "zh" ? "账单流水不能证明账户余额，确认后才能可靠计算安全可花。" : "Statement activity does not prove current balances.",
+      action: lang === "zh" ? "更新余额" : "Update balances",
+      icon: WalletCards,
+      tone: "info",
+      run: openBalances,
+    });
+  } else if (balanceAgeDays != null && balanceAgeDays >= 7) {
+    needs.push({
+      id: "stale-balance",
+      title: lang === "zh" ? `账户余额已有 ${balanceAgeDays} 天未确认` : `Balances are ${balanceAgeDays} days old`,
+      body: lang === "zh" ? "重新确认后，安全可花和未来缺口会立即重算。" : "Reconfirm to refresh the cash projection.",
+      action: lang === "zh" ? "重新确认" : "Reconfirm",
+      icon: RefreshCw,
+      tone: "info",
+      run: openBalances,
+    });
+  }
   if (!tableTransactions.length) {
     needs.push({
       id: "first-import",
@@ -263,9 +341,16 @@ export function FinanceWorkspacePage({
         <header className="daily-overview-head">
           <div>
             <span className="daily-overview-kicker">{lang === "zh" ? "今日资金状态" : "TODAY'S MONEY"}</span>
-            <p>{period?.to ? (lang === "zh" ? `账本更新至 ${dateLabel(period.to, lang)}` : `Ledger updated through ${period.to}`) : (lang === "zh" ? "账本尚未导入" : "No ledger data yet")}</p>
+            <div className="daily-data-statuses">
+              <span className={freshnessTone(dataAgeDays, 3)}>{lang === "zh" ? `流水：${period?.to ? `${dateLabel(period.to, lang)} · ${freshnessLabel(dataAgeDays, lang)}` : "未导入"}` : `Ledger: ${period?.to ?? "not imported"}`}</span>
+              <span className={freshnessTone(balanceAgeDays, 7)}>{lang === "zh" ? `余额：${accountBalances?.confirmed_at ? `${dateTimeLabel(accountBalances.confirmed_at, lang)}确认` : "未确认"}` : `Balances: ${accountBalances?.confirmed_at ? "confirmed" : "unconfirmed"}`}</span>
+              <span>{lang === "zh" ? `计划：${cashPlan?.plan.updated_at ? dateTimeLabel(cashPlan.plan.updated_at, lang) : "未设置"}` : `Plan: ${cashPlan?.plan.updated_at?.slice(0, 10) ?? "not set"}`}</span>
+            </div>
           </div>
-          <button type="button" className="daily-plan-link" onClick={onOpenCashPlan}><WalletCards /> {lang === "zh" ? "查看计划" : "View plan"}</button>
+          <div className="daily-overview-actions">
+            <button type="button" className="daily-balance-link" onClick={openBalances}><RefreshCw /> {lang === "zh" ? "更新余额" : "Update balances"}</button>
+            <button type="button" className="daily-plan-link" onClick={onOpenCashPlan}><WalletCards /> {lang === "zh" ? "查看计划" : "View plan"}</button>
+          </div>
         </header>
 
         <div className="daily-overview-body">
@@ -277,13 +362,13 @@ export function FinanceWorkspacePage({
               : (lang === "zh" ? "今天的消费空间" : "Today's spending room")}</h1>
             <p>{projection?.funding_gap && projection.funding_gap > 0
               ? (lang === "zh" ? `未来计划仍有 ${formatMoney(projection.funding_gap, sym)} 缺口，建议先处理必要支出。` : `The current plan still has a ${formatMoney(projection.funding_gap, sym)} gap.`)
-              : (lang === "zh" ? "根据当前余额和已记录计划计算；实际流水以账本更新时间为准。" : "Based on the recorded balance and plan; actual spending follows ledger freshness.")}</p>
+              : (lang === "zh" ? "由最近确认的账户余额减去发薪前必要支出与生活预算；流水只用于解释花到哪里。" : "Calculated from confirmed balances, commitments and living budget; the ledger explains activity.")}</p>
           </div>
           <div className="daily-overview-facts">
-            <div><span>{lang === "zh" ? "当前计划现金" : "Planned cash"}</span><strong>{projection ? formatMoney(projection.current_cash, sym) : "—"}</strong><em>{cashPlan?.plan.updated_at ? (lang === "zh" ? `计划更新于 ${dateLabel(cashPlan.plan.updated_at.slice(0, 10), lang)}` : cashPlan.plan.updated_at.slice(0, 10)) : ""}</em></div>
+            <div><span>{lang === "zh" ? "人工确认账户余额" : "Confirmed balances"}</span><strong>{accountBalances?.confirmed_at ? formatMoney(accountBalances.total, sym) : "—"}</strong><em>{accountBalances?.confirmed_at ? (lang === "zh" ? `${dateTimeLabel(accountBalances.confirmed_at, lang)} · 四账户合计` : dateTimeLabel(accountBalances.confirmed_at, lang)) : (lang === "zh" ? "点击更新余额建立可靠基线" : "Update balances to set a baseline")}</em></div>
             <div><span>{lang === "zh" ? "下一笔必须支付" : "Next payment"}</span><strong>{nextPayment ? `${dateLabel(nextPayment.date, lang)} · ${nextPayment.name}` : "—"}</strong><em>{nextPayment ? formatMoney(Math.abs(nextPayment.amount), sym) : ""}</em></div>
             <div><span>{lang === "zh" ? "距离下次收入" : "Until next income"}</span><strong>{daysUntilIncome == null ? "—" : (lang === "zh" ? `${daysUntilIncome} 天` : `${daysUntilIncome} days`)}</strong><em>{projection?.next_income_date ?? ""}</em></div>
-            <div><span>{lang === "zh" ? "最近有流水的一天" : "Latest ledger day"}</span><strong>{period?.to ? formatMoney(latestDaySpend, sym) : "—"}</strong><em>{period?.to ? dateLabel(period.to, lang) : ""}</em></div>
+            <div><span>{lang === "zh" ? "最近流水日支出" : "Latest ledger-day spend"}</span><strong>{period?.to ? formatMoney(latestDaySpend, sym) : "—"}</strong><em>{period?.to ? `${dateLabel(period.to, lang)} · ${lang === "zh" ? "不是账户余额" : "not an account balance"}` : ""}</em></div>
           </div>
         </div>
       </section>
@@ -364,6 +449,21 @@ export function FinanceWorkspacePage({
           </form>
         </aside></>
       )}
+      {balanceOpen && (
+        <><button type="button" className="quick-entry-backdrop" aria-label={lang === "zh" ? "关闭余额更新" : "Close balance update"} onClick={() => setBalanceOpen(false)} /><aside className="quick-entry-panel account-balance-panel" role="dialog" aria-modal="true" aria-label={lang === "zh" ? "更新账户余额" : "Update account balances"}>
+          <header><div><WalletCards /><span>{lang === "zh" ? "更新账户余额" : "Update account balances"}</span></div><button type="button" aria-label={lang === "zh" ? "关闭余额更新" : "Close balance update"} onClick={() => setBalanceOpen(false)}><X /></button></header>
+          <form onSubmit={confirmBalances}>
+            <div className="quick-entry-title"><span>{lang === "zh" ? "余额快照" : "BALANCE SNAPSHOT"}</span><h2>{lang === "zh" ? "你现在实际有多少钱" : "Money you have now"}</h2><p>{lang === "zh" ? "请查看各账户当前余额。保存后会用合计金额重算安全可花和未来资金缺口。" : "Check each current balance. The total becomes the projection baseline."}</p></div>
+            <div className="account-balance-fields">
+              {balanceAccounts.map((account) => <label key={account.id}><span>{lang === "zh" ? account.zh : account.en}</span><div><b>{sym}</b><input aria-label={lang === "zh" ? account.zh : account.en} inputMode="decimal" value={balanceValues[account.id]} onChange={(event) => setBalanceValues((current) => ({ ...current, [account.id]: event.target.value }))} placeholder="0.00" /></div></label>)}
+            </div>
+            <div className="account-balance-total"><span>{lang === "zh" ? "本次确认合计" : "Confirmed total"}</span><strong>{formatMoney(balanceTotal, sym)}</strong></div>
+            <p className="account-balance-note">{lang === "zh" ? "债务不填在这里；花呗、白条等应在资金计划中记录。" : "Keep debts in the cash plan, not in these balances."}</p>
+            {balanceError && <p className="quick-entry-error">{balanceError}</p>}
+            <button type="submit" className="quick-entry-submit" disabled={balanceSaving}>{balanceSaving ? (lang === "zh" ? "保存并重算中…" : "Saving…") : (lang === "zh" ? "确认余额并重新计算" : "Confirm and recalculate")}</button>
+          </form>
+        </aside></>
+      )}
     </main>
   );
 }
@@ -375,6 +475,13 @@ const quickTemplates = [
   { id: "transport" as const, zh: "交通", en: "Transport", icon: Bus, category: "transportation" },
   { id: "groceries" as const, zh: "买菜", en: "Groceries", icon: ShoppingBasket, category: "groceries" },
   { id: "daily" as const, zh: "日用品", en: "Daily goods", icon: PackageOpen, category: "shopping" },
+];
+
+const balanceAccounts = [
+  { id: "bank" as const, zh: "银行卡", en: "Bank" },
+  { id: "alipay" as const, zh: "支付宝余额", en: "Alipay" },
+  { id: "wechat" as const, zh: "微信余额", en: "WeChat" },
+  { id: "cash" as const, zh: "现金", en: "Cash" },
 ];
 
 const entryTypes = [
@@ -475,6 +582,27 @@ function dateLabel(value: string | undefined, lang: string): string {
   if (!value) return "—";
   const [year, month, day] = value.split("-");
   return lang === "zh" ? `${Number(month)} 月 ${Number(day)} 日` : `${year}-${month}-${day}`;
+}
+
+function dateTimeLabel(value: string, lang: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value.slice(0, 10);
+  return date.toLocaleString(lang === "zh" ? "zh-CN" : "en-US", {
+    month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+function freshnessLabel(ageDays: number | null, lang: string): string {
+  if (ageDays == null) return lang === "zh" ? "未知" : "unknown";
+  if (ageDays <= 1) return lang === "zh" ? "最新" : "current";
+  if (ageDays <= 7) return lang === "zh" ? "建议更新" : "update soon";
+  return lang === "zh" ? "可能过期" : "possibly stale";
+}
+
+function freshnessTone(ageDays: number | null, staleAfter: number): string {
+  if (ageDays == null || ageDays > staleAfter) return "stale";
+  if (ageDays > 1) return "aging";
+  return "fresh";
 }
 
 function formatMoney(value: number, symbol: string): string {

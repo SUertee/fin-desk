@@ -68,6 +68,19 @@ CREATE TABLE IF NOT EXISTS cash_plans (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Point-in-time balances confirmed by the user. Statement flows are kept
+-- separate because transaction history does not prove a current balance.
+CREATE TABLE IF NOT EXISTS account_balances (
+    user_id         TEXT NOT NULL,
+    account_type    TEXT NOT NULL
+        CHECK (account_type IN ('bank', 'alipay', 'wechat', 'cash')),
+    amount          DOUBLE PRECISION NOT NULL DEFAULT 0 CHECK (amount >= 0),
+    currency        TEXT NOT NULL DEFAULT 'CNY',
+    confirmed_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, account_type)
+);
+
 -- Chat history
 CREATE TABLE IF NOT EXISTS chat_history (
     id          BIGSERIAL PRIMARY KEY,

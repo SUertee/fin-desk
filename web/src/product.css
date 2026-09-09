@@ -5738,8 +5738,16 @@ textarea:focus-visible {
 
 .daily-overview-kicker { color: #2f739c; font-size: 11px; font-weight: 850; letter-spacing: .14em; }
 .daily-overview-head p { margin: 4px 0 0; color: #7a8c99; font-size: 11px; }
+.daily-data-statuses { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.daily-data-statuses > span { border-radius: 999px; background: #edf2f5; padding: 5px 8px; color: #607581; font-size: 9px; font-weight: 720; }
+.daily-data-statuses > span.fresh { background: #e8f5eb; color: #3b7852; }
+.daily-data-statuses > span.aging { background: #fff5dc; color: #8c6b23; }
+.daily-data-statuses > span.stale { background: #fff0eb; color: #a75c49; }
+.daily-overview-actions { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; }
 .daily-plan-link { display: inline-flex; align-items: center; gap: 7px; border: 1px solid #c8dae5; border-radius: 11px; padding: 9px 12px; background: white; color: #315f7d; font-weight: 750; }
-.daily-plan-link svg { width: 15px; height: 15px; }
+.daily-balance-link { display: inline-flex; align-items: center; gap: 7px; border-radius: 11px; background: #15364f; padding: 10px 13px; color: white; font-size: 12px; font-weight: 780; }
+.daily-balance-link:hover { background: #1b486a; }
+.daily-plan-link svg, .daily-balance-link svg { width: 15px; height: 15px; }
 
 .daily-overview-body { display: grid; grid-template-columns: minmax(0, 1.12fr) minmax(360px, .88fr); min-height: 285px; }
 .daily-overview-primary { display: flex; flex-direction: column; justify-content: center; padding: 34px 38px; background: linear-gradient(142deg, #0f2238 0%, #173a58 100%); color: white; }
@@ -6132,8 +6140,9 @@ button.metric-card:hover {
 
   .daily-overview { border-radius: 19px; }
   .daily-overview-head { align-items: flex-start; padding: 17px; }
-  .daily-plan-link { padding: 8px; font-size: 0; }
-  .daily-plan-link svg { width: 18px; height: 18px; }
+  .daily-overview-actions { align-items: stretch; flex-direction: column; }
+  .daily-plan-link, .daily-balance-link { justify-content: center; padding: 8px; font-size: 0; }
+  .daily-plan-link svg, .daily-balance-link svg { width: 18px; height: 18px; }
   .daily-overview-primary { min-height: 0; padding: 28px 22px; }
   .daily-overview-facts { grid-template-columns: 1fr; }
   .daily-overview-facts > div { padding: 17px 20px; border-bottom: 1px solid #e2e9ed; }
@@ -6563,6 +6572,16 @@ button.metric-card:hover {
 .quick-entry-submit { min-height: 46px; border-radius: 12px; background: #15364f; color: white; font-size: 13px; font-weight: 800; }
 .quick-entry-submit:hover { background: #1b486a; }
 .quick-entry-submit:disabled { cursor: wait; opacity: .6; }
+.account-balance-panel { width: min(500px, calc(100vw - 28px)); }
+.account-balance-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.account-balance-fields > label { display: grid; gap: 7px; color: #385064; font-size: 11px; font-weight: 750; }
+.account-balance-fields > label > div { display: flex; align-items: center; min-height: 45px; border: 1px solid #cfdae0; border-radius: 11px; padding: 0 11px; }
+.account-balance-fields > label > div:focus-within { border-color: #6fa6c4; box-shadow: 0 0 0 3px rgba(90, 151, 184, .12); }
+.account-balance-fields b { color: #668091; font-size: 14px; }
+.account-balance-fields input { min-height: 42px; border: 0; box-shadow: none !important; padding-left: 6px; font-size: 16px; font-weight: 700; }
+.account-balance-total { display: flex; align-items: center; justify-content: space-between; border-radius: 13px; background: #edf6fa; padding: 14px 16px; color: #4d6f82; font-size: 11px; font-weight: 750; }
+.account-balance-total strong { color: #14344d; font-size: 22px; letter-spacing: -.03em; }
+.account-balance-note { margin: -4px 0 0; color: #81909a; font-size: 10px; line-height: 1.5; }
 
 .workspace-focus-panel,
 .workspace-activity-panel {
@@ -6707,6 +6726,7 @@ button.metric-card:hover {
   .today-money-summary > div:nth-child(2) { border-right: 0; }
   .today-money-summary > div:nth-child(-n+2) { border-bottom: 1px solid #e2e9ed; }
   .today-template-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .account-balance-fields { grid-template-columns: 1fr; }
   .explore2-tabs { overflow-x: auto; }
 }
 

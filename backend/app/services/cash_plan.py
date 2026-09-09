@@ -32,6 +32,21 @@ def update_cash_plan(user_id: str, req: CashPlanUpdate) -> CashPlan:
     return plan
 
 
+def update_cash_balance(user_id: str, cash_balance: float, *, currency: str = "CNY") -> CashPlan:
+    """Replace only the projection baseline while preserving the user's plan."""
+    current = get_cash_plan(user_id)
+    plan = current.model_copy(
+        update={
+            "cash_balance": cash_balance,
+            "currency": currency.upper(),
+            "updated_at": datetime.now(timezone.utc),
+        }
+    )
+    _cache[user_id] = plan
+    save_cash_plan_db(plan)
+    return plan
+
+
 def _add_months(value: date, months: int) -> date:
     target = value.month - 1 + months
     year = value.year + target // 12
