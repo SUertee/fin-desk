@@ -21,7 +21,6 @@ from app.auth.middleware import authentication_middleware
 from app.auth.authorization import enforce_user_scope
 
 from app.routes.agent_gateway import router as agent_gateway_router
-from app.routes.account_balances import router as account_balances_router
 from app.routes.auth import router as auth_router
 from app.integrations.agenthub import router as agenthub_router
 from app.routes.ai_costs import router as ai_costs_router
@@ -89,7 +88,6 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(capabilities_router)
-app.include_router(account_balances_router)
 app.include_router(cash_plan_router)
 app.include_router(data_sources_router)
 app.include_router(evals_router)

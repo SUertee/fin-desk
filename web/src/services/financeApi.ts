@@ -166,48 +166,6 @@ export async function saveCashPlan(
   return (await response.json()) as CashPlanResponse;
 }
 
-export type AccountBalanceType = "bank" | "alipay" | "wechat" | "cash";
-
-export type AccountBalancesResponse = {
-  user_id: string;
-  currency: string;
-  items: Array<{
-    account_type: AccountBalanceType;
-    amount: number;
-    currency: string;
-    confirmed_at: string;
-  }>;
-  total: number;
-  confirmed_at: string | null;
-};
-
-export type AccountBalancesInput = {
-  bank: number;
-  alipay: number;
-  wechat: number;
-  cash: number;
-  currency: string;
-};
-
-export async function fetchAccountBalances(userId: string): Promise<AccountBalancesResponse> {
-  const response = await authFetch(`${apiBaseUrl}/account-balances/${encodeURIComponent(userId)}`);
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as AccountBalancesResponse;
-}
-
-export async function saveAccountBalances(
-  userId: string,
-  balances: AccountBalancesInput,
-): Promise<AccountBalancesResponse> {
-  const response = await authFetch(`${apiBaseUrl}/account-balances/${encodeURIComponent(userId)}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(balances),
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as AccountBalancesResponse;
-}
-
 export async function fetchDailyTotals(
   userId: string,
   month: string
