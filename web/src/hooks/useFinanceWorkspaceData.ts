@@ -5,6 +5,7 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  createManualTransaction,
   fetchDataSourceStatus,
   fetchLatestAnalysisRun,
   fetchProfile,
@@ -12,6 +13,7 @@ import {
   fetchWorkspaceBrief,
   importStatement,
 } from "../services/financeApi";
+import type { ManualTransactionInput } from "../services/financeApi";
 import type { DataSourceStatus } from "../services/financeApi";
 import type { WorkspaceBrief } from "../types/financeAgent";
 import type { AnalysisRunRow, TransactionRow } from "../types/db";
@@ -103,6 +105,12 @@ export function useFinanceWorkspaceData(userId: string) {
     [load, userId]
   );
 
+  const handleCreateManualTransaction = useCallback(async (input: ManualTransactionInput) => {
+    setErrMsg(null);
+    await createManualTransaction(userId, input);
+    await load();
+  }, [load, userId]);
+
   useEffect(() => {
     let mounted = true;
 
@@ -190,6 +198,7 @@ export function useFinanceWorkspaceData(userId: string) {
     // actions
     load,
     handleUploadStatement,
+    handleCreateManualTransaction,
     // derived view models
     monthlyTotals,
     summaryByCurrency,

@@ -7,6 +7,8 @@ import {
   type DailyTotal,
 } from "../services/financeApi";
 import { currencySymbol } from "./MetricsCards";
+import { useI18n } from "../i18n";
+import { financeCategoryLabel, financeSourceLabel } from "../utils/financeLabels";
 
 interface SpendingCalendarProps {
   userId: string;
@@ -23,6 +25,7 @@ interface DayTransaction {
   category: string;
   amount: number;
   source: string;
+  payment_method?: string;
   is_duplicate: boolean;
 }
 
@@ -40,12 +43,25 @@ function compactAmount(value: number): string {
   return `${Math.round(value)}`;
 }
 
+function readableMonth(month: string, lang: string) {
+  if (lang !== "zh") return month;
+  const [year, value] = month.split("-");
+  return `${year} 年 ${Number(value)} 月`;
+}
+
+function readableDay(day: string, lang: string) {
+  if (lang !== "zh") return day;
+  const [year, month, value] = day.split("-");
+  return `${year} 年 ${Number(month)} 月 ${Number(value)} 日`;
+}
+
 export function SpendingCalendar({
   userId,
   currency = "CNY",
   defaultMonth,
   onAskCfo,
 }: SpendingCalendarProps) {
+  const { lang } = useI18n();
   const [month, setMonth] = useState(
     defaultMonth ?? new Date().toISOString().slice(0, 7)
   );
@@ -134,7 +150,7 @@ export function SpendingCalendar({
         }}
       >
         <h3 className="dashboard-card-title" style={{ marginBottom: 0 }}>
-          Spending Calendar
+          {lang === "zh" ? "每日收支日历" : "Daily spending calendar"}
         </h3>
         <div className="calendar-controls" style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 13, color: "#6b7280" }}>
@@ -142,20 +158,20 @@ export function SpendingCalendar({
             {"  ·  "}
             收入 <strong style={{ color: "#16a34a" }}>{sym}{totals.income.toFixed(2)}</strong>
           </span>
-          <button type="button" onClick={() => setMonth((m) => shiftMonth(m, -1))} aria-label="Previous month">
+          <button type="button" onClick={() => setMonth((m) => shiftMonth(m, -1))} aria-label={lang === "zh" ? "上个月" : "Previous month"}>
             <ChevronLeft style={{ width: 16, height: 16 }} />
           </button>
-          <span style={{ fontWeight: 600, minWidth: 70, textAlign: "center" }}>{month}</span>
-          <button type="button" onClick={() => setMonth((m) => shiftMonth(m, 1))} aria-label="Next month">
+          <span style={{ fontWeight: 600, minWidth: 92, textAlign: "center" }}>{readableMonth(month, lang)}</span>
+          <button type="button" onClick={() => setMonth((m) => shiftMonth(m, 1))} aria-label={lang === "zh" ? "下个月" : "Next month"}>
             <ChevronRight style={{ width: 16, height: 16 }} />
           </button>
         </div>
       </div>
 
       {loading ? (
-        <div className="empty-copy">Loading…</div>
+        <div className="empty-copy">{lang === "zh" ? "正在加载…" : "Loading…"}</div>
       ) : days.length === 0 ? (
-        <div className="empty-copy">No transactions in {month}.</div>
+        <div className="empty-copy">{lang === "zh" ? `${month} 暂无交易` : `No transactions in ${month}.`}</div>
       ) : (
         <div style={{ overflowX: "auto" }}>
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 3 }}>
@@ -239,7 +255,7 @@ export function SpendingCalendar({
         <div style={{ marginTop: 12, borderTop: "1px solid #e5e7eb", paddingTop: 10 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>
-              {selectedDay} · {dayTransactions.length} 笔
+              {readableDay(selectedDay, lang)} · {dayTransactions.length} {lang === "zh" ? "笔" : "transactions"}
             </span>
             {onAskCfo && (
               <button
@@ -272,10 +288,12 @@ export function SpendingCalendar({
                 opacity: transaction.is_duplicate ? 0.45 : 1,
               }}
             >
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {transaction.description || transaction.counterparty}
-                <span style={{ color: "#9ca3af", marginLeft: 6, fontSize: 11 }}>
-                  {transaction.category} · {transaction.source}
+              <span className="calendar-transaction-copy">
+                <strong>{transaction.counterparty || transaction.description || (lang === "zh" ? "未识别交易" : "Unknown transaction")}</strong>
+                {transaction.description && transaction.description !== transaction.counterparty && <span className="calendar-transaction-description">{transaction.description}</span>}
+                <span className="calendar-transaction-meta">
+                  {financeCategoryLabel(transaction.category, lang)} · {financeSourceLabel(transaction.source, lang)}
+                  {transaction.payment_method ? ` · ${transaction.payment_method}` : ""}
                   {transaction.is_duplicate ? " · 重复" : ""}
                 </span>
               </span>

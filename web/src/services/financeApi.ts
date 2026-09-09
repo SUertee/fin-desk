@@ -93,6 +93,79 @@ export interface DailyTotalsResponse {
   totals: { expense: number; income: number; count: number };
 }
 
+export type CashPlanKind = "income" | "housing" | "debt" | "budget" | "purchase" | "other";
+
+export type CashPlanEntry = {
+  id: string;
+  name: string;
+  kind: CashPlanKind;
+  amount: number;
+  due_date: string;
+  recurrence: "once" | "monthly";
+  recurring_amount: number | null;
+  remaining_occurrences: number | null;
+  outstanding_balance: number | null;
+  essential: boolean;
+  status: "active" | "paused";
+  notes: string;
+};
+
+export type CashPlan = {
+  user_id: string;
+  currency: string;
+  cash_balance: number;
+  daily_budget: number;
+  monthly_budget: number;
+  entries: CashPlanEntry[];
+  updated_at: string;
+};
+
+export type CashProjectionEvent = {
+  entry_id: string;
+  name: string;
+  kind: CashPlanKind;
+  date: string;
+  amount: number;
+  essential: boolean;
+  running_balance: number;
+};
+
+export type CashPlanResponse = {
+  plan: CashPlan;
+  projection: {
+    as_of: string;
+    horizon_end: string;
+    currency: string;
+    current_cash: number;
+    total_debt: number;
+    next_income_date: string | null;
+    safe_to_spend_until_next_income: number;
+    minimum_projected_balance: number;
+    funding_gap: number;
+    ending_balance: number;
+    events: CashProjectionEvent[];
+  };
+};
+
+export async function fetchCashPlan(userId: string): Promise<CashPlanResponse> {
+  const response = await authFetch(`${apiBaseUrl}/cash-plan/${encodeURIComponent(userId)}`);
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as CashPlanResponse;
+}
+
+export async function saveCashPlan(
+  userId: string,
+  plan: Omit<CashPlan, "user_id" | "updated_at">
+): Promise<CashPlanResponse> {
+  const response = await authFetch(`${apiBaseUrl}/cash-plan/${encodeURIComponent(userId)}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(plan),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as CashPlanResponse;
+}
+
 export async function fetchDailyTotals(
   userId: string,
   month: string
@@ -125,6 +198,31 @@ export async function fetchTransactions(userId: string, limit = 200) {
   }
   const payload = await response.json();
   return (payload.items ?? []) as TransactionRow[];
+}
+
+export type ManualTransactionInput = {
+  amount: number;
+  direction?: "expense" | "income";
+  entry_type?: "expense" | "income" | "refund" | "transfer";
+  occurred_at?: string;
+  counterparty?: string;
+  description?: string;
+  category?: string;
+  payment_method?: string;
+  note?: string;
+  meal_tag?: "breakfast" | "lunch" | "dinner";
+  template_id?: string;
+  destination_account?: string;
+};
+
+export async function createManualTransaction(userId: string, input: ManualTransactionInput) {
+  const response = await authFetch(`${apiBaseUrl}/transactions/${encodeURIComponent(userId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return (await response.json()) as { ok: true; item: TransactionRow };
 }
 
 export async function fetchProfile(userId: string) {

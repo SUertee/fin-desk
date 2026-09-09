@@ -1,41 +1,32 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  ArrowDownRight,
+  AlertTriangle,
+  ArrowDownLeft,
+  ArrowLeftRight,
+  ArrowRight,
   ArrowUpRight,
-  Bot,
+  Bus,
   CheckCircle2,
-  Coins,
-  Database,
-  FileCheck2,
-  GitBranch,
-  PanelRightOpen,
-  ShieldCheck,
-  Upload,
+  ChevronDown,
+  CircleDollarSign,
+  FileUp,
+  Moon,
+  PackageOpen,
+  Plus,
+  ReceiptText,
+  RefreshCw,
+  RotateCcw,
+  ShoppingBasket,
+  Sun,
+  Sunrise,
+  WalletCards,
   X,
 } from "lucide-react";
 
-import { CategoryPieChart } from "../components/CategoryPieChart";
-import { MonthlyTrends } from "../components/MonthlyTrends";
-import { SpendingCalendar } from "../components/SpendingCalendar";
-import { TransactionsTable } from "../components/TransactionsTable";
 import { currencySymbol } from "../components/MetricsCards";
-import { AiCostExplorer } from "../features/cost-explorer/AiCostExplorer";
-import { FinanceInboxEntry } from "../components/inbox/FinanceInboxEntry";
 import { useI18n } from "../i18n";
-import type { DataSourceStatus } from "../services/financeApi";
-import type { WorkspaceBrief } from "../types/financeAgent";
-
-type MonthlyTrend = {
-  month: string;
-  income: number;
-  expenses: number;
-};
-
-type CategorySpend = {
-  category: string;
-  amount: number;
-  currency: string;
-};
+import { fetchCashPlan, type CashPlanResponse, type DataSourceStatus, type ManualTransactionInput } from "../services/financeApi";
+import { financeCategoryLabel, financeSourceLabel } from "../utils/financeLabels";
 
 type TableTransaction = {
   id: string | number;
@@ -44,155 +35,106 @@ type TableTransaction = {
   merchant: string;
   category: string;
   amount: number;
+  gross_amount?: number;
   currency: string;
   source: string;
   payment_method: string;
+  status?: string;
+  direction?: string;
+  type?: string;
+  created_at?: string;
+  raw?: unknown;
   is_duplicate: boolean;
 };
 
-type ActionItem = {
-  title: string;
-  body: string;
-  status: string;
-};
-
-type FinanceWorkspacePageProps = {
+type Props = {
   userId: string;
-  actionSource?: "agent" | "onboarding";
-  brief?: WorkspaceBrief | null;
   dataSourceStatus?: DataSourceStatus | null;
-  latestImportAt?: string | null;
   loading: boolean;
   errMsg: string | null;
   isUploading: boolean;
   primaryCurrency: string;
-  budgetStatus: "good" | "watch" | "risk";
-  duplicateCount: number;
-  monthlyTrendsData: MonthlyTrend[];
-  actionItems: ActionItem[];
-  categoryData: CategorySpend[];
   tableTransactions: TableTransaction[];
   onReload: () => void;
-  onOpenInbox: () => void;
-  onOpenCfo: () => void;
-  onAskCfoAbout?: (question: string) => void;
+  onOpenLedger: () => void;
+  onOpenCashPlan: () => void;
   onUploadStatement: (file: File) => void;
+  onCreateManualTransaction: (input: ManualTransactionInput) => Promise<void>;
 };
 
-type ExploreTab = "calendar" | "trends" | "categories" | "transactions";
-type DetailDrawer = "reasoning" | "import" | null;
+type NeedItem = {
+  id: string;
+  title: string;
+  body: string;
+  action: string;
+  icon: typeof AlertTriangle;
+  tone: "warn" | "info";
+  run: () => void;
+};
 
-function monthLabel(month: string | undefined, lang: string): string {
-  if (!month) return "";
-  const [year, monthNumber] = month.split("-");
-  if (lang === "zh") return `${year} 年 ${Number(monthNumber)} 月`;
-  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${names[Number(monthNumber) - 1]} ${year}`;
-}
-
-function dayLabel(date: string, lang: string): string {
-  const [, monthNumber, day] = date.split("-");
-  if (lang === "zh") return `${Number(monthNumber)} 月 ${Number(day)} 日`;
-  const names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${names[Number(monthNumber) - 1]} ${Number(day)}`;
-}
+type EntryType = "expense" | "income" | "refund" | "transfer";
+type TemplateId = "breakfast" | "lunch" | "dinner" | "transport" | "groceries" | "daily";
 
 export function FinanceWorkspacePage({
   userId,
-  actionSource = "onboarding",
-  brief,
   dataSourceStatus,
-  latestImportAt,
   loading,
   errMsg,
   isUploading,
   primaryCurrency,
-  budgetStatus,
-  duplicateCount,
-  monthlyTrendsData,
-  actionItems,
-  categoryData,
   tableTransactions,
   onReload,
-  onOpenInbox,
-  onOpenCfo,
-  onAskCfoAbout,
+  onOpenLedger,
+  onOpenCashPlan,
   onUploadStatement,
-}: FinanceWorkspacePageProps) {
-  const { lang, t } = useI18n();
-  const [activeTab, setActiveTab] = useState<ExploreTab>("calendar");
-  const [categoryView, setCategoryView] = useState<"spending" | "ai-costs">("spending");
-  const [detailDrawer, setDetailDrawer] = useState<DetailDrawer>(null);
-  const [selectedActionTitle, setSelectedActionTitle] = useState<string | null>(null);
+  onCreateManualTransaction,
+}: Props) {
+  const { lang } = useI18n();
+  const [cashPlan, setCashPlan] = useState<CashPlanResponse | null>(null);
+  const [entryOpen, setEntryOpen] = useState(false);
+  const [activeTemplate, setActiveTemplate] = useState<TemplateId | null>(null);
+  const [entryType, setEntryType] = useState<EntryType>("expense");
+  const [entryAmount, setEntryAmount] = useState("");
+  const [entryMerchant, setEntryMerchant] = useState("");
+  const [entryPayment, setEntryPayment] = useState("支付宝");
+  const [entryDestination, setEntryDestination] = useState("微信");
+  const [entryCategory, setEntryCategory] = useState("other");
+  const [entryNote, setEntryNote] = useState("");
+  const [entryDetailsOpen, setEntryDetailsOpen] = useState(false);
+  const [entrySaving, setEntrySaving] = useState(false);
+  const [entryError, setEntryError] = useState("");
   const sym = currencySymbol(primaryCurrency);
+  const today = new Date().toLocaleDateString("sv-SE");
 
-  const latestMonth = monthlyTrendsData.at(-1);
-  const hasData = tableTransactions.length > 0;
-  const topCategory = useMemo(
-    () => [...categoryData].sort((a, b) => b.amount - a.amount)[0] ?? null,
-    [categoryData]
-  );
-
-  // Highest single-day spend in the latest data month → proactive ask card
-  const topSpendDay = useMemo(() => {
-    if (!latestMonth) return null;
-    const byDay = new Map<string, number>();
-    for (const transaction of tableTransactions) {
-      if (transaction.is_duplicate || transaction.amount >= 0) continue;
-      if (transaction.month !== latestMonth.month) continue;
-      byDay.set(transaction.date, (byDay.get(transaction.date) ?? 0) - transaction.amount);
-    }
-    let best: { date: string; amount: number } | null = null;
-    for (const [date, amount] of byDay) {
-      if (!best || amount > best.amount) best = { date, amount };
-    }
-    return best;
-  }, [tableTransactions, latestMonth]);
-
-  // Coverage footnote: per-source row counts from loaded transactions
-  const sourceCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const transaction of tableTransactions) {
-      counts.set(transaction.source, (counts.get(transaction.source) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
-  }, [tableTransactions]);
+  useEffect(() => {
+    let active = true;
+    fetchCashPlan(userId)
+      .then((result) => active && setCashPlan(result))
+      .catch(() => active && setCashPlan(null));
+    return () => { active = false; };
+  }, [userId]);
 
   const period = useMemo(() => {
-    if (!hasData) return null;
+    if (!tableTransactions.length) return null;
     const dates = tableTransactions.map((transaction) => transaction.date).sort();
     return { from: dates[0], to: dates.at(-1) as string };
-  }, [tableTransactions, hasData]);
+  }, [tableTransactions]);
 
-  const auditStatus = brief?.audit?.status;
-  const briefActions = brief?.has_data ? brief.actions : [];
-  const transactionCount = dataSourceStatus?.transaction_count ?? tableTransactions.length;
-  const sourceCount = sourceCounts.length || dataSourceStatus?.channels.filter((channel) => channel.status !== "planned").length || 0;
-  const qualityConfidence = hasData
-    ? Math.max(72, Math.min(96, Math.round(92 - duplicateCount * 1.6)))
-    : 0;
-  const topActionTitle = selectedActionTitle ?? briefActions[0]?.title ?? actionItems[0]?.title ?? "CFO recommendation";
-  const rawBriefText = sanitizeBriefText(brief?.headline);
-  const netCashFlow = latestMonth ? latestMonth.income - latestMonth.expenses : null;
-  const heroSummary = buildHeroSummary({
-    lang,
-    sym,
-    hasData,
-    netCashFlow,
-    budgetStatus,
-    topCategory,
-    fallback: t("hero.fallback"),
-  });
-  const priorityAction = normalizeActionTitle(
-    briefActions[0]?.title ?? actionItems[0]?.title,
-    lang
-  );
-  const openReasoning = (title?: string) => {
-    setSelectedActionTitle(title ?? null);
-    setDetailDrawer("reasoning");
-  };
+  const dataAgeDays = period?.to
+    ? Math.max(0, Math.floor((dateValue(today) - dateValue(period.to)) / 86400000))
+    : null;
+  const projection = cashPlan?.projection;
+  const nextPayment = projection?.events.find((event) => event.date >= today && event.amount < 0)
+    ?? projection?.events.find((event) => event.amount < 0)
+    ?? null;
+  const daysUntilIncome = projection?.next_income_date
+    ? Math.max(0, Math.ceil((dateValue(projection.next_income_date) - dateValue(today)) / 86400000))
+    : null;
+  const latestDaySpend = useMemo(() => tableTransactions
+    .filter((transaction) => !transaction.is_duplicate && transaction.date === period?.to && transaction.amount < 0)
+    .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0), [tableTransactions, period?.to]);
 
-  const handleUploadClick = () => {
+  const upload = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".csv,.xlsx,.pdf";
@@ -203,570 +145,338 @@ export function FinanceWorkspacePage({
     input.click();
   };
 
-  const tabs: { id: ExploreTab; label: string; count?: number }[] = [
-    { id: "calendar", label: t("tabs.calendar") },
-    { id: "trends", label: t("tabs.trends") },
-    { id: "categories", label: t("tabs.categories") },
-    { id: "transactions", label: t("tabs.transactions"), count: tableTransactions.length },
-  ];
+  const needs: NeedItem[] = [];
+  if (!tableTransactions.length) {
+    needs.push({
+      id: "first-import",
+      title: lang === "zh" ? "导入第一份账单" : "Import your first statement",
+      body: lang === "zh" ? "导入后才能查看真实消费、分类和每天的收支。" : "Import data to review spending and categories.",
+      action: lang === "zh" ? "选择账单" : "Choose file",
+      icon: FileUp,
+      tone: "info",
+      run: upload,
+    });
+  } else if (dataAgeDays != null && dataAgeDays >= 7) {
+    needs.push({
+      id: "stale-ledger",
+      title: lang === "zh" ? `流水已有 ${dataAgeDays} 天未更新` : `Ledger is ${dataAgeDays} days old`,
+      body: lang === "zh" ? `当前消费分析只覆盖到 ${dateLabel(period?.to, lang)}。` : `Spending data currently ends on ${period?.to}.`,
+      action: lang === "zh" ? "更新账单" : "Update ledger",
+      icon: RefreshCw,
+      tone: "info",
+      run: upload,
+    });
+  }
+  if (projection?.funding_gap && projection.funding_gap > 0) {
+    needs.push({
+      id: "funding-gap",
+      title: lang === "zh" ? "未来计划存在资金缺口" : "Your plan has a funding gap",
+      body: lang === "zh" ? `按当前计划，最低还缺 ${formatMoney(projection.funding_gap, sym)}。` : `The current plan falls short by ${formatMoney(projection.funding_gap, sym)}.`,
+      action: lang === "zh" ? "调整计划" : "Adjust plan",
+      icon: AlertTriangle,
+      tone: "warn",
+      run: onOpenCashPlan,
+    });
+  }
+  const visibleNeeds = needs.slice(0, 2);
+
+  const todayTransactions = useMemo(() => [...tableTransactions]
+    .filter((transaction) => !transaction.is_duplicate && transaction.date === today)
+    .sort((a, b) => (b.created_at || b.date).localeCompare(a.created_at || a.date)), [tableTransactions, today]);
+
+  const todaySummary = useMemo(() => todayTransactions.reduce((summary, transaction) => {
+    const type = manualEntryType(transaction.raw);
+    if (type === "transfer") return summary;
+    if (type === "refund") summary.refund += Math.abs(transaction.amount);
+    else if (transaction.amount < 0) summary.expense += Math.abs(transaction.amount);
+    else summary.income += transaction.amount;
+    return summary;
+  }, { expense: 0, income: 0, refund: 0 }), [todayTransactions]);
+
+  const templateTotals = useMemo(() => {
+    const totals: Record<TemplateId, number> = { breakfast: 0, lunch: 0, dinner: 0, transport: 0, groceries: 0, daily: 0 };
+    for (const transaction of tableTransactions) {
+      if (transaction.date !== today || transaction.is_duplicate || transaction.amount >= 0) continue;
+      const tag = manualTemplateId(transaction.raw);
+      if (tag) totals[tag] += Math.abs(transaction.amount);
+    }
+    return totals;
+  }, [tableTransactions, today]);
+
+  const dynamicTemplates = useMemo(() => rankTemplates(quickTemplates, tableTransactions), [tableTransactions]);
+
+  const openEntry = (templateId: TemplateId | null = null, type: EntryType = "expense") => {
+    const template = quickTemplates.find((item) => item.id === templateId);
+    setActiveTemplate(templateId);
+    setEntryType(type);
+    setEntryAmount("");
+    setEntryMerchant("");
+    setEntryPayment("支付宝");
+    setEntryDestination("微信");
+    setEntryCategory(template?.category ?? (type === "income" ? "income" : type === "refund" ? "refund" : "other"));
+    setEntryNote("");
+    setEntryDetailsOpen(Boolean(templateId));
+    setEntryError("");
+    setEntryOpen(true);
+  };
+
+  const saveEntry = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const amount = Number(entryAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setEntryError(lang === "zh" ? "请输入大于 0 的金额" : "Enter an amount greater than zero");
+      return;
+    }
+    if (entryType === "transfer" && entryPayment === entryDestination) {
+      setEntryError(lang === "zh" ? "转出和转入账户不能相同" : "Source and destination must differ");
+      return;
+    }
+    const template = quickTemplates.find((item) => item.id === activeTemplate);
+    setEntrySaving(true);
+    setEntryError("");
+    try {
+      await onCreateManualTransaction({
+        amount,
+        direction: entryType === "income" || entryType === "refund" ? "income" : "expense",
+        entry_type: entryType,
+        occurred_at: localIsoNow(),
+        counterparty: entryMerchant.trim(),
+        description: template ? (lang === "zh" ? template.zh : template.en) : entryTypeLabel(entryType, lang),
+        category: entryCategory,
+        payment_method: entryPayment,
+        note: entryNote.trim(),
+        meal_tag: activeTemplate === "breakfast" || activeTemplate === "lunch" || activeTemplate === "dinner" ? activeTemplate : undefined,
+        template_id: activeTemplate ?? "",
+        destination_account: entryType === "transfer" ? entryDestination : "",
+      });
+      setEntryOpen(false);
+    } catch (error) {
+      setEntryError(error instanceof Error ? error.message : (lang === "zh" ? "保存失败" : "Failed to save"));
+    } finally {
+      setEntrySaving(false);
+    }
+  };
 
   return (
-    <main className="workspace-main">
-      {/* Band 1: the CFO judgment and the four assets that support it */}
-      <section className="dashboard-hero">
-        <div className="dashboard-hero-copy">
-          <div className="dashboard-hero-eyebrow">
-            <span>{t("hero.eyebrow")}</span>
-            <span>/</span>
-            <span>{monthLabel(latestMonth?.month, lang)}</span>
-            {auditStatus && (
-              <>
-                <span>/</span>
-                <span>{t(`hero.audit.${auditStatus}`)}</span>
-              </>
-            )}
+    <main className="workspace-main today-workspace">
+      <section className={`daily-overview ${projection?.funding_gap && projection.funding_gap > 0 ? "daily-overview-risk" : ""}`}>
+        <header className="daily-overview-head">
+          <div>
+            <span className="daily-overview-kicker">{lang === "zh" ? "今日资金状态" : "TODAY'S MONEY"}</span>
+            <p>{period?.to ? (lang === "zh" ? `账本更新至 ${dateLabel(period.to, lang)}` : `Ledger updated through ${period.to}`) : (lang === "zh" ? "账本尚未导入" : "No ledger data yet")}</p>
           </div>
-          <h1 className="cfo-judgment-text">{heroSummary}</h1>
-          <div className="dashboard-hero-actions">
-            <button type="button" onClick={onOpenCfo} className="dashboard-btn dashboard-btn-primary">
-              <PanelRightOpen className="h-4 w-4" />
-              {t("hero.askCfo")}
-            </button>
-            <button
-              type="button"
-              onClick={handleUploadClick}
-              disabled={isUploading}
-              className="dashboard-btn dashboard-btn-secondary"
-            >
-              <Upload className="h-4 w-4" />
-              {isUploading ? t("hero.uploading") : t("hero.upload")}
-            </button>
-            <button type="button" onClick={() => openReasoning()} className="dashboard-btn-text">
-              <GitBranch className="h-3.5 w-3.5" />
-              {lang === "zh" ? "查看判断依据" : "View reasoning"}
-            </button>
-          </div>
-          <p className="dashboard-hero-hint">{priorityAction}</p>
-        </div>
+          <button type="button" className="daily-plan-link" onClick={onOpenCashPlan}><WalletCards /> {lang === "zh" ? "查看计划" : "View plan"}</button>
+        </header>
 
-        <div className="dashboard-metric-grid">
-          <div className={`metric-card glass-panel ${netCashFlow != null && netCashFlow < 0 ? "metric-card-risk" : "metric-card-positive"}`}>
-            <span className="metric-card-label">{lang === "zh" ? "净现金流" : "Net cash flow"}</span>
-            <strong>{netCashFlow == null ? "—" : `${netCashFlow < 0 ? "-" : "+"}${formatMoney(netCashFlow, sym)}`}</strong>
-            <small>
-              {netCashFlow != null && netCashFlow < 0 ? <ArrowDownRight /> : <ArrowUpRight />}
-              {monthLabel(latestMonth?.month, lang) || (lang === "zh" ? "等待数据" : "Awaiting data")}
-            </small>
+        <div className="daily-overview-body">
+          <div className="daily-overview-primary">
+            <span>{lang === "zh" ? "发薪前可自由支配（计划估算）" : "Free to spend before payday (estimate)"}</span>
+            <strong>{projection ? formatMoney(projection.safe_to_spend_until_next_income, sym) : "—"}</strong>
+            <h1>{projection?.safe_to_spend_until_next_income === 0
+              ? (lang === "zh" ? "暂时不要安排新增支出" : "Pause new spending for now")
+              : (lang === "zh" ? "今天的消费空间" : "Today's spending room")}</h1>
+            <p>{projection?.funding_gap && projection.funding_gap > 0
+              ? (lang === "zh" ? `未来计划仍有 ${formatMoney(projection.funding_gap, sym)} 缺口，建议先处理必要支出。` : `The current plan still has a ${formatMoney(projection.funding_gap, sym)} gap.`)
+              : (lang === "zh" ? "根据当前余额和已记录计划计算；实际流水以账本更新时间为准。" : "Based on the recorded balance and plan; actual spending follows ledger freshness.")}</p>
           </div>
-          <div className="metric-card glass-panel metric-card-income">
-            <span className="metric-card-label">{t("hero.stat.income")}</span>
-            <strong>{latestMonth ? `${sym}${latestMonth.income.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}</strong>
-            <small>{lang === "zh" ? "已确认收入" : "Confirmed inflow"}</small>
+          <div className="daily-overview-facts">
+            <div><span>{lang === "zh" ? "当前计划现金" : "Planned cash"}</span><strong>{projection ? formatMoney(projection.current_cash, sym) : "—"}</strong><em>{cashPlan?.plan.updated_at ? (lang === "zh" ? `计划更新于 ${dateLabel(cashPlan.plan.updated_at.slice(0, 10), lang)}` : cashPlan.plan.updated_at.slice(0, 10)) : ""}</em></div>
+            <div><span>{lang === "zh" ? "下一笔必须支付" : "Next payment"}</span><strong>{nextPayment ? `${dateLabel(nextPayment.date, lang)} · ${nextPayment.name}` : "—"}</strong><em>{nextPayment ? formatMoney(Math.abs(nextPayment.amount), sym) : ""}</em></div>
+            <div><span>{lang === "zh" ? "距离下次收入" : "Until next income"}</span><strong>{daysUntilIncome == null ? "—" : (lang === "zh" ? `${daysUntilIncome} 天` : `${daysUntilIncome} days`)}</strong><em>{projection?.next_income_date ?? ""}</em></div>
+            <div><span>{lang === "zh" ? "最近有流水的一天" : "Latest ledger day"}</span><strong>{period?.to ? formatMoney(latestDaySpend, sym) : "—"}</strong><em>{period?.to ? dateLabel(period.to, lang) : ""}</em></div>
           </div>
-          <div className="metric-card glass-panel metric-card-spend">
-            <span className="metric-card-label">{t("hero.stat.expense")}</span>
-            <strong>{latestMonth ? `${sym}${latestMonth.expenses.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : "—"}</strong>
-            <small>{topCategory ? `${topCategory.category} · ${formatMoney(topCategory.amount, sym)}` : lang === "zh" ? "等待分类数据" : "Awaiting categories"}</small>
-          </div>
-          <button type="button" className="metric-card glass-panel metric-card-status" onClick={() => setDetailDrawer("import")}>
-            <span className="metric-card-label">{t("hero.stat.budget")}</span>
-            <strong>{t(`budget.${hasData ? budgetStatus : "data_limited"}`)}</strong>
-            <small>
-              <Database />
-              {qualityConfidence ? `${qualityConfidence}% · ${duplicateCount} ${lang === "zh" ? "笔重复" : "duplicates"}` : lang === "zh" ? "等待账单导入" : "Awaiting statements"}
-            </small>
-          </button>
         </div>
       </section>
 
-      {loading && <div className="text-sm text-gray-500">{t("workspace.loading")}</div>}
-
-      {errMsg && (
-        <div className="text-sm text-red-600">
-          {lang === "zh" && /failed to fetch/i.test(errMsg) ? "无法连接后端服务" : errMsg}
-          <button onClick={onReload} className="ml-3 text-xs text-blue-600 underline" type="button">
-            {t("workspace.retry")}
-          </button>
-        </div>
-      )}
+      {loading && <div className="workspace-inline-state">{lang === "zh" ? "正在加载财务数据…" : "Loading finance data…"}</div>}
+      {errMsg && <div className="workspace-inline-state workspace-inline-error">{lang === "zh" && /failed to fetch/i.test(errMsg) ? "无法连接后端服务" : errMsg}<button onClick={onReload} type="button">{lang === "zh" ? "重试" : "Retry"}</button></div>}
 
       {!loading && !errMsg && (
-        <>
-          {/* Band 2: 行动 */}
-          <div className="band-head">
-            <h2>{t("actions.title")}</h2>
-            <span className={`band-chip ${actionSource === "agent" ? "band-chip-agent" : ""}`}>
-              {actionSource === "agent" ? t("actions.fromBrief") : t("actions.onboarding")}
-            </span>
-          </div>
-          <section className="actions2">
-            {(briefActions.length > 0
-              ? briefActions.map((action) => ({
-                  title: normalizeActionTitle(action.title, lang),
-                  body: normalizeActionBody(action.rationale, lang),
-                  status: lang === "zh" ? `影响 ${translateLevel(action.impact)} · 成本 ${translateLevel(action.effort)}` : `Impact ${action.impact} · Effort ${action.effort}`,
-                }))
-              : actionItems.map((item) => ({
-                  title: normalizeActionTitle(item.title, lang),
-                  body: normalizeActionBody(item.body, lang),
-                  status: normalizeActionStatus(item.status, lang),
-                }))
-            )
-              .slice(0, 2)
-              .map((item, index) => (
-                <button
-                  key={item.title}
-                  type="button"
-                  className="action2-card"
-                  onClick={() => openReasoning(item.title)}
-                >
-                  <div className="action2-rank">{index + 1}</div>
-                  <div className="action2-meta">
-                    <span>{item.status}</span>
-                    <span>{lang === "zh" ? "Audit checked" : "Audit checked"}</span>
-                  </div>
-                  <h3>{item.title}</h3>
-                  <p>{item.body}</p>
-                  <span className="action2-go">
-                    {lang === "zh" ? "查看 CFO 证据链 →" : "View CFO evidence →"}
-                  </span>
-                </button>
-              ))}
-            {topSpendDay && (
-              <button
-                type="button"
-                className="action2-card action2-ask"
-                onClick={() =>
-                  onAskCfoAbout
-                    ? onAskCfoAbout(
-                        `帮我逐笔看看 ${topSpendDay.date} 这天的消费，有什么值得注意的？`
-                      )
-                    : onOpenCfo()
-                }
-              >
-                <div className="action2-rank action2-rank-ask">?</div>
-                <h3>
-                  {dayLabel(topSpendDay.date, lang)}
-                  {lang === "zh" ? "花了 " : ": spent "}
-                  {sym}
-                  {Math.round(topSpendDay.amount).toLocaleString()}
-                </h3>
-                <p>{t("actions.askDay.body")}</p>
-                <span className="action2-go">{t("actions.askDay.cta")}</span>
-              </button>
+        <div className="today-workspace-grid">
+          <section className="today-bookkeeping-panel">
+            <header>
+              <div><span>{lang === "zh" ? "快速记一笔" : "QUICK ENTRY"}</span><h2>{lang === "zh" ? "今天发生的每一笔钱" : "Today's money activity"}</h2><p>{lang === "zh" ? "先记下，上传账单后再自动核对。" : "Capture now and reconcile after import."}</p></div>
+              <button type="button" className="today-primary-entry" onClick={() => openEntry()}><Plus />{lang === "zh" ? "记一笔" : "New entry"}</button>
+            </header>
+            <div className="today-money-summary">
+              <div><span>{lang === "zh" ? "今日支出" : "Spent today"}</span><strong className="expense">{formatMoney(todaySummary.expense, sym)}</strong></div>
+              <div><span>{lang === "zh" ? "今日收入" : "Income today"}</span><strong>{formatMoney(todaySummary.income, sym)}</strong></div>
+              <div><span>{lang === "zh" ? "今日退款" : "Refunds today"}</span><strong>{formatMoney(todaySummary.refund, sym)}</strong></div>
+              <div><span>{lang === "zh" ? "安全可花" : "Safe to spend"}</span><strong>{projection ? formatMoney(projection.safe_to_spend_until_next_income, sym) : "—"}</strong></div>
+            </div>
+            <div className="today-template-list">
+              {dynamicTemplates.map((template) => {
+                const Icon = template.icon;
+                const total = templateTotals[template.id];
+                return <button type="button" key={template.id} className={total > 0 ? "recorded" : ""} onClick={() => openEntry(template.id)}><span><Icon /></span><div><strong>{lang === "zh" ? template.zh : template.en}</strong><em>{total > 0 ? (lang === "zh" ? `今天 ${formatMoney(total, sym)}` : `${formatMoney(total, sym)} today`) : (lang === "zh" ? "快速记录" : "Quick log")}</em></div>{total > 0 ? <CheckCircle2 /> : <Plus />}</button>;
+              })}
+            </div>
+          </section>
+          <section className="workspace-focus-panel">
+            <header><div><span>{lang === "zh" ? "需要处理" : "NEEDS ATTENTION"}</span><h2>{visibleNeeds.length ? (lang === "zh" ? `${visibleNeeds.length} 件事情` : `${visibleNeeds.length} items`) : (lang === "zh" ? "今天已处理完成" : "All caught up")}</h2></div></header>
+            {visibleNeeds.length ? (
+              <div className="workspace-needs-list">
+                {visibleNeeds.map((item) => {
+                  const Icon = item.icon;
+                  return <article key={item.id} className={`workspace-need workspace-need-${item.tone}`}><span className="workspace-need-icon"><Icon /></span><div><strong>{item.title}</strong><p>{item.body}</p></div><button type="button" onClick={item.run}>{item.action}<ArrowRight /></button></article>;
+                })}
+              </div>
+            ) : (
+              <div className="workspace-complete"><CheckCircle2 /><div><strong>{lang === "zh" ? "暂时没有必须处理的事项" : "Nothing requires attention"}</strong><p>{lang === "zh" ? "账本和计划会在需要更新时提醒你。" : "FinDesk will surface ledger and plan updates when needed."}</p></div></div>
             )}
           </section>
 
-          <FinanceInboxEntry userId={userId} onOpen={onOpenInbox} />
-
-          <button
-            type="button"
-            className="data-quality-summary"
-            onClick={() => setDetailDrawer("import")}
-          >
-            <div className="data-quality-copy">
-              <div className="data-quality-title">
-                <FileCheck2 />
-                {lang === "zh" ? "数据质量摘要" : "Data Quality Summary"}
-              </div>
-              <div className="data-quality-subtitle">
-                {lang === "zh"
-                  ? "账单导入是确定性数据 pipeline；CFO 和 specialist 只消费它产出的结构化证据。"
-                  : "Statement import is a deterministic data pipeline; the CFO and specialists consume its structured evidence."}
-              </div>
-            </div>
-            <div className="data-quality-metrics">
-              <span className="dq-good">{transactionCount.toLocaleString()} {lang === "zh" ? "笔交易" : "transactions"}</span>
-              <span className={duplicateCount > 0 ? "dq-watch" : "dq-good"}>{duplicateCount} {lang === "zh" ? "笔重复已排除" : "duplicates removed"}</span>
-              <span>{sourceCount} {lang === "zh" ? "个数据源" : "sources"}</span>
-              <span className={qualityConfidence >= 85 ? "dq-good" : "dq-watch"}>{qualityConfidence || "—"}{qualityConfidence ? "%" : ""} {lang === "zh" ? "置信度" : "confidence"}</span>
-            </div>
-          </button>
-
-          {/* Band 3: 探索 */}
-          <section className="explore2">
-            <div className="explore2-tabs">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  className={`explore2-tab ${activeTab === tab.id ? "explore2-tab-active" : ""}`}
-                  onClick={() => setActiveTab(tab.id)}
-                >
-                  {tab.label}
-                  {tab.count != null && <span className="explore2-count">{tab.count}</span>}
-                </button>
-              ))}
-            </div>
-            <div className="explore2-body">
-              {activeTab === "calendar" && (
-                <SpendingCalendar
-                  userId={userId}
-                  currency={primaryCurrency}
-                  defaultMonth={latestMonth?.month}
-                  onAskCfo={onAskCfoAbout}
-                />
-              )}
-              {activeTab === "trends" && (
-                <MonthlyTrends data={monthlyTrendsData} currency={primaryCurrency} />
-              )}
-              {activeTab === "categories" && categoryView === "spending" && (
-                <div className="category-explorer">
-                  <div className="category-explorer-intro">
-                    <div>
-                      <span>{lang === "zh" ? "支出分类" : "SPENDING CATEGORIES"}</span>
-                      <h3>{lang === "zh" ? "钱花在了哪里" : "Where your money goes"}</h3>
-                      <p>
-                        {lang === "zh"
-                          ? "账单消费和数字服务成本属于同一财务视图，但由不同证据管线生成。"
-                          : "Statement spend and digital-service costs share one finance view while retaining separate evidence pipelines."}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      className="ai-cost-category-card"
-                      onClick={() => setCategoryView("ai-costs")}
-                    >
-                      <span className="ai-cost-category-icon"><Coins /></span>
-                      <span>
-                        <small>{lang === "zh" ? "数字服务" : "DIGITAL SERVICES"}</small>
-                        <strong>{lang === "zh" ? "AI 成本" : "AI Costs"}</strong>
-                        <em>
-                          {lang === "zh"
-                            ? "API 使用、订阅与预算"
-                            : "API usage, subscriptions, and budget"}
-                        </em>
-                      </span>
-                      <span className="ai-cost-category-arrow">→</span>
-                    </button>
-                  </div>
-                  <CategoryPieChart data={categoryData} />
-                </div>
-              )}
-              {activeTab === "categories" && categoryView === "ai-costs" && (
-                <AiCostExplorer
-                  userId={userId}
-                  onBack={() => setCategoryView("spending")}
-                />
-              )}
-              {activeTab === "transactions" && (
-                <TransactionsTable transactions={tableTransactions} />
-              )}
-            </div>
-          </section>
-
-          {/* 数据脚注 */}
-          <div className="coverage-line">
-            {period && (
-              <>
-                <span>
-                  {t("coverage.range")} {period.from} ~ {period.to}
-                </span>
-                <span className="coverage-dot">·</span>
-              </>
-            )}
-            {sourceCounts.length > 0 && (
-              <>
-                <span>
-                  {sourceCounts
-                    .map(([source, count]) => `${t(`source.${source}`)} ${count} ${t("coverage.rows")}`)
-                    .join(" / ")}
-                </span>
-                <span className="coverage-dot">·</span>
-              </>
-            )}
-            {duplicateCount > 0 && (
-              <>
-                <span>
-                  {duplicateCount} {t("coverage.duplicates")}
-                </span>
-                <span className="coverage-dot">·</span>
-              </>
-            )}
-            <span>
-              {t("coverage.latestImport")}:{" "}
-              {latestImportAt ? latestImportAt.slice(0, 10) : t("coverage.none")}
-            </span>
-          </div>
-
-          {detailDrawer && (
-            <div className="workspace-drawer-shell" role="dialog" aria-modal="false">
-              <aside className="workspace-detail-drawer">
-                <div className="workspace-drawer-head">
-                  <div>
-                    <div className="workspace-drawer-kicker">
-                      {detailDrawer === "reasoning" ? <Bot /> : <Database />}
-                      {detailDrawer === "reasoning"
-                        ? lang === "zh" ? "CFO 调度证据" : "CFO Orchestration Evidence"
-                        : lang === "zh" ? "导入与数据质量" : "Import & Data Quality"}
-                    </div>
-                    <h3>
-                      {detailDrawer === "reasoning"
-                        ? topActionTitle
-                        : lang === "zh" ? "Statement Import Pipeline" : "Statement Import Pipeline"}
-                    </h3>
-                  </div>
-                  <button
-                    type="button"
-                    className="workspace-drawer-close"
-                    onClick={() => setDetailDrawer(null)}
-                    title="Close"
-                  >
-                    <X />
+          <section className="workspace-activity-panel">
+            <header><div><span>{lang === "zh" ? "今日流水" : "TODAY'S LEDGER"}</span><h2>{lang === "zh" ? `${todayTransactions.length} 笔资金记录` : `${todayTransactions.length} entries`}</h2></div><button type="button" onClick={onOpenLedger}>{lang === "zh" ? "全部流水" : "Full ledger"}<ArrowRight /></button></header>
+            {todayTransactions.length ? (
+              <div className="workspace-activity-list">
+                {todayTransactions.slice(0, 6).map((transaction) => (
+                  <button type="button" key={transaction.id} onClick={onOpenLedger}>
+                    <span className="workspace-activity-icon"><ReceiptText /></span>
+                    <span className="workspace-activity-copy"><strong>{transaction.merchant || transaction.description || financeCategoryLabel(transaction.category, lang)}</strong><em>{financeCategoryLabel(transaction.category, lang)} · {financeSourceLabel(transaction.source, lang)} · {transactionStatusLabel(transaction, lang)}</em></span>
+                    <b className={manualEntryType(transaction.raw) === "transfer" ? "transfer" : transaction.amount < 0 ? "expense" : "income"}>{manualEntryType(transaction.raw) === "transfer" ? "↔" : transaction.amount < 0 ? "−" : "+"}{formatMoney(transactionDisplayAmount(transaction), currencySymbol(transaction.currency))}</b>
                   </button>
-                </div>
-
-                {detailDrawer === "reasoning" ? (
-                  <div className="workspace-drawer-body">
-                    <div className="reasoning-summary">
-                      {lang === "zh"
-                        ? "CFO 先判断用户目标和证据缺口，只在需要时调用 specialist 或确定性工具，最后统一输出给用户。"
-                        : "The CFO judges intent and evidence gaps first, calls specialists or deterministic tools only when needed, then composes one user-facing answer."}
-                    </div>
-                    {rawBriefText && (
-                      <div className="raw-brief-card">
-                        <div>{lang === "zh" ? "CFO 原始简报摘要" : "Original CFO brief summary"}</div>
-                        <p>{shortenText(rawBriefText, lang === "zh" ? 180 : 260)}</p>
-                      </div>
-                    )}
-                    {[
-                      {
-                        icon: <Bot />,
-                        title: "CFO Lead",
-                        status: lang === "zh" ? "最终决策" : "Final decision",
-                        body: lang === "zh"
-                          ? `${heroSummary} 优先动作：${priorityAction}。`
-                          : `${heroSummary} Priority action: ${priorityAction}.`,
-                      },
-                      {
-                        icon: <GitBranch />,
-                        title: "Expense Analyst",
-                        status: lang === "zh" ? "按需调用" : "Called when needed",
-                        body: topCategoryLabel(categoryData, lang),
-                      },
-                      {
-                        icon: <CheckCircle2 />,
-                        title: "Budget Coach",
-                        status: lang === "zh" ? "预算判断" : "Budget check",
-                        body: lang === "zh"
-                          ? `预算状态为「${t(`budget.${hasData ? budgetStatus : "data_limited"}`)}」，建议先补齐收入与固定支出画像。`
-                          : `Budget status is ${t(`budget.${hasData ? budgetStatus : "data_limited"}`)}; complete income and recurring-expense profile first.`,
-                      },
-                      {
-                        icon: <ShieldCheck />,
-                        title: "Risk & Audit",
-                        status: auditStatus ? t(`hero.audit.${auditStatus}`) : lang === "zh" ? "证据检查" : "Evidence check",
-                        body: lang === "zh"
-                          ? "输出前检查数据覆盖、重复交易和建议是否超出证据范围。"
-                          : "Checks data coverage, duplicate transactions, and whether the recommendation overclaims beyond evidence.",
-                      },
-                    ].map((step, index) => (
-                      <div className="reasoning-step" key={step.title}>
-                        <div className="reasoning-step-index">{index + 1}</div>
-                        <div className="reasoning-step-icon">{step.icon}</div>
-                        <div>
-                          <div className="reasoning-step-top">
-                            <strong>{step.title}</strong>
-                            <span>{step.status}</span>
-                          </div>
-                          <p>{step.body}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="workspace-drawer-body">
-                    <div className="reasoning-summary">
-                      {lang === "zh"
-                        ? "这里不是 Agent，而是后端数据工程链路。它把支付宝、微信、银行流水转换成 CFO 可以引用的结构化证据。"
-                        : "This is not an agent. It is the backend data pipeline that turns Alipay, WeChat, and bank statements into structured evidence for the CFO."}
-                    </div>
-                    <div className="pipeline-steps">
-                      {["Parse", "Normalize", "Deduplicate", "Categorize", "Quality Report"].map((step, index) => (
-                        <div className="pipeline-step" key={step}>
-                          <span>{index + 1}</span>
-                          <strong>{step}</strong>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="import-metrics-grid">
-                      <Metric label={lang === "zh" ? "交易记录" : "Transactions"} value={transactionCount.toLocaleString()} />
-                      <Metric label={lang === "zh" ? "重复排除" : "Duplicates removed"} value={String(duplicateCount)} />
-                      <Metric label={lang === "zh" ? "数据源" : "Sources"} value={String(sourceCount)} />
-                      <Metric label={lang === "zh" ? "分类置信度" : "Category confidence"} value={qualityConfidence ? `${qualityConfidence}%` : "—"} />
-                    </div>
-                    <div className="source-list">
-                      <div className="source-list-title">{lang === "zh" ? "来源覆盖" : "Source coverage"}</div>
-                      {sourceCounts.length > 0 ? (
-                        sourceCounts.map(([source, count]) => (
-                          <div className="source-row" key={source}>
-                            <span>{formatSourceLabel(source, t)}</span>
-                            <strong>{count.toLocaleString()} {lang === "zh" ? "笔" : "rows"}</strong>
-                          </div>
-                        ))
-                      ) : (
-                        <div className="source-row muted">
-                          <span>{lang === "zh" ? "暂无导入数据" : "No imported data yet"}</span>
-                          <strong>—</strong>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </aside>
-            </div>
-          )}
-        </>
+                ))}
+              </div>
+            ) : (
+              <div className="workspace-activity-empty"><ReceiptText /><span>{lang === "zh" ? "今天还没有记录，点击“记一笔”开始。" : "No entries today. Use New entry to begin."}</span></div>
+            )}
+          </section>
+        </div>
+      )}
+      {entryOpen && (
+        <><button type="button" className="quick-entry-backdrop" aria-label={lang === "zh" ? "关闭记账" : "Close entry"} onClick={() => setEntryOpen(false)} /><aside className="quick-entry-panel" role="dialog" aria-modal="true" aria-label={lang === "zh" ? "快速记账" : "Quick entry"}>
+          <header><div><CircleDollarSign /><span>{lang === "zh" ? "快速记账" : "Quick entry"}</span></div><button type="button" aria-label={lang === "zh" ? "关闭记账" : "Close entry"} onClick={() => setEntryOpen(false)}><X /></button></header>
+          <form onSubmit={saveEntry}>
+            <div className="quick-entry-title"><span>{lang === "zh" ? "记录" : "Log"}</span><h2>{activeTemplate ? (lang === "zh" ? quickTemplates.find((item) => item.id === activeTemplate)?.zh : quickTemplates.find((item) => item.id === activeTemplate)?.en) : entryTypeLabel(entryType, lang)}</h2><p>{lang === "zh" ? "保存后立即进入今日流水，并等待后续账单核对。" : "Saved to today's ledger and queued for reconciliation."}</p></div>
+            <div className="quick-entry-types" aria-label={lang === "zh" ? "交易类型" : "Entry type"}>{entryTypes.map((item) => { const Icon = item.icon; return <button type="button" key={item.id} className={entryType === item.id ? "active" : ""} onClick={() => { setEntryType(item.id); setEntryCategory(item.id === "income" ? "income" : item.id === "refund" ? "refund" : item.id === "transfer" ? "transfer" : activeTemplate ? quickTemplates.find((template) => template.id === activeTemplate)?.category ?? "other" : "other"); if (item.id === "transfer") setEntryDetailsOpen(true); }}><Icon />{lang === "zh" ? item.zh : item.en}</button>; })}</div>
+            <label className="quick-entry-amount"><span>{lang === "zh" ? "金额" : "Amount"}</span><div><b>{sym}</b><input autoFocus inputMode="decimal" value={entryAmount} onChange={(event) => setEntryAmount(event.target.value)} placeholder="0.00" /></div></label>
+            <button type="button" className="quick-entry-details-toggle" onClick={() => setEntryDetailsOpen((open) => !open)}>{entryDetailsOpen ? (lang === "zh" ? "收起详细信息" : "Hide details") : (lang === "zh" ? "补充商户、分类和账户" : "Add merchant, category and account")}<ChevronDown className={entryDetailsOpen ? "open" : ""} /></button>
+            {entryDetailsOpen && <div className="quick-entry-details">
+              <label><span>{lang === "zh" ? (entryType === "income" ? "来源（选填）" : "商户（选填）") : "Merchant or source"}</span><input value={entryMerchant} onChange={(event) => setEntryMerchant(event.target.value)} placeholder={lang === "zh" ? "例如：公司食堂、兼职收入" : "e.g. cafeteria or freelance"} /></label>
+              <label><span>{lang === "zh" ? (entryType === "transfer" ? "转出账户" : "账户或付款方式") : "Account or payment"}</span><select value={entryPayment} onChange={(event) => setEntryPayment(event.target.value)}><option value="支付宝">支付宝</option><option value="微信">微信</option><option value="银行卡">银行卡</option><option value="现金">现金</option></select></label>
+              {entryType === "transfer" && <label><span>{lang === "zh" ? "转入账户" : "Destination account"}</span><select value={entryDestination} onChange={(event) => setEntryDestination(event.target.value)}><option value="支付宝">支付宝</option><option value="微信">微信</option><option value="银行卡">银行卡</option><option value="现金">现金</option></select></label>}
+              {entryType !== "transfer" && <label><span>{lang === "zh" ? "分类" : "Category"}</span><select value={entryCategory} onChange={(event) => setEntryCategory(event.target.value)}>{categoryOptions.map((category) => <option key={category.id} value={category.id}>{lang === "zh" ? category.zh : category.en}</option>)}</select></label>}
+              <label><span>{lang === "zh" ? "备注（选填）" : "Note (optional)"}</span><input value={entryNote} onChange={(event) => setEntryNote(event.target.value)} /></label>
+            </div>}
+            {entryError && <p className="quick-entry-error">{entryError}</p>}
+            <button type="submit" className="quick-entry-submit" disabled={entrySaving}>{entrySaving ? (lang === "zh" ? "保存中…" : "Saving…") : (lang === "zh" ? "保存到流水" : "Save to ledger")}</button>
+          </form>
+        </aside></>
       )}
     </main>
   );
 }
 
-function formatSourceLabel(source: string, t: (key: string) => string) {
-  const translated = t(`source.${source}`);
-  return translated === `source.${source}` ? source : translated;
+const quickTemplates = [
+  { id: "breakfast" as const, zh: "早餐", en: "Breakfast", icon: Sunrise, category: "dining" },
+  { id: "lunch" as const, zh: "午餐", en: "Lunch", icon: Sun, category: "dining" },
+  { id: "dinner" as const, zh: "晚餐", en: "Dinner", icon: Moon, category: "dining" },
+  { id: "transport" as const, zh: "交通", en: "Transport", icon: Bus, category: "transportation" },
+  { id: "groceries" as const, zh: "买菜", en: "Groceries", icon: ShoppingBasket, category: "groceries" },
+  { id: "daily" as const, zh: "日用品", en: "Daily goods", icon: PackageOpen, category: "shopping" },
+];
+
+const entryTypes = [
+  { id: "expense" as const, zh: "支出", en: "Expense", icon: ArrowUpRight },
+  { id: "income" as const, zh: "收入", en: "Income", icon: ArrowDownLeft },
+  { id: "refund" as const, zh: "退款", en: "Refund", icon: RotateCcw },
+  { id: "transfer" as const, zh: "转账", en: "Transfer", icon: ArrowLeftRight },
+];
+
+const categoryOptions = [
+  { id: "other", zh: "其他", en: "Other" },
+  { id: "dining", zh: "餐饮", en: "Dining" },
+  { id: "groceries", zh: "买菜日用", en: "Groceries" },
+  { id: "transportation", zh: "交通", en: "Transport" },
+  { id: "shopping", zh: "购物", en: "Shopping" },
+  { id: "housing", zh: "住房", en: "Housing" },
+  { id: "healthcare", zh: "健康医疗", en: "Healthcare" },
+  { id: "entertainment", zh: "休闲娱乐", en: "Entertainment" },
+  { id: "income", zh: "收入", en: "Income" },
+  { id: "refund", zh: "退款", en: "Refund" },
+];
+
+function manualMetadata(raw: unknown): Record<string, unknown> | null {
+  if (!raw) return null;
+  let value = raw;
+  if (typeof value === "string") {
+    try { value = JSON.parse(value); } catch { return null; }
+  }
+  if (!value || typeof value !== "object") return null;
+  const manual = (value as Record<string, unknown>).manual;
+  if (!manual || typeof manual !== "object") return null;
+  return manual as Record<string, unknown>;
 }
 
-function sanitizeBriefText(value?: string | null) {
-  if (!value) return "";
-  return value
-    .replace(/\*\*/g, "")
-    .replace(/__+/g, "")
-    .replace(/#{1,6}\s*/g, "")
-    .replace(/^\s*[-*]\s+/gm, "")
-    .replace(/\s*\n+\s*/g, " ")
-    .replace(/\s{2,}/g, " ")
-    .trim();
+function manualTemplateId(raw: unknown): TemplateId | null {
+  const manual = manualMetadata(raw);
+  const id = manual?.template_id || manual?.meal_tag;
+  return quickTemplates.some((template) => template.id === id) ? id as TemplateId : null;
 }
 
-function shortenText(value: string, maxLength: number) {
-  if (value.length <= maxLength) return value;
-  return `${value.slice(0, maxLength).trim()}…`;
+function manualEntryType(raw: unknown): EntryType | null {
+  const type = manualMetadata(raw)?.entry_type;
+  return type === "expense" || type === "income" || type === "refund" || type === "transfer" ? type : null;
 }
 
-function formatMoney(value: number, symbol: string) {
-  return `${symbol}${Math.abs(value).toLocaleString(undefined, {
-    maximumFractionDigits: 0,
-  })}`;
+function transactionDisplayAmount(transaction: TableTransaction): number {
+  if (manualEntryType(transaction.raw) === "transfer") {
+    const entered = Number(manualMetadata(transaction.raw)?.entered_amount ?? transaction.gross_amount ?? 0);
+    return Number.isFinite(entered) ? entered : 0;
+  }
+  return Math.abs(transaction.amount);
 }
 
-function buildHeroSummary({
-  lang,
-  sym,
-  hasData,
-  netCashFlow,
-  budgetStatus,
-  topCategory,
-  fallback,
-}: {
-  lang: string;
-  sym: string;
-  hasData: boolean;
-  netCashFlow: number | null;
-  budgetStatus: "good" | "watch" | "risk";
-  topCategory: CategorySpend | null;
-  fallback: string;
-}) {
-  if (!hasData || netCashFlow == null) return fallback;
-
-  const category = topCategory?.category ?? (lang === "zh" ? "最大弹性类别" : "largest flexible category");
-  const netText = formatMoney(netCashFlow, sym);
-
-  if (lang === "zh") {
-    if (netCashFlow < 0) {
-      return `支出超过收入 ${netText}，当前预算风险优先从「${category}」复核。`;
-    }
-    if (budgetStatus === "risk") {
-      return `本期现金流为正，但预算风险仍高；优先复核「${category}」。`;
-    }
-    return `本期现金流为正，继续保持节奏，并复核「${category}」的可控空间。`;
-  }
-
-  if (netCashFlow < 0) {
-    return `Spending exceeds income by ${netText}; review ${category} before changing fixed budgets.`;
-  }
-  if (budgetStatus === "risk") {
-    return `Cash flow is positive, but budget risk remains high; review ${category} first.`;
-  }
-  return `Cash flow is positive; maintain the rhythm and review controllable ${category} spend.`;
+function transactionStatusLabel(transaction: TableTransaction, lang: string): string {
+  if (transaction.is_duplicate) return lang === "zh" ? "疑似重复" : "Possible duplicate";
+  if (transaction.status === "awaiting_statement") return lang === "zh" ? "等待账单核对" : "Awaiting statement";
+  if (transaction.source === "manual") return lang === "zh" ? "手动记录" : "Manual entry";
+  return lang === "zh" ? "账单已确认" : "Statement confirmed";
 }
 
-function normalizeActionTitle(title: string | undefined, lang: string) {
-  if (!title) return lang === "zh" ? "导入账单以生成行动建议" : "Import statements to generate actions";
-  if (lang !== "zh") return title;
-  const lower = title.toLowerCase();
-  if (lower.includes("largest flexible")) return "复核最大弹性支出类别";
-  if (lower.includes("income") && lower.includes("recurring")) return "补全收入与固定支出画像";
-  if (lower.includes("duplicate")) return "检查跨源重复交易";
-  if (lower.includes("discretionary")) return "本周降低弹性支出";
-  if (lower.includes("shopping")) return "复核购物支出";
-  if (lower.includes("data quality")) return "确认数据质量";
-  if (lower.includes("import")) return "导入最近账单";
-  return title;
+function entryTypeLabel(type: EntryType, lang: string): string {
+  const item = entryTypes.find((entry) => entry.id === type)!;
+  return lang === "zh" ? item.zh : item.en;
 }
 
-function normalizeActionBody(body: string | undefined, lang: string) {
-  if (!body) return "";
-  if (lang !== "zh") return body;
-  const lower = body.toLowerCase();
-  if (lower.includes("largest recurring") || lower.includes("largest recurring category")) {
-    return "最快可控的节流空间通常来自最大且反复出现的支出类别。";
-  }
-  if (lower.includes("largest flexible")) {
-    return "先从最大弹性支出类别入手，识别重复购买、冲动消费和可推迟开销。";
-  }
-  if (lower.includes("stable income") || lower.includes("recurring cost")) {
-    return "预算基线需要稳定收入、房租/房贷、保险等固定支出信息。";
-  }
-  if (lower.includes("duplicates")) {
-    return "跨源重复交易会影响现金流判断，建议先复核再依赖报表。";
-  }
-  if (lower.includes("expense ratio")) {
-    return "支出占比已超过风险阈值，先用周级支出护栏控制弹性消费。";
-  }
-  if (lower.includes("no duplicate")) {
-    return "当前没有发现需要优先处理的重复交易。";
-  }
-  return body;
+function rankTemplates(templates: typeof quickTemplates, transactions: TableTransaction[]) {
+  const hour = new Date().getHours();
+  const timePriority: Partial<Record<TemplateId, number>> = hour < 10
+    ? { breakfast: 30, transport: 20 }
+    : hour < 15
+      ? { lunch: 30, transport: 10 }
+      : { dinner: 30, groceries: 20, daily: 10 };
+  const frequency = transactions.slice(-120).reduce((counts, transaction) => {
+    const id = manualTemplateId(transaction.raw);
+    if (id) counts[id] = (counts[id] ?? 0) + 1;
+    return counts;
+  }, {} as Partial<Record<TemplateId, number>>);
+  return [...templates].sort((left, right) =>
+    ((timePriority[right.id] ?? 0) + (frequency[right.id] ?? 0) * 2)
+    - ((timePriority[left.id] ?? 0) + (frequency[left.id] ?? 0) * 2));
 }
 
-function translateLevel(level: string) {
-  if (level === "high") return "高";
-  if (level === "medium") return "中";
-  if (level === "low") return "低";
-  return level;
+function dateValue(value: string): number {
+  return new Date(`${value}T00:00:00`).getTime();
 }
 
-function normalizeActionStatus(status: string | undefined, lang: string) {
-  if (!status) return lang === "zh" ? "CFO 建议" : "CFO recommendation";
-  if (lang !== "zh") return status;
-  const lower = status.toLowerCase();
-  if (lower.includes("high")) return "高优先级";
-  if (lower.includes("recommended")) return "建议执行";
-  if (lower.includes("healthy")) return "健康";
-  if (lower.includes("spending")) return "支出复核";
-  if (lower.includes("data")) return "数据质量";
-  if (lower.includes("verified")) return "已验证";
-  return status;
+function localIsoNow(): string {
+  const now = new Date();
+  const offsetMinutes = -now.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const offsetHours = Math.floor(Math.abs(offsetMinutes) / 60);
+  const offsetRemainder = Math.abs(offsetMinutes) % 60;
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}${sign}${pad(offsetHours)}:${pad(offsetRemainder)}`;
 }
 
-function topCategoryLabel(categoryData: CategorySpend[], lang: string) {
-  const top = [...categoryData].sort((a, b) => b.amount - a.amount)[0];
-  if (!top) {
-    return lang === "zh"
-      ? "等待账单导入后分析最大支出类别、异常消费和重复交易。"
-      : "Waiting for statement import to analyze top categories, anomalies, and duplicates.";
-  }
-  return lang === "zh"
-    ? `${top.category} 是当前最大支出类别，金额 ${top.amount.toLocaleString()} ${top.currency}。`
-    : `${top.category} is currently the largest expense category at ${top.amount.toLocaleString()} ${top.currency}.`;
+function dateLabel(value: string | undefined, lang: string): string {
+  if (!value) return "—";
+  const [year, month, day] = value.split("-");
+  return lang === "zh" ? `${Number(month)} 月 ${Number(day)} 日` : `${year}-${month}-${day}`;
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="import-metric">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
+function formatMoney(value: number, symbol: string): string {
+  return `${symbol}${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
 }

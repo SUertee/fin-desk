@@ -322,6 +322,7 @@ def list_daily_totals_db(
                     FROM transactions
                     WHERE user_id = %s AND date BETWEEN %s AND %s
                           AND NOT is_duplicate
+                          AND NOT (source = 'bank_icbc' AND category = 'transfer')
                     GROUP BY date
                     ORDER BY date ASC
                     """,

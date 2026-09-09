@@ -1,6 +1,8 @@
 import React from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 import { currencySymbol } from './MetricsCards';
+import { useI18n } from '../i18n';
+import { financeCategoryLabel } from '../utils/financeLabels';
 
 const COLORS = [
   '#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6',
@@ -18,11 +20,12 @@ interface CategoryPieChartProps {
 }
 
 export function CategoryPieChart({ data }: CategoryPieChartProps) {
+  const { lang } = useI18n();
   if (data.length === 0) {
     return (
       <div className="dashboard-card">
-        <h3 className="dashboard-card-title">Spending by Category</h3>
-        <div className="dashboard-empty">Import transactions to see category mix.</div>
+        <h3 className="dashboard-card-title">{lang === 'zh' ? '消费分类' : 'Spending by category'}</h3>
+        <div className="dashboard-empty">{lang === 'zh' ? '导入交易后即可查看分类占比。' : 'Import transactions to see category mix.'}</div>
       </div>
     );
   }
@@ -36,7 +39,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
 
   return (
     <div className="dashboard-card">
-      <h3 className="dashboard-card-title">Spending by Category</h3>
+      <h3 className="dashboard-card-title">{lang === 'zh' ? '消费分类' : 'Spending by category'}</h3>
       {Object.entries(byCurrency).map(([currency, items]) => {
         // Top 8 + "other"
         const sorted = [...items].sort((a, b) => b.amount - a.amount);
@@ -50,7 +53,8 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
             currency,
           });
         }
-        const total = chartData.reduce((s, i) => s + i.amount, 0);
+        const displayData = chartData.map((item) => ({ ...item, category: financeCategoryLabel(item.category, lang) }));
+        const total = displayData.reduce((s, i) => s + i.amount, 0);
         const sym = currencySymbol(currency);
 
         return (
@@ -59,7 +63,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={chartData}
+                    data={displayData}
                     dataKey="amount"
                     nameKey="category"
                     cx="50%"
@@ -68,7 +72,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
                     outerRadius={85}
                     paddingAngle={2}
                   >
-                    {chartData.map((_, index) => (
+                    {displayData.map((_, index) => (
                       <Cell key={index} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
@@ -84,7 +88,7 @@ export function CategoryPieChart({ data }: CategoryPieChartProps) {
                 <div className="text-xs text-gray-500 mb-2">{currency}</div>
               )}
               <div className="space-y-2">
-                {chartData.map((item, index) => {
+                {displayData.map((item, index) => {
                   const pct = total > 0 ? ((item.amount / total) * 100).toFixed(1) : '0';
                   return (
                     <div key={item.category} className="flex items-center gap-2 text-xs">

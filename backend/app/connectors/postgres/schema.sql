@@ -57,6 +57,17 @@ CREATE TABLE IF NOT EXISTS user_profiles (
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS preferences JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE user_profiles ADD COLUMN IF NOT EXISTS cost_preferences JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+-- Forward-looking obligations are stored separately from completed ledger rows.
+CREATE TABLE IF NOT EXISTS cash_plans (
+    user_id         TEXT PRIMARY KEY,
+    currency        TEXT NOT NULL DEFAULT 'CNY',
+    cash_balance    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    daily_budget    DOUBLE PRECISION NOT NULL DEFAULT 0,
+    monthly_budget  DOUBLE PRECISION NOT NULL DEFAULT 0,
+    entries         JSONB NOT NULL DEFAULT '[]'::jsonb,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Chat history
 CREATE TABLE IF NOT EXISTS chat_history (
     id          BIGSERIAL PRIMARY KEY,

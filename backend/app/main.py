@@ -26,6 +26,7 @@ from app.integrations.agenthub import router as agenthub_router
 from app.routes.ai_costs import router as ai_costs_router
 from app.routes.chat import router as chat_router
 from app.routes.capabilities import router as capabilities_router
+from app.routes.cash_plan import router as cash_plan_router
 from app.routes.data_sources import router as data_sources_router
 from app.routes.evals import router as evals_router
 from app.routes.health import router as health_router
@@ -87,6 +88,7 @@ app.include_router(health_router)
 app.include_router(auth_router)
 app.include_router(chat_router)
 app.include_router(capabilities_router)
+app.include_router(cash_plan_router)
 app.include_router(data_sources_router)
 app.include_router(evals_router)
 app.include_router(profile_router)

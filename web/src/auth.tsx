@@ -6,7 +6,7 @@ import {
   useEffect,
   useState,
 } from "react";
-import { LockKeyhole } from "lucide-react";
+import { ArrowRight, ShieldCheck } from "lucide-react";
 import {
   fetchAuthSession,
   fetchAuthStatus,
@@ -115,12 +115,12 @@ function RegistrationScreen({
   return (
     <main className="auth-page">
       <section className="auth-card" aria-labelledby="register-title">
-        <div className="auth-brand"><span>F</span><strong>FinDesk</strong></div>
-        <div className="auth-icon"><LockKeyhole /></div>
-        <p className="auth-eyebrow">ONE-TIME OWNER SETUP</p>
-        <h1 id="register-title">创建你的管理员账号</h1>
-        <p className="auth-intro">这是一次性初始化。创建成功后，注册入口会自动关闭。</p>
-        <form onSubmit={submit} className="auth-form">
+        <AuthStory />
+        <div className="auth-panel">
+          <p className="auth-eyebrow">首次使用</p>
+          <h1 id="register-title">创建管理员账号</h1>
+          <p className="auth-intro">只需初始化一次，完成后注册入口会自动关闭。</p>
+          <form onSubmit={submit} className="auth-form">
           <label>
             <span>登录邮箱</span>
             <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" required autoFocus />
@@ -138,11 +138,30 @@ function RegistrationScreen({
             <input type="password" value={setupToken} onChange={(event) => setSetupToken(event.target.value)} autoComplete="one-time-code" minLength={16} required />
           </label>
           {error && <p className="auth-error" role="alert">{error}</p>}
-          <button type="submit" disabled={submitting}>{submitting ? "正在创建…" : "创建并登录"}</button>
-        </form>
-        <p className="auth-footnote">初始化码只用于创建第一个账号，不是日常登录密码。</p>
+            <button type="submit" disabled={submitting}><span>{submitting ? "正在创建…" : "创建并登录"}</span><ArrowRight /></button>
+          </form>
+          <p className="auth-footnote"><ShieldCheck /> 初始化码只用于创建第一个账号，不是日常登录密码。</p>
+        </div>
       </section>
     </main>
+  );
+}
+
+function AuthStory() {
+  return (
+    <aside className="auth-story">
+      <div className="auth-brand"><span>F</span><strong>FinDesk</strong></div>
+      <div className="auth-story-copy">
+        <p>PERSONAL FINANCE DESK</p>
+        <h2>财务压力，<br />应该被算清楚。</h2>
+        <span>把账单、债务和下一步计划放在同一个清晰的视图里。</span>
+      </div>
+      <div className="auth-story-points">
+        <div><span>01</span><strong>看清每天的钱去了哪里</strong></div>
+        <div><span>02</span><strong>提前发现还款资金缺口</strong></div>
+        <div><span>03</span><strong>和个人 CFO 讨论下一步</strong></div>
+      </div>
+    </aside>
   );
 }
 
@@ -169,12 +188,12 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =>
   return (
     <main className="auth-page">
       <section className="auth-card" aria-labelledby="auth-title">
-        <div className="auth-brand"><span>F</span><strong>FinDesk</strong></div>
-        <div className="auth-icon"><LockKeyhole /></div>
-        <p className="auth-eyebrow">PRIVATE FINANCE WORKSPACE</p>
-        <h1 id="auth-title">登录你的财务工作台</h1>
-        <p className="auth-intro">账单、财务档案与 CFO 对话仅对已验证用户开放。</p>
-        <form onSubmit={submit} className="auth-form">
+        <AuthStory />
+        <div className="auth-panel">
+          <p className="auth-eyebrow">欢迎回来</p>
+          <h1 id="auth-title">登录你的财务工作台</h1>
+          <p className="auth-intro">继续查看你的现金流、账单和计划。</p>
+          <form onSubmit={submit} className="auth-form">
           <label>
             <span>邮箱</span>
             <input
@@ -197,11 +216,12 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (user: AuthUser) =>
             />
           </label>
           {error && <p className="auth-error" role="alert">{error}</p>}
-          <button type="submit" disabled={submitting}>
-            {submitting ? "正在验证…" : "安全登录"}
-          </button>
-        </form>
-        <p className="auth-footnote">FinDesk 不会通过此页面索取银行密码或支付验证码。</p>
+            <button type="submit" disabled={submitting}>
+              <span>{submitting ? "正在验证…" : "安全登录"}</span><ArrowRight />
+            </button>
+          </form>
+          <p className="auth-footnote"><ShieldCheck /> FinDesk 不会索取银行密码或支付验证码。</p>
+        </div>
       </section>
     </main>
   );

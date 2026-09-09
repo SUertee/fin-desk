@@ -15,7 +15,11 @@ from app.services.summaries import build_category_summary
 
 
 def _active_transactions(transactions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [t for t in transactions if not t.get("is_duplicate")]
+    return [
+        t for t in transactions
+        if not t.get("is_duplicate")
+        and not (t.get("source") == "bank_icbc" and t.get("category") == "transfer")
+    ]
 
 
 def _round_money(value: float) -> float:

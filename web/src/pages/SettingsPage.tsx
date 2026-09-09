@@ -25,8 +25,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import {
   fetchCapabilities,
+  fetchCashPlan,
+  saveCashPlan,
   updateProfile,
   type CapabilityCatalogItem,
+  type CashPlanEntry,
+  type CashPlanResponse,
   type DataSourceStatus,
   type ProfileUpdatePayload,
 } from "../services/financeApi";
@@ -59,6 +63,11 @@ type ProfileForm = {
   name: string;
   occupation: string;
   monthly_income: string;
+  salary_day: string;
+  rent_amount: string;
+  rent_day: string;
+  daily_budget: string;
+  monthly_budget: string;
   monthly_expenses: string;
   cash_balance: string;
   savings: string;
@@ -108,12 +117,20 @@ export function SettingsPage({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [cashPlan, setCashPlan] = useState<CashPlanResponse | null>(null);
 
   useEffect(() => {
-    const next = buildProfileForm(profile, profileName, monthlyIncome);
+    const next = applyCashPlanToForm(
+      buildProfileForm(profile, profileName, monthlyIncome),
+      cashPlan
+    );
     setForm(next);
     setSavedForm(next);
-  }, [profile, profileName, monthlyIncome]);
+  }, [profile, profileName, monthlyIncome, cashPlan]);
+
+  useEffect(() => {
+    fetchCashPlan(userId).then(setCashPlan).catch(() => setCashPlan(null));
+  }, [userId]);
 
   useEffect(() => {
     setActiveSection(initialSection);
@@ -169,6 +186,34 @@ export function SettingsPage({
         },
       };
       await updateProfile(userId, payload);
+      if (cashPlan) {
+        const fixedEntries: CashPlanEntry[] = [];
+        if (parseMoney(form.monthly_income) > 0) {
+          fixedEntries.push(fixedPlanEntry(
+            cashPlan.plan.entries, "income", "salary",
+            localize(lang, "工资", "Salary"), parseMoney(form.monthly_income),
+            parseDay(form.salary_day, 15)
+          ));
+        }
+        if (parseMoney(form.rent_amount) > 0) {
+          fixedEntries.push(fixedPlanEntry(
+            cashPlan.plan.entries, "housing", "rent",
+            localize(lang, "房租", "Rent"), parseMoney(form.rent_amount),
+            parseDay(form.rent_day, 1)
+          ));
+        }
+        const variableEntries = cashPlan.plan.entries.filter(
+          (entry) => entry.kind !== "income" && entry.kind !== "housing"
+        );
+        const nextPlan = await saveCashPlan(userId, {
+          currency: cashPlan.plan.currency,
+          cash_balance: parseMoney(form.cash_balance),
+          daily_budget: parseMoney(form.daily_budget),
+          monthly_budget: parseMoney(form.monthly_budget),
+          entries: [...fixedEntries, ...variableEntries],
+        });
+        setCashPlan(nextPlan);
+      }
       setSavedForm(form);
       setSaveMessage(localize(lang, "个人资料已保存", "Profile saved"));
       await onProfileSaved?.();
@@ -359,14 +404,24 @@ function ProfilePanel({
             }
           />
         </Field>
-        <Field label={localize(lang, "月收入", "Monthly income")}>
-          <input
-            value={form.monthly_income}
-            onChange={(event) =>
-              setForm((prev) => ({ ...prev, monthly_income: event.target.value }))
-            }
-          />
+      </SettingsPanelCard>
+
+      <SettingsPanelCard icon={<WalletCards />} title={localize(lang, "固定收支", "Recurring finances")}>
+        <Field label={localize(lang, "每月工资", "Monthly salary")}>
+          <input inputMode="decimal" value={form.monthly_income} onChange={(event) => setForm((prev) => ({ ...prev, monthly_income: event.target.value }))} />
         </Field>
+        <Field label={localize(lang, "发薪日", "Payday")}>
+          <input type="number" min="1" max="28" value={form.salary_day} onChange={(event) => setForm((prev) => ({ ...prev, salary_day: event.target.value }))} />
+        </Field>
+        <Field label={localize(lang, "每月房租", "Monthly rent")}>
+          <input inputMode="decimal" value={form.rent_amount} onChange={(event) => setForm((prev) => ({ ...prev, rent_amount: event.target.value }))} />
+        </Field>
+        <Field label={localize(lang, "房租日", "Rent due day")}>
+          <input type="number" min="1" max="28" value={form.rent_day} onChange={(event) => setForm((prev) => ({ ...prev, rent_day: event.target.value }))} />
+        </Field>
+        <p className="settings-v2-card-note">
+          {localize(lang, "保存后，工作台会自动更新工资和房租的未来日期。", "Saving updates future salary and rent dates in the workspace automatically.")}
+        </p>
       </SettingsPanelCard>
 
       <SettingsPanelCard icon={<Goal />} title={localize(lang, "风险偏好与目标", "Risk & goals")}>
@@ -450,6 +505,18 @@ function ProfilePanel({
           onChange={(value) =>
             setForm((prev) => ({ ...prev, monthly_expenses: value }))
           }
+        />
+        <BaselineField
+          label={localize(lang, "每日生活上限", "Daily living limit")}
+          value={form.daily_budget}
+          percent={form.daily_budget ? 35 : null}
+          onChange={(value) => setForm((prev) => ({ ...prev, daily_budget: value }))}
+        />
+        <BaselineField
+          label={localize(lang, "月生活预算", "Monthly living budget")}
+          value={form.monthly_budget}
+          percent={form.monthly_budget ? 60 : null}
+          onChange={(value) => setForm((prev) => ({ ...prev, monthly_budget: value }))}
         />
         <BaselineField
           label={localize(lang, "储蓄目标", "Savings target")}
@@ -932,6 +999,11 @@ function buildProfileForm(
         : monthlyIncome > 0
           ? formatNumberInput(monthlyIncome)
           : "",
+    salary_day: "15",
+    rent_amount: "",
+    rent_day: "1",
+    daily_budget: "",
+    monthly_budget: "",
     monthly_expenses:
       profile?.monthly_expenses != null ? formatNumberInput(profile.monthly_expenses) : "",
     cash_balance:
@@ -955,6 +1027,62 @@ function buildProfileForm(
         ? formatNumberInput(profile.cost_preferences.monthly_ai_budget)
         : "",
     notes: profile?.notes || "",
+  };
+}
+
+function applyCashPlanToForm(form: ProfileForm, response: CashPlanResponse | null): ProfileForm {
+  if (!response) return form;
+  const salary = response.plan.entries.find((entry) => entry.kind === "income" && entry.recurrence === "monthly");
+  const rent = response.plan.entries.find((entry) => entry.kind === "housing" && entry.recurrence === "monthly");
+  return {
+    ...form,
+    monthly_income: salary ? formatNumberInput(salary.amount) : form.monthly_income,
+    salary_day: salary ? String(Number(salary.due_date.slice(8, 10))) : form.salary_day,
+    rent_amount: rent ? formatNumberInput(rent.amount) : "",
+    rent_day: rent ? String(Number(rent.due_date.slice(8, 10))) : "1",
+    daily_budget: formatNumberInput(response.plan.daily_budget),
+    monthly_budget: formatNumberInput(response.plan.monthly_budget),
+  };
+}
+
+function parseDay(value: string, fallback: number): number {
+  const day = Math.trunc(Number(value));
+  return day >= 1 && day <= 28 ? day : fallback;
+}
+
+function nextMonthlyDate(day: number): string {
+  const now = new Date();
+  const candidate = new Date(now.getFullYear(), now.getMonth(), day);
+  if (candidate < new Date(now.getFullYear(), now.getMonth(), now.getDate())) {
+    candidate.setMonth(candidate.getMonth() + 1);
+  }
+  const year = candidate.getFullYear();
+  const month = String(candidate.getMonth() + 1).padStart(2, "0");
+  return `${year}-${month}-${String(day).padStart(2, "0")}`;
+}
+
+function fixedPlanEntry(
+  entries: CashPlanEntry[],
+  kind: "income" | "housing",
+  id: string,
+  name: string,
+  amount: number,
+  day: number
+): CashPlanEntry {
+  const existing = entries.find((entry) => entry.kind === kind && entry.recurrence === "monthly");
+  return {
+    id: existing?.id ?? id,
+    name: existing?.name ?? name,
+    kind,
+    amount,
+    due_date: nextMonthlyDate(day),
+    recurrence: "monthly",
+    recurring_amount: null,
+    remaining_occurrences: existing?.remaining_occurrences ?? 120,
+    outstanding_balance: null,
+    essential: true,
+    status: "active",
+    notes: existing?.notes ?? "",
   };
 }
 

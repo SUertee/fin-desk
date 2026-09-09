@@ -13,6 +13,11 @@ const STORAGE_KEY = "findesk-lang";
 const translations: Record<string, { zh: string; en: string }> = {
   // topbar / navigation
   "nav.workspace": { zh: "财务工作台", en: "Finance Workspace" },
+  "nav.today": { zh: "今日", en: "Today" },
+  "nav.ledger": { zh: "流水", en: "Ledger" },
+  "nav.plan": { zh: "计划", en: "Plan" },
+  "nav.cfo": { zh: "CFO", en: "CFO" },
+  "nav.cashPlan": { zh: "现金计划", en: "Cash Plan" },
   "nav.investments": { zh: "投资研究", en: "Investment Research" },
   "nav.office": { zh: "CFO 办公室", en: "CFO Office" },
   "nav.settings": { zh: "设置", en: "Settings" },

@@ -1,6 +1,7 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { currencySymbol } from './MetricsCards';
+import { useI18n } from '../i18n';
 
 interface MonthlyData {
   month: string;
@@ -14,10 +15,11 @@ interface MonthlyTrendsProps {
 }
 
 export function MonthlyTrends({ data, currency = 'CNY' }: MonthlyTrendsProps) {
+  const { lang } = useI18n();
   const sym = currencySymbol(currency);
   return (
     <div className="dashboard-card">
-      <h3 className="dashboard-card-title">Cash Flow Trend</h3>
+      <h3 className="dashboard-card-title">{lang === 'zh' ? '月度收支趋势' : 'Cash flow trend'}</h3>
       
       <ResponsiveContainer width="100%" height={280}>
         <BarChart data={data}>
@@ -48,13 +50,13 @@ export function MonthlyTrends({ data, currency = 'CNY' }: MonthlyTrendsProps) {
           <Bar 
             dataKey="income" 
             fill="#10b981" 
-            name="Income"
+            name={lang === 'zh' ? '收入' : 'Income'}
             radius={[4, 4, 0, 0]}
           />
           <Bar 
             dataKey="expenses" 
             fill="#ef4444" 
-            name="Expenses"
+            name={lang === 'zh' ? '支出' : 'Expenses'}
             radius={[4, 4, 0, 0]}
           />
         </BarChart>

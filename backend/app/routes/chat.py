@@ -19,6 +19,7 @@ from app.runtime.orchestration.factory import build_finance_runtime
 from app.connectors.postgres.office_store import get_session_db, update_session_db
 from app.services.memory import clear_history, get_chat_history, save_message
 from app.services.user_store import get_profile
+from app.services.cash_plan import cash_plan_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -69,10 +70,12 @@ async def chat(req: ChatRequest):
             chat_history=chat_history,
             session_id=session_id,
         )
+        profile_data = profile.model_dump()
+        profile_data["cash_plan"] = cash_plan_context(req.user_id)
         result = await _runtime.handle(
             user_id=req.user_id,
             message=req.message,
-            profile=profile.model_dump(),
+            profile=profile_data,
             transactions=txns,
             monthly_totals=monthly_totals,
             chat_history=chat_history,
@@ -119,10 +122,12 @@ async def chat_stream(req: ChatRequest):
                 chat_history=chat_history,
                 session_id=session_id,
             )
+            profile_data = profile.model_dump()
+            profile_data["cash_plan"] = cash_plan_context(req.user_id)
             result = await _runtime.handle(
                 user_id=req.user_id,
                 message=req.message,
-                profile=profile.model_dump(),
+                profile=profile_data,
                 transactions=txns,
                 monthly_totals=monthly_totals,
                 chat_history=chat_history,

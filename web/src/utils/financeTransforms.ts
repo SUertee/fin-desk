@@ -17,10 +17,15 @@ export type MonthlyTotal = {
   count: number;
 };
 
+function isActualLedgerActivity(t: TransactionRow) {
+  return !t.is_duplicate && !(t.source === "bank_icbc" && t.category === "transfer");
+}
+
 export function computeMonthlyTotalsFromTxs(txs: TransactionRow[]): MonthlyTotal[] {
   const map = new Map<string, MonthlyTotal>();
 
   for (const t of txs) {
+    if (!isActualLedgerActivity(t)) continue;
     const month = t.month || (t.date ? t.date.slice(0, 7) : "unknown");
     const amt = Number(t.amount || 0);
 
@@ -61,7 +66,7 @@ export function computeMonthlyTotalsFromTxs(txs: TransactionRow[]): MonthlyTotal
 export function summarizeByCurrency(txs: TransactionRow[]) {
   const map: Record<string, { income: number; expense: number }> = {};
   for (const t of txs) {
-    if (t.is_duplicate) continue;
+    if (!isActualLedgerActivity(t)) continue;
     const cur = t.currency || "CNY";
     if (!map[cur]) map[cur] = { income: 0, expense: 0 };
     const amt = Number(t.amount || 0);
@@ -85,16 +90,65 @@ export function toMonthlyTrendsData(monthlyTotals: MonthlyTotal[]) {
 }
 
 export function toTableTransactions(txs: TransactionRow[]) {
+  const linkedByCanonicalId = new Map<string, TransactionRow[]>();
+  for (const transaction of txs) {
+    if (!transaction.duplicate_of) continue;
+    const linked = linkedByCanonicalId.get(String(transaction.duplicate_of)) ?? [];
+    linked.push(transaction);
+    linkedByCanonicalId.set(String(transaction.duplicate_of), linked);
+  }
+
+  const generic = new Set(["", "—", "消费", "支出", "付款", "交易", "payment", "purchase"]);
+  const detailScore = (transaction: TransactionRow) => {
+    const counterparty = (transaction.counterparty ?? "").trim().toLocaleLowerCase();
+    const description = (transaction.description ?? "").trim().toLocaleLowerCase();
+    return (generic.has(counterparty) ? 0 : 2) + (generic.has(description) ? 0 : 1);
+  };
+
   return txs.map((t, index) => ({
+    ...(() => {
+      const linked = linkedByCanonicalId.get(String(t.id ?? "")) ?? [];
+      const detail = [...linked].sort((a, b) => detailScore(b) - detailScore(a))[0];
+      const ownCounterparty = (t.counterparty ?? "").trim();
+      const ownDescription = (t.description ?? "").trim();
+      const merchant = generic.has(ownCounterparty.toLocaleLowerCase())
+        ? (detail?.counterparty || detail?.description || ownCounterparty || ownDescription || "—")
+        : ownCounterparty;
+      const description = generic.has(ownDescription.toLocaleLowerCase())
+        ? (detail?.description || ownDescription)
+        : ownDescription;
+      const ownCategory = (t.category ?? "").trim();
+      const category = ["", "other", "uncategorized", "其他"].includes(ownCategory.toLocaleLowerCase())
+        ? (detail?.category || ownCategory || "Uncategorized")
+        : ownCategory;
+      return {
+        merchant,
+        description,
+        category,
+        matched_sources: Array.from(new Set(linked.map((item) => item.source).filter(Boolean))) as string[],
+        matched_source_file: detail?.source_file ?? "",
+        matched_external_id: detail?.external_id ?? "",
+        matched_merchant_order_id: detail?.merchant_order_id ?? "",
+        matched_raw: detail?.raw ?? null,
+      };
+    })(),
     id: t.id ?? String(index + 1),
     date: t.date ?? "—",
     month: t.month ?? t.date?.slice(0, 7) ?? "—",
-    merchant: t.description ?? "—",
-    category: t.category ?? "Uncategorized",
     amount: Number(t.amount ?? 0),
+    gross_amount: Number((t as TransactionRow & { gross_amount?: number }).gross_amount ?? Math.abs(Number(t.amount ?? 0))),
     currency: t.currency ?? "CNY",
     source: t.source ?? "manual",
     payment_method: t.payment_method ?? "",
+    status: t.status ?? "",
+    direction: t.direction ?? "",
+    type: t.type ?? "",
+    created_at: t.created_at ?? "",
+    note: t.note ?? "",
+    external_id: t.external_id ?? "",
+    merchant_order_id: t.merchant_order_id ?? "",
+    source_file: t.source_file ?? "",
+    raw: t.raw ?? null,
     is_duplicate: t.is_duplicate ?? false,
   }));
 }
@@ -125,7 +179,7 @@ export function computeSourceBreakdown(txs: TransactionRow[]) {
 export function computeCategoryData(txs: TransactionRow[]) {
   const catMap: Record<string, { amount: number; currency: string }> = {};
   for (const t of txs) {
-    if (t.is_duplicate) continue;
+    if (!isActualLedgerActivity(t)) continue;
     const amt = Number(t.amount || 0);
     if (amt >= 0) continue;
     const cat = t.category || "其他";
@@ -144,7 +198,7 @@ export function computeCategoryData(txs: TransactionRow[]) {
 export function computeCurrentMonthExpense(txs: TransactionRow[], currentMonth: string) {
   let total = 0;
   for (const t of txs) {
-    if (t.is_duplicate) continue;
+    if (!isActualLedgerActivity(t)) continue;
     const m = t.month || t.date?.slice(0, 7);
     if (m !== currentMonth) continue;
     const amt = Number(t.amount || 0);
@@ -157,7 +211,7 @@ export function computeCurrentMonthExpense(txs: TransactionRow[], currentMonth: 
 export function computeCategoryComparison(txs: TransactionRow[], currentMonth: string) {
   const months: Record<string, Record<string, number>> = {};
   for (const t of txs) {
-    if (t.is_duplicate) continue;
+    if (!isActualLedgerActivity(t)) continue;
     const amt = Number(t.amount || 0);
     if (amt >= 0) continue;
     const m = t.month || t.date?.slice(0, 7) || "unknown";

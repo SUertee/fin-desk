@@ -1,1 +1,1 @@
-export type PageId = "workspace" | "investments" | "office" | "inbox" | "settings";
+export type PageId = "workspace" | "ledger" | "cash-plan" | "investments" | "office" | "inbox" | "settings";

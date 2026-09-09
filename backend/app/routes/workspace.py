@@ -15,6 +15,7 @@ from app.connectors.postgres.transactions_store import (
 from app.models.workspace import BriefPeriod, WorkspaceBrief
 from app.routes.chat import _runtime
 from app.services.user_store import get_profile
+from app.services.cash_plan import cash_plan_context
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -49,7 +50,8 @@ async def get_workspace_brief(user_id: str):
                 has_data=False,
             )
 
-        version = _ledger_version(transactions)
+        plan_context = cash_plan_context(user_id)
+        version = f"{_ledger_version(transactions)}:{plan_context['plan']['updated_at']}"
         cached = _brief_cache.get(user_id)
         if cached and cached[0] == version:
             return cached[1]
@@ -57,10 +59,12 @@ async def get_workspace_brief(user_id: str):
         run = get_latest_analysis_run_db(user_id)
         monthly_totals = run.get("monthly_totals", []) if run else []
         profile = get_profile(user_id)
+        profile_data = profile.model_dump()
+        profile_data["cash_plan"] = plan_context
         result = await _runtime.handle(
             user_id=user_id,
             message=BRIEF_INTENT,
-            profile=profile.model_dump(),
+            profile=profile_data,
             transactions=transactions,
             monthly_totals=monthly_totals,
             chat_history=[],

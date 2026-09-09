@@ -69,7 +69,7 @@ describe("AuthGate", () => {
 
     render(<AuthGate><div>private workspace</div></AuthGate>);
 
-    await screen.findByRole("heading", { name: "创建你的管理员账号" });
+    await screen.findByRole("heading", { name: "创建管理员账号" });
     expect(screen.getByLabelText("服务器初始化码")).toBeTruthy();
   });
 

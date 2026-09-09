@@ -21,8 +21,6 @@ from app.auth.store import (
 from app.config.settings import AuthSettings
 
 SESSION_COOKIE = "findesk_session"
-_DUMMY_PASSWORD_HASH = hash_password("not-a-real-findesk-owner-password")
-
 _attempt_lock = threading.Lock()
 _failed_attempts: deque[float] = deque()
 
@@ -46,7 +44,13 @@ def login(settings: AuthSettings, *, email: str, password: str) -> tuple[str, di
             "email": settings.email,
             "password_hash": settings.password_hash,
         }
-    candidate_hash = owner["password_hash"] if owner else _DUMMY_PASSWORD_HASH
+    # Keep the timing-safe dummy hash lazy so a local deployment with
+    # authentication disabled does not require the optional password runtime.
+    candidate_hash = (
+        owner["password_hash"]
+        if owner
+        else hash_password("not-a-real-findesk-owner-password")
+    )
     valid_password = verify_password(candidate_hash, password)
     if owner is None or not valid_password:
         _record_failure(settings)
