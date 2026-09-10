@@ -51,7 +51,12 @@ async def get_workspace_brief(user_id: str):
             )
 
         plan_context = cash_plan_context(user_id)
-        version = f"{_ledger_version(transactions)}:{plan_context['plan']['updated_at']}"
+        plan_version = (
+            plan_context["plan"]["updated_at"]
+            if plan_context["configured"]
+            else "unconfigured"
+        )
+        version = f"{_ledger_version(transactions)}:{plan_version}"
         cached = _brief_cache.get(user_id)
         if cached and cached[0] == version:
             return cached[1]

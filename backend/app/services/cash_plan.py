@@ -3,18 +3,16 @@
 import calendar
 from datetime import date, datetime, timedelta, timezone
 
-from app.connectors.postgres.cash_plan_store import get_cash_plan_db, save_cash_plan_db
+from app.connectors.postgres.cash_plan_store import (
+    CashPlanStorageError,
+    get_cash_plan_db,
+    save_cash_plan_db,
+)
 from app.models.cash_plan import CashPlan, CashPlanEntry, CashPlanUpdate
 
-_cache: dict[str, CashPlan] = {}
-
-
-def get_cash_plan(user_id: str) -> CashPlan:
-    if user_id in _cache:
-        return _cache[user_id]
-    plan = get_cash_plan_db(user_id) or CashPlan(user_id=user_id)
-    _cache[user_id] = plan
-    return plan
+def get_cash_plan(user_id: str) -> CashPlan | None:
+    """Return a configured plan, keeping 'not configured' distinct from failure."""
+    return get_cash_plan_db(user_id)
 
 
 def update_cash_plan(user_id: str, req: CashPlanUpdate) -> CashPlan:
@@ -27,7 +25,6 @@ def update_cash_plan(user_id: str, req: CashPlanUpdate) -> CashPlan:
         entries=req.entries,
         updated_at=datetime.now(timezone.utc),
     )
-    _cache[user_id] = plan
     save_cash_plan_db(plan)
     return plan
 
@@ -123,8 +120,25 @@ def build_cash_projection(
 
 
 def cash_plan_context(user_id: str) -> dict:
-    plan = get_cash_plan(user_id)
+    try:
+        plan = get_cash_plan(user_id)
+    except CashPlanStorageError:
+        return {
+            "available": False,
+            "configured": False,
+            "plan": None,
+            "projection": None,
+        }
+    if plan is None:
+        return {
+            "available": True,
+            "configured": False,
+            "plan": None,
+            "projection": None,
+        }
     return {
+        "available": True,
+        "configured": True,
         "plan": plan.model_dump(mode="json"),
         "projection": build_cash_projection(plan),
     }

@@ -130,7 +130,8 @@ export type CashProjectionEvent = {
   running_balance: number;
 };
 
-export type CashPlanResponse = {
+export type ConfiguredCashPlanResponse = {
+  configured: true;
   plan: CashPlan;
   projection: {
     as_of: string;
@@ -147,6 +148,14 @@ export type CashPlanResponse = {
   };
 };
 
+export type UnconfiguredCashPlanResponse = {
+  configured: false;
+  plan: null;
+  projection: null;
+};
+
+export type CashPlanResponse = ConfiguredCashPlanResponse | UnconfiguredCashPlanResponse;
+
 export async function fetchCashPlan(userId: string): Promise<CashPlanResponse> {
   const response = await authFetch(`${apiBaseUrl}/cash-plan/${encodeURIComponent(userId)}`);
   if (!response.ok) throw new Error(await response.text());
@@ -156,14 +165,14 @@ export async function fetchCashPlan(userId: string): Promise<CashPlanResponse> {
 export async function saveCashPlan(
   userId: string,
   plan: Omit<CashPlan, "user_id" | "updated_at">
-): Promise<CashPlanResponse> {
+): Promise<ConfiguredCashPlanResponse> {
   const response = await authFetch(`${apiBaseUrl}/cash-plan/${encodeURIComponent(userId)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(plan),
   });
   if (!response.ok) throw new Error(await response.text());
-  return (await response.json()) as CashPlanResponse;
+  return (await response.json()) as ConfiguredCashPlanResponse;
 }
 
 export async function fetchDailyTotals(

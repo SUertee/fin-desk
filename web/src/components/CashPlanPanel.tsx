@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bot, CalendarDays, ChevronDown, Pencil, Plus, Save, SlidersHorizontal, Trash2, WalletCards } from "lucide-react";
 
 import { useI18n } from "../i18n";
-import { fetchCashPlan, saveCashPlan, type CashPlanEntry, type CashPlanKind, type CashPlanResponse } from "../services/financeApi";
+import { fetchCashPlan, saveCashPlan, type CashPlan, type CashPlanEntry, type CashPlanKind, type CashPlanResponse } from "../services/financeApi";
 
 type Props = { userId: string; onAskCfo?: (question: string) => void; onOpenSettings?: () => void };
 
@@ -27,7 +27,7 @@ export function CashPlanPanel({ userId, onAskCfo, onOpenSettings }: Props) {
   const { lang } = useI18n();
   const zh = lang === "zh";
   const [data, setData] = useState<CashPlanResponse | null>(null);
-  const [draft, setDraft] = useState<CashPlanResponse["plan"] | null>(null);
+  const [draft, setDraft] = useState<CashPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -39,7 +39,7 @@ export function CashPlanPanel({ userId, onAskCfo, onOpenSettings }: Props) {
     let live = true;
     setLoading(true);
     fetchCashPlan(userId).then((next) => {
-      if (live) { setData(next); setDraft(next.plan); setError(""); }
+      if (live) { setData(next); setDraft(next.configured ? next.plan : null); setError(""); }
     }).catch((err) => live && setError(String(err))).finally(() => live && setLoading(false));
     return () => { live = false; };
   }, [userId]);
@@ -71,6 +71,7 @@ export function CashPlanPanel({ userId, onAskCfo, onOpenSettings }: Props) {
   };
 
   if (loading) return <section className="cash-plan-panel cash-plan-loading">{zh ? "正在计算现金流…" : "Calculating cash flow…"}</section>;
+  if (data && !data.configured) return <section className="cash-plan-panel cash-plan-error"><strong>{zh ? "现金计划尚未设置" : "Cash plan not configured"}</strong><p>{zh ? "先在设置中填写计划现金、工资、房租和生活预算，FinDesk 才能计算未来余额。" : "Add cash, income, rent and a living budget in Settings before forecasting."}</p><button type="button" onClick={onOpenSettings}>{zh ? "前往设置" : "Open settings"}</button></section>;
   if (!draft || !data) return <section className="cash-plan-panel cash-plan-error">{error || (zh ? "现金计划暂时无法加载。" : "The cash plan could not be loaded.")}</section>;
   const p = data.projection;
   return (

@@ -187,26 +187,27 @@ export function SettingsPage({
       };
       await updateProfile(userId, payload);
       if (cashPlan) {
+        const existingPlan = cashPlan.configured ? cashPlan.plan : null;
         const fixedEntries: CashPlanEntry[] = [];
         if (parseMoney(form.monthly_income) > 0) {
           fixedEntries.push(fixedPlanEntry(
-            cashPlan.plan.entries, "income", "salary",
+            existingPlan?.entries ?? [], "income", "salary",
             localize(lang, "工资", "Salary"), parseMoney(form.monthly_income),
             parseDay(form.salary_day, 15)
           ));
         }
         if (parseMoney(form.rent_amount) > 0) {
           fixedEntries.push(fixedPlanEntry(
-            cashPlan.plan.entries, "housing", "rent",
+            existingPlan?.entries ?? [], "housing", "rent",
             localize(lang, "房租", "Rent"), parseMoney(form.rent_amount),
             parseDay(form.rent_day, 1)
           ));
         }
-        const variableEntries = cashPlan.plan.entries.filter(
+        const variableEntries = (existingPlan?.entries ?? []).filter(
           (entry) => entry.kind !== "income" && entry.kind !== "housing"
         );
         const nextPlan = await saveCashPlan(userId, {
-          currency: cashPlan.plan.currency,
+          currency: existingPlan?.currency ?? "CNY",
           cash_balance: parseMoney(form.cash_balance),
           daily_budget: parseMoney(form.daily_budget),
           monthly_budget: parseMoney(form.monthly_budget),
@@ -1031,7 +1032,7 @@ function buildProfileForm(
 }
 
 function applyCashPlanToForm(form: ProfileForm, response: CashPlanResponse | null): ProfileForm {
-  if (!response) return form;
+  if (!response?.configured) return form;
   const salary = response.plan.entries.find((entry) => entry.kind === "income" && entry.recurrence === "monthly");
   const rent = response.plan.entries.find((entry) => entry.kind === "housing" && entry.recurrence === "monthly");
   return {

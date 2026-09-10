@@ -91,6 +91,7 @@ export function FinanceWorkspacePage({
 }: Props) {
   const { lang } = useI18n();
   const [cashPlan, setCashPlan] = useState<CashPlanResponse | null>(null);
+  const [cashPlanState, setCashPlanState] = useState<"loading" | "ready" | "unconfigured" | "error">("loading");
   const [entryOpen, setEntryOpen] = useState(false);
   const [activeTemplate, setActiveTemplate] = useState<TemplateId | null>(null);
   const [entryType, setEntryType] = useState<EntryType>("expense");
@@ -108,9 +109,18 @@ export function FinanceWorkspacePage({
 
   useEffect(() => {
     let active = true;
+    setCashPlanState("loading");
     fetchCashPlan(userId)
-      .then((result) => active && setCashPlan(result))
-      .catch(() => active && setCashPlan(null));
+      .then((result) => {
+        if (!active) return;
+        setCashPlan(result);
+        setCashPlanState(result.configured ? "ready" : "unconfigured");
+      })
+      .catch(() => {
+        if (!active) return;
+        setCashPlan(null);
+        setCashPlanState("error");
+      });
     return () => { active = false; };
   }, [userId]);
 
@@ -123,9 +133,9 @@ export function FinanceWorkspacePage({
   const dataAgeDays = period?.to
     ? Math.max(0, Math.floor((dateValue(today) - dateValue(period.to)) / 86400000))
     : null;
-  const projection = cashPlan?.projection;
-  const nextPayment = projection?.events.find((event) => event.date >= today && event.amount < 0)
-    ?? projection?.events.find((event) => event.amount < 0)
+  const projection = cashPlan?.configured ? cashPlan.projection : null;
+  const nextPayment = projection?.events.find((event) => event.date >= today && event.amount < 0 && event.essential)
+    ?? projection?.events.find((event) => event.amount < 0 && event.essential)
     ?? null;
   const daysUntilIncome = projection?.next_income_date
     ? Math.max(0, Math.ceil((dateValue(projection.next_income_date) - dateValue(today)) / 86400000))
@@ -272,15 +282,27 @@ export function FinanceWorkspacePage({
           <div className="daily-overview-primary">
             <span>{lang === "zh" ? "发薪前可自由支配（计划估算）" : "Free to spend before payday (estimate)"}</span>
             <strong>{projection ? formatMoney(projection.safe_to_spend_until_next_income, sym) : "—"}</strong>
-            <h1>{projection?.safe_to_spend_until_next_income === 0
-              ? (lang === "zh" ? "暂时不要安排新增支出" : "Pause new spending for now")
-              : (lang === "zh" ? "今天的消费空间" : "Today's spending room")}</h1>
+            <h1>{projection
+              ? projection.safe_to_spend_until_next_income === 0
+                ? (lang === "zh" ? "暂时不要安排新增支出" : "Pause new spending for now")
+                : (lang === "zh" ? "今天的消费空间" : "Today's spending room")
+              : cashPlanState === "unconfigured"
+                ? (lang === "zh" ? "先完善现金计划" : "Complete your cash plan")
+                : cashPlanState === "error"
+                  ? (lang === "zh" ? "现金计划暂时无法读取" : "Cash plan unavailable")
+                  : (lang === "zh" ? "正在读取现金计划" : "Loading cash plan")}</h1>
             <p>{projection?.funding_gap && projection.funding_gap > 0
               ? (lang === "zh" ? `未来计划仍有 ${formatMoney(projection.funding_gap, sym)} 缺口，建议先处理必要支出。` : `The current plan still has a ${formatMoney(projection.funding_gap, sym)} gap.`)
-              : (lang === "zh" ? "根据当前余额和已记录计划计算；实际流水以账本更新时间为准。" : "Based on the recorded balance and plan; actual spending follows ledger freshness.")}</p>
+              : projection
+                ? (lang === "zh" ? "根据计划现金、发薪前必要付款和生活预算估算；实际流水以账本更新时间为准。" : "Estimated from planned cash, commitments and living budget; actual spending follows ledger freshness.")
+                : cashPlanState === "unconfigured"
+                  ? (lang === "zh" ? "设置计划现金、收入、必要付款和生活预算后，才能计算安全可花。" : "Add cash, income, commitments and a living budget before calculating.")
+                  : cashPlanState === "error"
+                    ? (lang === "zh" ? "系统没有用默认金额代替缺失数据，请稍后重试。" : "No default amount has been substituted. Try again later.")
+                    : (lang === "zh" ? "正在核对计划数据。" : "Checking plan data.")}</p>
           </div>
           <div className="daily-overview-facts">
-            <div><span>{lang === "zh" ? "当前计划现金" : "Planned cash"}</span><strong>{projection ? formatMoney(projection.current_cash, sym) : "—"}</strong><em>{cashPlan?.plan.updated_at ? (lang === "zh" ? `计划更新于 ${dateLabel(cashPlan.plan.updated_at.slice(0, 10), lang)}` : cashPlan.plan.updated_at.slice(0, 10)) : ""}</em></div>
+            <div><span>{lang === "zh" ? "当前计划现金" : "Planned cash"}</span><strong>{projection ? formatMoney(projection.current_cash, sym) : "—"}</strong><em>{cashPlan?.configured ? (lang === "zh" ? `计划更新于 ${dateLabel(cashPlan.plan.updated_at.slice(0, 10), lang)}` : cashPlan.plan.updated_at.slice(0, 10)) : cashPlanState === "unconfigured" ? (lang === "zh" ? "计划尚未设置" : "Plan not configured") : cashPlanState === "error" ? (lang === "zh" ? "数据暂时不可用" : "Data unavailable") : ""}</em></div>
             <div><span>{lang === "zh" ? "下一笔必须支付" : "Next payment"}</span><strong>{nextPayment ? `${dateLabel(nextPayment.date, lang)} · ${nextPayment.name}` : "—"}</strong><em>{nextPayment ? formatMoney(Math.abs(nextPayment.amount), sym) : ""}</em></div>
             <div><span>{lang === "zh" ? "距离下次收入" : "Until next income"}</span><strong>{daysUntilIncome == null ? "—" : (lang === "zh" ? `${daysUntilIncome} 天` : `${daysUntilIncome} days`)}</strong><em>{projection?.next_income_date ?? ""}</em></div>
             <div><span>{lang === "zh" ? "最近有流水的一天" : "Latest ledger day"}</span><strong>{period?.to ? formatMoney(latestDaySpend, sym) : "—"}</strong><em>{period?.to ? dateLabel(period.to, lang) : ""}</em></div>

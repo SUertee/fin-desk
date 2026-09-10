@@ -10,10 +10,14 @@ from app.models.cash_plan import CashPlan
 logger = logging.getLogger(__name__)
 
 
+class CashPlanStorageError(RuntimeError):
+    """Raised when cash-plan persistence is unavailable or fails."""
+
+
 def get_cash_plan_db(user_id: str) -> CashPlan | None:
     with get_conn() as conn:
         if not conn:
-            return None
+            raise CashPlanStorageError("Cash-plan storage is unavailable")
         try:
             with conn.cursor() as cur:
                 cur.execute(
@@ -35,16 +39,16 @@ def get_cash_plan_db(user_id: str) -> CashPlan | None:
                 daily_budget=float(row[3]), monthly_budget=float(row[4]),
                 entries=entries or [], updated_at=row[6],
             )
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to load cash plan for user=%s", user_id)
-            return None
+            raise CashPlanStorageError("Failed to load cash plan") from exc
 
 
 def save_cash_plan_db(plan: CashPlan) -> bool:
     plan.updated_at = datetime.now(timezone.utc)
     with get_conn() as conn:
         if not conn:
-            return False
+            raise CashPlanStorageError("Cash-plan storage is unavailable")
         try:
             with conn.cursor() as cur:
                 cur.execute(
@@ -70,6 +74,6 @@ def save_cash_plan_db(plan: CashPlan) -> bool:
                 )
             conn.commit()
             return True
-        except Exception:
+        except Exception as exc:
             logger.exception("Failed to save cash plan for user=%s", plan.user_id)
-            return False
+            raise CashPlanStorageError("Failed to save cash plan") from exc
