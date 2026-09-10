@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   ArrowDownLeft,
   ArrowLeftRight,
   ArrowRight,
@@ -9,16 +8,15 @@ import {
   CheckCircle2,
   ChevronDown,
   CircleDollarSign,
-  FileUp,
   Moon,
   PackageOpen,
   Plus,
   ReceiptText,
-  RefreshCw,
   RotateCcw,
   ShoppingBasket,
   Sun,
   Sunrise,
+  Sparkles,
   WalletCards,
   X,
 } from "lucide-react";
@@ -60,16 +58,16 @@ type Props = {
   onOpenCashPlan: () => void;
   onUploadStatement: (file: File) => void;
   onCreateManualTransaction: (input: ManualTransactionInput) => Promise<void>;
+  onAttentionChange?: (items: WorkspaceAttentionItem[]) => void;
 };
 
-type NeedItem = {
+export type WorkspaceAttentionItem = {
   id: string;
   title: string;
   body: string;
-  action: string;
-  icon: typeof AlertTriangle;
+  actionLabel: string;
+  actionTarget: "upload" | "cash-plan";
   tone: "warn" | "info";
-  run: () => void;
 };
 
 type EntryType = "expense" | "income" | "refund" | "transfer";
@@ -88,6 +86,7 @@ export function FinanceWorkspacePage({
   onOpenCashPlan,
   onUploadStatement,
   onCreateManualTransaction,
+  onAttentionChange,
 }: Props) {
   const { lang } = useI18n();
   const [cashPlan, setCashPlan] = useState<CashPlanResponse | null>(null);
@@ -140,56 +139,6 @@ export function FinanceWorkspacePage({
   const daysUntilIncome = projection?.next_income_date
     ? Math.max(0, Math.ceil((dateValue(projection.next_income_date) - dateValue(today)) / 86400000))
     : null;
-  const latestDaySpend = useMemo(() => tableTransactions
-    .filter((transaction) => !transaction.is_duplicate && transaction.date === period?.to && transaction.amount < 0)
-    .reduce((sum, transaction) => sum + Math.abs(transaction.amount), 0), [tableTransactions, period?.to]);
-
-  const upload = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".csv,.xlsx,.pdf";
-    input.onchange = (event) => {
-      const file = (event.target as HTMLInputElement).files?.[0];
-      if (file) onUploadStatement(file);
-    };
-    input.click();
-  };
-
-  const needs: NeedItem[] = [];
-  if (!tableTransactions.length) {
-    needs.push({
-      id: "first-import",
-      title: lang === "zh" ? "导入第一份账单" : "Import your first statement",
-      body: lang === "zh" ? "导入后才能查看真实消费、分类和每天的收支。" : "Import data to review spending and categories.",
-      action: lang === "zh" ? "选择账单" : "Choose file",
-      icon: FileUp,
-      tone: "info",
-      run: upload,
-    });
-  } else if (dataAgeDays != null && dataAgeDays >= 7) {
-    needs.push({
-      id: "stale-ledger",
-      title: lang === "zh" ? `流水已有 ${dataAgeDays} 天未更新` : `Ledger is ${dataAgeDays} days old`,
-      body: lang === "zh" ? `当前消费分析只覆盖到 ${dateLabel(period?.to, lang)}。` : `Spending data currently ends on ${period?.to}.`,
-      action: lang === "zh" ? "更新账单" : "Update ledger",
-      icon: RefreshCw,
-      tone: "info",
-      run: upload,
-    });
-  }
-  if (projection?.funding_gap && projection.funding_gap > 0) {
-    needs.push({
-      id: "funding-gap",
-      title: lang === "zh" ? "未来计划存在资金缺口" : "Your plan has a funding gap",
-      body: lang === "zh" ? `按当前计划，最低还缺 ${formatMoney(projection.funding_gap, sym)}。` : `The current plan falls short by ${formatMoney(projection.funding_gap, sym)}.`,
-      action: lang === "zh" ? "调整计划" : "Adjust plan",
-      icon: AlertTriangle,
-      tone: "warn",
-      run: onOpenCashPlan,
-    });
-  }
-  const visibleNeeds = needs.slice(0, 2);
-
   const todayTransactions = useMemo(() => [...tableTransactions]
     .filter((transaction) => !transaction.is_duplicate && transaction.date === today)
     .sort((a, b) => (b.created_at || b.date).localeCompare(a.created_at || a.date)), [tableTransactions, today]);
@@ -202,6 +151,51 @@ export function FinanceWorkspacePage({
     else summary.income += transaction.amount;
     return summary;
   }, { expense: 0, income: 0, refund: 0 }), [todayTransactions]);
+
+  const dailyBudget = cashPlan?.configured ? cashPlan.plan.daily_budget : null;
+  const todayBudgetRemaining = dailyBudget == null ? null : Math.max(0, dailyBudget - todaySummary.expense);
+  const nextIncome = projection?.events.find((event) => event.amount > 0 && event.date === projection.next_income_date) ?? null;
+  const daysUntilPayment = nextPayment
+    ? Math.max(0, Math.ceil((dateValue(nextPayment.date) - dateValue(today)) / 86400000))
+    : null;
+
+  const attentionItems = useMemo<WorkspaceAttentionItem[]>(() => {
+    const items: WorkspaceAttentionItem[] = [];
+    if (!tableTransactions.length) {
+      items.push({
+        id: "first-import",
+        title: lang === "zh" ? "导入第一份账单" : "Import your first statement",
+        body: lang === "zh" ? "导入后才能查看真实消费、分类和每天的收支。" : "Import data to review spending and categories.",
+        actionLabel: lang === "zh" ? "选择账单" : "Choose file",
+        actionTarget: "upload",
+        tone: "info",
+      });
+    } else if (dataAgeDays != null && dataAgeDays >= 7) {
+      items.push({
+        id: "stale-ledger",
+        title: lang === "zh" ? `流水已有 ${dataAgeDays} 天未更新` : `Ledger is ${dataAgeDays} days old`,
+        body: lang === "zh" ? `当前消费分析只覆盖到 ${dateLabel(period?.to, lang)}。` : `Spending data currently ends on ${period?.to}.`,
+        actionLabel: lang === "zh" ? "更新账单" : "Update ledger",
+        actionTarget: "upload",
+        tone: "info",
+      });
+    }
+    if (projection?.funding_gap && projection.funding_gap > 0) {
+      items.push({
+        id: "funding-gap",
+        title: lang === "zh" ? "未来计划存在资金缺口" : "Your plan has a funding gap",
+        body: lang === "zh" ? `按当前计划，最低还缺 ${formatMoney(projection.funding_gap, sym)}。` : `The current plan falls short by ${formatMoney(projection.funding_gap, sym)}.`,
+        actionLabel: lang === "zh" ? "调整计划" : "Adjust plan",
+        actionTarget: "cash-plan",
+        tone: "warn",
+      });
+    }
+    return items.slice(0, 3);
+  }, [dataAgeDays, lang, period?.to, projection?.funding_gap, sym, tableTransactions.length]);
+
+  useEffect(() => {
+    onAttentionChange?.(attentionItems);
+  }, [attentionItems, onAttentionChange]);
 
   const templateTotals = useMemo(() => {
     const totals: Record<TemplateId, number> = { breakfast: 0, lunch: 0, dinner: 0, transport: 0, groceries: 0, daily: 0 };
@@ -269,10 +263,10 @@ export function FinanceWorkspacePage({
 
   return (
     <main className="workspace-main today-workspace">
-      <section className={`daily-overview ${projection?.funding_gap && projection.funding_gap > 0 ? "daily-overview-risk" : ""}`}>
+      <section className="daily-overview">
         <header className="daily-overview-head">
           <div>
-            <span className="daily-overview-kicker">{lang === "zh" ? "今日资金状态" : "TODAY'S MONEY"}</span>
+            <span className="daily-overview-kicker">{lang === "zh" ? "今日资金" : "TODAY'S MONEY"}</span>
             <p>{period?.to ? (lang === "zh" ? `账本更新至 ${dateLabel(period.to, lang)}` : `Ledger updated through ${period.to}`) : (lang === "zh" ? "账本尚未导入" : "No ledger data yet")}</p>
           </div>
           <button type="button" className="daily-plan-link" onClick={onOpenCashPlan}><WalletCards /> {lang === "zh" ? "查看计划" : "View plan"}</button>
@@ -280,32 +274,34 @@ export function FinanceWorkspacePage({
 
         <div className="daily-overview-body">
           <div className="daily-overview-primary">
-            <span>{lang === "zh" ? "发薪前可自由支配（计划估算）" : "Free to spend before payday (estimate)"}</span>
-            <strong>{projection ? formatMoney(projection.safe_to_spend_until_next_income, sym) : "—"}</strong>
-            <h1>{projection
-              ? projection.safe_to_spend_until_next_income === 0
-                ? (lang === "zh" ? "暂时不要安排新增支出" : "Pause new spending for now")
-                : (lang === "zh" ? "今天的消费空间" : "Today's spending room")
+            <span><Sparkles />{lang === "zh" ? "AI 今日建议" : "AI DAILY GUIDANCE"}</span>
+            <h1>{projection && todayBudgetRemaining != null
+              ? todayBudgetRemaining === 0
+                ? (lang === "zh" ? "今天先暂停新增支出" : "Pause new spending today")
+                : projection.funding_gap > 0
+                  ? (lang === "zh" ? "今天只安排必要生活支出" : "Keep today to essential spending")
+                  : (lang === "zh" ? "今天可以按预算安排支出" : "Today's plan is within budget")
               : cashPlanState === "unconfigured"
                 ? (lang === "zh" ? "先完善现金计划" : "Complete your cash plan")
                 : cashPlanState === "error"
                   ? (lang === "zh" ? "现金计划暂时无法读取" : "Cash plan unavailable")
                   : (lang === "zh" ? "正在读取现金计划" : "Loading cash plan")}</h1>
-            <p>{projection?.funding_gap && projection.funding_gap > 0
-              ? (lang === "zh" ? `未来计划仍有 ${formatMoney(projection.funding_gap, sym)} 缺口，建议先处理必要支出。` : `The current plan still has a ${formatMoney(projection.funding_gap, sym)} gap.`)
-              : projection
-                ? (lang === "zh" ? "根据计划现金、发薪前必要付款和生活预算估算；实际流水以账本更新时间为准。" : "Estimated from planned cash, commitments and living budget; actual spending follows ledger freshness.")
-                : cashPlanState === "unconfigured"
-                  ? (lang === "zh" ? "设置计划现金、收入、必要付款和生活预算后，才能计算安全可花。" : "Add cash, income, commitments and a living budget before calculating.")
+            <p>{projection && todayBudgetRemaining != null
+              ? lang === "zh"
+                ? `距离工资到账还有 ${daysUntilIncome ?? "—"} 天，今天建议最多再支出 ${formatMoney(todayBudgetRemaining, sym)}。`
+                : `${daysUntilIncome ?? "—"} days until income; keep additional spending within ${formatMoney(todayBudgetRemaining, sym)} today.`
+              : cashPlanState === "unconfigured"
+                  ? (lang === "zh" ? "设置可用现金、收入、必要付款和生活预算后，才能生成今日建议。" : "Add available cash, income, commitments and a living budget before generating guidance.")
                   : cashPlanState === "error"
                     ? (lang === "zh" ? "系统没有用默认金额代替缺失数据，请稍后重试。" : "No default amount has been substituted. Try again later.")
                     : (lang === "zh" ? "正在核对计划数据。" : "Checking plan data.")}</p>
+            {projection && dailyBudget != null && <small>{lang === "zh" ? `每日生活预算 ${formatMoney(dailyBudget, sym)} · 今日已记录 ${formatMoney(todaySummary.expense, sym)}` : `Daily budget ${formatMoney(dailyBudget, sym)} · ${formatMoney(todaySummary.expense, sym)} recorded today`}</small>}
           </div>
           <div className="daily-overview-facts">
-            <div><span>{lang === "zh" ? "当前计划现金" : "Planned cash"}</span><strong>{projection ? formatMoney(projection.current_cash, sym) : "—"}</strong><em>{cashPlan?.configured ? (lang === "zh" ? `计划更新于 ${dateLabel(cashPlan.plan.updated_at.slice(0, 10), lang)}` : cashPlan.plan.updated_at.slice(0, 10)) : cashPlanState === "unconfigured" ? (lang === "zh" ? "计划尚未设置" : "Plan not configured") : cashPlanState === "error" ? (lang === "zh" ? "数据暂时不可用" : "Data unavailable") : ""}</em></div>
-            <div><span>{lang === "zh" ? "下一笔必须支付" : "Next payment"}</span><strong>{nextPayment ? `${dateLabel(nextPayment.date, lang)} · ${nextPayment.name}` : "—"}</strong><em>{nextPayment ? formatMoney(Math.abs(nextPayment.amount), sym) : ""}</em></div>
-            <div><span>{lang === "zh" ? "距离下次收入" : "Until next income"}</span><strong>{daysUntilIncome == null ? "—" : (lang === "zh" ? `${daysUntilIncome} 天` : `${daysUntilIncome} days`)}</strong><em>{projection?.next_income_date ?? ""}</em></div>
-            <div><span>{lang === "zh" ? "最近有流水的一天" : "Latest ledger day"}</span><strong>{period?.to ? formatMoney(latestDaySpend, sym) : "—"}</strong><em>{period?.to ? dateLabel(period.to, lang) : ""}</em></div>
+            <div><span>{lang === "zh" ? "当前可用现金" : "Available cash"}</span><strong>{projection ? formatMoney(projection.current_cash, sym) : "—"}</strong><em>{cashPlan?.configured ? (lang === "zh" ? `手动更新于 ${dateLabel(cashPlan.plan.updated_at.slice(0, 10), lang)}` : `Manually updated ${cashPlan.plan.updated_at.slice(0, 10)}`) : cashPlanState === "unconfigured" ? (lang === "zh" ? "计划尚未设置" : "Plan not configured") : cashPlanState === "error" ? (lang === "zh" ? "数据暂时不可用" : "Data unavailable") : ""}</em></div>
+            <div className="daily-fact-payment"><span>{lang === "zh" ? "下一笔最近支付" : "Next required payment"}</span><strong>{nextPayment ? formatMoney(Math.abs(nextPayment.amount), sym) : "—"}</strong><em>{nextPayment ? `${nextPayment.name} · ${dateLabel(nextPayment.date, lang)}${daysUntilPayment == null ? "" : lang === "zh" ? ` · 还有 ${daysUntilPayment} 天` : ` · in ${daysUntilPayment} days`}` : ""}</em></div>
+            <div><span>{lang === "zh" ? "距离下次收入" : "Until next income"}</span><strong>{daysUntilIncome == null ? "—" : (lang === "zh" ? `${daysUntilIncome} 天` : `${daysUntilIncome} days`)}</strong><em>{nextIncome && projection?.next_income_date ? `${nextIncome.name} +${formatMoney(nextIncome.amount, sym)} · ${dateLabel(projection.next_income_date, lang)}` : projection?.next_income_date ? dateLabel(projection.next_income_date, lang) : ""}</em></div>
+            <div><span>{lang === "zh" ? "今日预算剩余" : "Today's budget left"}</span><strong>{todayBudgetRemaining == null ? "—" : formatMoney(todayBudgetRemaining, sym)}</strong><em>{dailyBudget == null ? "" : lang === "zh" ? `今日已花 ${formatMoney(todaySummary.expense, sym)} · 每日预算 ${formatMoney(dailyBudget, sym)}` : `${formatMoney(todaySummary.expense, sym)} spent · ${formatMoney(dailyBudget, sym)} daily budget`}</em></div>
           </div>
         </div>
       </section>
@@ -324,7 +320,7 @@ export function FinanceWorkspacePage({
               <div><span>{lang === "zh" ? "今日支出" : "Spent today"}</span><strong className="expense">{formatMoney(todaySummary.expense, sym)}</strong></div>
               <div><span>{lang === "zh" ? "今日收入" : "Income today"}</span><strong>{formatMoney(todaySummary.income, sym)}</strong></div>
               <div><span>{lang === "zh" ? "今日退款" : "Refunds today"}</span><strong>{formatMoney(todaySummary.refund, sym)}</strong></div>
-              <div><span>{lang === "zh" ? "安全可花" : "Safe to spend"}</span><strong>{projection ? formatMoney(projection.safe_to_spend_until_next_income, sym) : "—"}</strong></div>
+              <div><span>{lang === "zh" ? "今日预算剩余" : "Budget left today"}</span><strong>{todayBudgetRemaining == null ? "—" : formatMoney(todayBudgetRemaining, sym)}</strong></div>
             </div>
             <div className="today-template-list">
               {dynamicTemplates.map((template) => {
@@ -334,20 +330,6 @@ export function FinanceWorkspacePage({
               })}
             </div>
           </section>
-          <section className="workspace-focus-panel">
-            <header><div><span>{lang === "zh" ? "需要处理" : "NEEDS ATTENTION"}</span><h2>{visibleNeeds.length ? (lang === "zh" ? `${visibleNeeds.length} 件事情` : `${visibleNeeds.length} items`) : (lang === "zh" ? "今天已处理完成" : "All caught up")}</h2></div></header>
-            {visibleNeeds.length ? (
-              <div className="workspace-needs-list">
-                {visibleNeeds.map((item) => {
-                  const Icon = item.icon;
-                  return <article key={item.id} className={`workspace-need workspace-need-${item.tone}`}><span className="workspace-need-icon"><Icon /></span><div><strong>{item.title}</strong><p>{item.body}</p></div><button type="button" onClick={item.run}>{item.action}<ArrowRight /></button></article>;
-                })}
-              </div>
-            ) : (
-              <div className="workspace-complete"><CheckCircle2 /><div><strong>{lang === "zh" ? "暂时没有必须处理的事项" : "Nothing requires attention"}</strong><p>{lang === "zh" ? "账本和计划会在需要更新时提醒你。" : "FinDesk will surface ledger and plan updates when needed."}</p></div></div>
-            )}
-          </section>
-
           <section className="workspace-activity-panel">
             <header><div><span>{lang === "zh" ? "今日流水" : "TODAY'S LEDGER"}</span><h2>{lang === "zh" ? `${todayTransactions.length} 笔资金记录` : `${todayTransactions.length} entries`}</h2></div><button type="button" onClick={onOpenLedger}>{lang === "zh" ? "全部流水" : "Full ledger"}<ArrowRight /></button></header>
             {todayTransactions.length ? (

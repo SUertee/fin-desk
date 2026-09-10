@@ -90,8 +90,8 @@ describe("FinanceWorkspacePage quick bookkeeping", () => {
     );
 
     await screen.findByText("先完善现金计划");
-    const estimate = screen.getByText("发薪前可自由支配（计划估算）").parentElement;
-    expect(estimate?.querySelector("strong")?.textContent).toBe("—");
+    const availableCash = screen.getByText("当前可用现金").parentElement;
+    expect(availableCash?.querySelector("strong")?.textContent).toBe("—");
     expect(screen.getByText("计划尚未设置")).toBeTruthy();
   });
 
@@ -141,6 +141,27 @@ describe("FinanceWorkspacePage quick bookkeeping", () => {
       </I18nProvider>,
     );
 
-    expect(await screen.findByText("9 月 12 日 · 房租")).toBeTruthy();
+    await screen.findByText("¥1,000");
+    expect(screen.getByText("房租 · 9 月 12 日 · 还有 2 天")).toBeTruthy();
+  });
+
+  it("moves actionable reminders out of the page body", async () => {
+    const onAttentionChange = vi.fn();
+    render(
+      <I18nProvider>
+        <FinanceWorkspacePage
+          userId="demo" loading={false} errMsg={null} isUploading={false}
+          primaryCurrency="CNY" tableTransactions={[]} onReload={vi.fn()}
+          onOpenLedger={vi.fn()} onOpenCashPlan={vi.fn()} onUploadStatement={vi.fn()}
+          onCreateManualTransaction={vi.fn().mockResolvedValue(undefined)}
+          onAttentionChange={onAttentionChange}
+        />
+      </I18nProvider>,
+    );
+
+    await waitFor(() => expect(onAttentionChange).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "first-import", actionTarget: "upload" }),
+    ]));
+    expect(screen.queryByText("需要处理")).toBeNull();
   });
 });

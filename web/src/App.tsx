@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   Bell,
   Bot,
   BookOpenText,
   LayoutDashboard,
   LineChart,
   LogOut,
+  Mail,
   Menu,
   Settings as SettingsIcon,
   WalletCards,
@@ -17,7 +19,7 @@ import { useFinanceWorkspaceData } from "./hooks/useFinanceWorkspaceData";
 import { useI18n } from "./i18n";
 import { CashPlanPage } from "./pages/CashPlanPage";
 import { FinanceInboxPage } from "./pages/FinanceInboxPage";
-import { FinanceWorkspacePage } from "./pages/FinanceWorkspacePage";
+import { FinanceWorkspacePage, type WorkspaceAttentionItem } from "./pages/FinanceWorkspacePage";
 import { InvestmentResearchPage } from "./pages/InvestmentResearchPage";
 import { LedgerPage } from "./pages/LedgerPage";
 import { MyOfficePage } from "./pages/MyOfficePage";
@@ -34,6 +36,8 @@ export default function App() {
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [isCfoOpen, setIsCfoOpen] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isAttentionOpen, setIsAttentionOpen] = useState(false);
+  const [attentionItems, setAttentionItems] = useState<WorkspaceAttentionItem[]>([]);
   const [officePrefill, setOfficePrefill] = useState<string | null>(null);
   const [settingsSection, setSettingsSection] = useState<SettingsSection>("profile");
 
@@ -76,19 +80,39 @@ export default function App() {
     setActivePage(page);
     setIsNavOpen(false);
     setIsAccountMenuOpen(false);
+    setIsAttentionOpen(false);
     setIsCfoOpen(false);
   };
 
   const openCfo = (question?: string) => {
     if (question) setOfficePrefill(question);
     setIsAccountMenuOpen(false);
+    setIsAttentionOpen(false);
     setIsCfoOpen(true);
+  };
+
+  const selectStatement = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".csv,.xlsx,.pdf";
+    input.onchange = (event) => {
+      const file = (event.target as HTMLInputElement).files?.[0];
+      if (file) handleUploadStatement(file);
+    };
+    input.click();
+  };
+
+  const runAttentionAction = (item: WorkspaceAttentionItem) => {
+    setIsAttentionOpen(false);
+    if (item.actionTarget === "cash-plan") navigate("cash-plan");
+    else selectStatement();
   };
 
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       setIsAccountMenuOpen(false);
+      setIsAttentionOpen(false);
       setIsCfoOpen(false);
     };
     window.addEventListener("keydown", closeOnEscape);
@@ -126,7 +150,7 @@ export default function App() {
         <div className="product-sidebar-secondary">
           <span>{l("更多工具", "MORE TOOLS")}</span>
           <button type="button" className={activePage === "investments" ? "active" : ""} onClick={() => navigate("investments")}><LineChart />{t("nav.investments")}</button>
-          <button type="button" className={activePage === "inbox" ? "active" : ""} onClick={() => navigate("inbox")}><Bell />{l("财经收件箱", "Finance Inbox")}</button>
+          <button type="button" className={activePage === "inbox" ? "active" : ""} onClick={() => navigate("inbox")}><Mail />{l("财经收件箱", "Finance Inbox")}</button>
         </div>
 
         <div className="product-sidebar-foot">
@@ -142,10 +166,11 @@ export default function App() {
           <button type="button" className="product-nav-trigger" aria-label={l("打开导航", "Open navigation")} aria-expanded={isNavOpen} onClick={() => setIsNavOpen(true)}><Menu /></button>
           <div className="product-utility-context"><span>{currentPageLabel}</span></div>
           <div className="product-topbar-actions">
-            <button type="button" className="product-notification-button" aria-label={l("打开财经收件箱", "Open finance inbox")} onClick={() => setActivePage("inbox")}><Bell /></button>
-            <button type="button" className={`product-cfo-trigger ${isCfoOpen ? "active" : ""}`} aria-label={l("打开 CFO", "Open CFO")} aria-expanded={isCfoOpen} onClick={() => setIsCfoOpen((open) => !open)}><Bot /><span>{l("问 CFO", "Ask CFO")}</span></button>
+            <button type="button" className={`product-notification-button ${isAttentionOpen ? "active" : ""}`} aria-label={l("打开需要处理", "Open items needing attention")} aria-expanded={isAttentionOpen} onClick={() => { setIsAttentionOpen((open) => !open); setIsAccountMenuOpen(false); }}><Bell />{attentionItems.length > 0 && <span>{attentionItems.length}</span>}</button>
+            <button type="button" className="product-notification-button" aria-label={l("打开财经收件箱", "Open finance inbox")} onClick={() => navigate("inbox")}><Mail /></button>
+            <button type="button" className={`product-cfo-trigger ${isCfoOpen ? "active" : ""}`} aria-label={l("打开 CFO", "Open CFO")} aria-expanded={isCfoOpen} onClick={() => { setIsCfoOpen((open) => !open); setIsAttentionOpen(false); setIsAccountMenuOpen(false); }}><Bot /><span>{l("问 CFO", "Ask CFO")}</span></button>
             <div className="product-account">
-              <button type="button" className="product-avatar" title={user.email} aria-label={l("打开个人菜单", "Open account menu")} aria-expanded={isAccountMenuOpen} onClick={() => setIsAccountMenuOpen((open) => !open)}>{user.email.slice(0, 2).toUpperCase()}</button>
+              <button type="button" className="product-avatar" title={user.email} aria-label={l("打开个人菜单", "Open account menu")} aria-expanded={isAccountMenuOpen} onClick={() => { setIsAccountMenuOpen((open) => !open); setIsAttentionOpen(false); }}>{user.email.slice(0, 2).toUpperCase()}</button>
               {isAccountMenuOpen && (
                 <>
                   <button type="button" className="product-account-backdrop" aria-label={l("关闭个人菜单", "Close account menu")} onClick={() => setIsAccountMenuOpen(false)} />
@@ -159,6 +184,16 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        {isAttentionOpen && (
+          <>
+            <button type="button" className="product-attention-backdrop" aria-label={l("关闭需要处理", "Close attention items")} onClick={() => setIsAttentionOpen(false)} />
+            <aside className="product-attention-popover" role="dialog" aria-label={l("需要处理", "Needs attention")}>
+              <header><div><span>{l("需要处理", "NEEDS ATTENTION")}</span><strong>{attentionItems.length ? l(`${attentionItems.length} 件事情`, `${attentionItems.length} items`) : l("暂时没有事项", "All caught up")}</strong></div><button type="button" aria-label={l("关闭需要处理", "Close attention items")} onClick={() => setIsAttentionOpen(false)}><X /></button></header>
+              {attentionItems.length ? <div className="product-attention-list">{attentionItems.map((item) => <article key={item.id} className={`product-attention-item product-attention-${item.tone}`}><span><AlertTriangle /></span><div><strong>{item.title}</strong><p>{item.body}</p><button type="button" onClick={() => runAttentionAction(item)}>{item.actionLabel}</button></div></article>)}</div> : <p className="product-attention-empty">{l("账本和计划会在需要操作时提醒你。", "Ledger and plan updates will appear here when action is needed.")}</p>}
+            </aside>
+          </>
+        )}
 
         <div className="product-content">
           {activePage === "workspace" ? (
@@ -175,6 +210,7 @@ export default function App() {
               onOpenCashPlan={() => setActivePage("cash-plan")}
               onUploadStatement={handleUploadStatement}
               onCreateManualTransaction={handleCreateManualTransaction}
+              onAttentionChange={setAttentionItems}
             />
           ) : activePage === "ledger" ? (
             <LedgerPage
